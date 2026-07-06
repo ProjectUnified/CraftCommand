@@ -1,0 +1,4 @@
+name: ExamplePlugin
+version: 1.0
+main: io.github.projectunified.craftcommand.example.bukkit.ExamplePlugin
+api-version: 1.20

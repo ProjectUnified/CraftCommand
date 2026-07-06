@@ -1,0 +1,3 @@
+io.github.projectunified.craftcommand.validation.processor.extension.MinHandler
+io.github.projectunified.craftcommand.validation.processor.extension.MaxHandler
+io.github.projectunified.craftcommand.validation.processor.extension.ValidateWithHandler

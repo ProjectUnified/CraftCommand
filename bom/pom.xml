@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>io.github.projectunified</groupId>
+        <artifactId>craftcommand</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>craftcommand-bom</artifactId>
+    <packaging>pom</packaging>
+    <name>CraftCommand BOM</name>
+    <description>Bill of Materials (BOM) for CraftCommand modules</description>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>eu.maveniverse.maven.plugins</groupId>
+                <artifactId>bom-builder3</artifactId>
+                <version>1.3.3</version>
+                <executions>
+                    <execution>
+                        <id>build-bom</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>build-bom</goal>
+                        </goals>
+                        <configuration>
+                            <bomGroupId>${project.groupId}</bomGroupId>
+                            <bomArtifactId>${project.artifactId}</bomArtifactId>
+                            <bomVersion>${project.version}</bomVersion>
+                            <bomName>${project.name}</bomName>
+                            <bomDescription>${project.description}</bomDescription>
+                            <reactorDependencies>REACTOR</reactorDependencies>
+                            <attach>true</attach>
+                            <dependencyExclusions>
+                                <dependencyExclusion>
+                                    <groupId>io.github.projectunified</groupId>
+                                    <artifactId>craftcommand-standalone-example</artifactId>
+                                </dependencyExclusion>
+                                <dependencyExclusion>
+                                    <groupId>io.github.projectunified</groupId>
+                                    <artifactId>craftcommand-bukkit-example</artifactId>
+                                </dependencyExclusion>
+                                <dependencyExclusion>
+                                    <groupId>io.github.projectunified</groupId>
+                                    <artifactId>craftcommand-integration-tests</artifactId>
+                                </dependencyExclusion>
+                            </dependencyExclusions>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
