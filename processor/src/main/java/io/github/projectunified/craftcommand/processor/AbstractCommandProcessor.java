@@ -152,7 +152,7 @@ public abstract class AbstractCommandProcessor extends AbstractProcessor {
     /**
      * Configures the super interfaces/classes that the generated wrapper should implement/extend.
      *
-     * @typeSpec the class definition builder
+     * @param typeSpec the class definition builder
      */
     protected abstract void configureSuperType(TypeSpec.Builder typeSpec);
 
