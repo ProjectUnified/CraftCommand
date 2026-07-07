@@ -1,6 +1,5 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
-import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.standalone.StandaloneCommand;
 import io.github.projectunified.craftcommand.standalone.StandaloneCommandManager;
 import org.junit.jupiter.api.BeforeEach;

@@ -15,7 +15,6 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import java.util.Collection;
-import java.util.Collections;
 
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")

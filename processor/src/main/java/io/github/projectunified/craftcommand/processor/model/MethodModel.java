@@ -23,7 +23,7 @@ public class MethodModel {
      * @param methodName      the name of the Java method
      * @param subcommandName  the name of the subcommand, or {@code null} if default action
      * @param aliases         the subcommand aliases
-     * @param description       the subcommand description
+     * @param description     the subcommand description
      * @param senderParameter the model for the first (sender) parameter
      * @param parameters      the models for the remaining command arguments
      * @param isDefault       {@code true} if marked with {@code @Default}

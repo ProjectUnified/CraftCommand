@@ -485,15 +485,24 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     private String getBoxedType(String primitiveType) {
         switch (primitiveType) {
-            case "int": return "java.lang.Integer";
-            case "long": return "java.lang.Long";
-            case "double": return "java.lang.Double";
-            case "float": return "java.lang.Float";
-            case "short": return "java.lang.Short";
-            case "byte": return "java.lang.Byte";
-            case "char": return "java.lang.Character";
-            case "boolean": return "java.lang.Boolean";
-            default: return primitiveType;
+            case "int":
+                return "java.lang.Integer";
+            case "long":
+                return "java.lang.Long";
+            case "double":
+                return "java.lang.Double";
+            case "float":
+                return "java.lang.Float";
+            case "short":
+                return "java.lang.Short";
+            case "byte":
+                return "java.lang.Byte";
+            case "char":
+                return "java.lang.Character";
+            case "boolean":
+                return "java.lang.Boolean";
+            default:
+                return primitiveType;
         }
     }
 
