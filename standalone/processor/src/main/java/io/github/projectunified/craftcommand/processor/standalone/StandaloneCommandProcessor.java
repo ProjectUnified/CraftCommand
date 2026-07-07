@@ -2,7 +2,7 @@ package io.github.projectunified.craftcommand.processor.standalone;
 
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
-import io.github.projectunified.craftcommand.processor.AbstractCommandProcessor;
+import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 
 import javax.annotation.processing.Processor;
@@ -20,7 +20,7 @@ import java.util.List;
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
-public class StandaloneProcessor extends AbstractCommandProcessor {
+public class StandaloneCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected String getWrapperClassSuffix() {
@@ -48,7 +48,7 @@ public class StandaloneProcessor extends AbstractCommandProcessor {
      * This includes getName(), getAliases(), getDescription(), execute(), and tabComplete().
      */
     @Override
-    protected void generateEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
+    protected void buildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
         // getName()
         typeSpec.addMethod(MethodSpec.methodBuilder("getName")
                 .addJavadoc("Gets the main name of the command.\n\n@return the command name\n")
@@ -103,7 +103,7 @@ public class StandaloneProcessor extends AbstractCommandProcessor {
                 .addParameter(Object.class, "sender")
                 .addParameter(String[].class, "args");
 
-        generateSuggestionRouting(tabSpec, model, "args", "instance", model);
+        buildSuggestionRouting(tabSpec, model, "args", "instance", model);
         typeSpec.addMethod(tabSpec.build());
     }
 }

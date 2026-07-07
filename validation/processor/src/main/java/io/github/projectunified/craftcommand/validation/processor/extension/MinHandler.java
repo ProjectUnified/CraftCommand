@@ -21,6 +21,7 @@ public class MinHandler implements ParameterAnnotationHandler<Min> {
         String defaultTemplate = annotation.message().isEmpty()
                 ? "%s cannot be less than %s"
                 : annotation.message();
+        methodSpec.addComment("Validate parameter '" + parameter.getName() + "' against min limit: " + annotation.value());
         methodSpec.beginControlFlow("if ($L < $L)", varName, annotation.value())
                 .addStatement("throw new $T($S, manager.formatMessage($S, $S, $S, $L))",
                         ValidationException.class, parameter.getName(), messageKey, defaultTemplate, parameter.getName(), annotation.value())

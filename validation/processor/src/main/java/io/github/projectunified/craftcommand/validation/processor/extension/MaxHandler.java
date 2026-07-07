@@ -21,6 +21,7 @@ public class MaxHandler implements ParameterAnnotationHandler<Max> {
         String defaultTemplate = annotation.message().isEmpty()
                 ? "%s cannot be greater than %s"
                 : annotation.message();
+        methodSpec.addComment("Validate parameter '" + parameter.getName() + "' against max limit: " + annotation.value());
         methodSpec.beginControlFlow("if ($L > $L)", varName, annotation.value())
                 .addStatement("throw new $T($S, manager.formatMessage($S, $S, $S, $L))",
                         ValidationException.class, parameter.getName(), messageKey, defaultTemplate, parameter.getName(), annotation.value())

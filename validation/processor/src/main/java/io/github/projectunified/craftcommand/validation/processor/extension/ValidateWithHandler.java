@@ -31,6 +31,7 @@ public class ValidateWithHandler implements ParameterAnnotationHandler<ValidateW
             throw new IllegalArgumentException("Could not find validation method '" + methodName + "' in class " + typeElement.getSimpleName());
         }
 
+        methodSpec.addComment("Validate parameter '" + parameter.getName() + "' using custom validation method: " + methodName);
         methodSpec.beginControlFlow("try");
 
         int paramCount = validateMethod.getParameters().size();
