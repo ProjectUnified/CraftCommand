@@ -46,6 +46,7 @@
         <module>validation</module>
         <module>standalone</module>
         <module>bukkit</module>
+        <module>paper</module>
         <module>bom</module>
     </modules>
 
@@ -98,6 +99,16 @@
             <dependency>
                 <groupId>io.github.projectunified</groupId>
                 <artifactId>craftcommand-bukkit-processor</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.projectunified</groupId>
+                <artifactId>craftcommand-paper-runtime</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.projectunified</groupId>
+                <artifactId>craftcommand-paper-processor</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

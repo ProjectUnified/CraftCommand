@@ -1250,7 +1250,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             } else if (isBuiltInType(pTypeName)) {
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
             } else {
-                methodSpec.addStatement("return manager.getResolver($T.class).suggest(senderCast, args, current)", pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
+                methodSpec.addStatement("return manager.getResolver($T.class).suggest(($T) sender, args, current)", pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, getSenderTypeName());
             }
         }
 
@@ -1365,7 +1365,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return null;
     }
 
-    private boolean isBuiltInType(TypeName typeName) {
+    protected boolean isBuiltInType(TypeName typeName) {
         String name = typeName.toString();
         if (name.equals("java.lang.String")
                 || name.equals("int") || name.equals("java.lang.Integer")
@@ -1448,7 +1448,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * @param typeName the parameter type name
      * @return the resolver method name starting with "resolve_"
      */
-    private String getResolverMethodName(TypeName typeName) {
+    protected String getResolverMethodName(TypeName typeName) {
         if (typeName instanceof ClassName) {
             ClassName cn = (ClassName) typeName;
             return "resolve_" + String.join("_", cn.simpleNames());
@@ -1463,7 +1463,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * @param model the command model
      * @return a set of unique TypeNames for the dynamic resolvers
      */
-    private Set<TypeName> getDynamicResolverTypes(CommandModel model) {
+    protected Set<TypeName> getDynamicResolverTypes(CommandModel model) {
         Set<TypeName> types = new LinkedHashSet<>();
         collectDynamicResolverTypes(model, types);
         return types;

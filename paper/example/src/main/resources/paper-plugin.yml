@@ -1,0 +1,5 @@
+name: ExamplePlugin
+version: '${project.version}'
+main: io.github.projectunified.craftcommand.example.paper.ExamplePlugin
+api-version: '1.21'
+description: Example Paper plugin using CraftCommand Paper

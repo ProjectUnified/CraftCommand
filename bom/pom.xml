@@ -46,6 +46,10 @@
                                 </dependencyExclusion>
                                 <dependencyExclusion>
                                     <groupId>io.github.projectunified</groupId>
+                                    <artifactId>craftcommand-paper-example</artifactId>
+                                </dependencyExclusion>
+                                <dependencyExclusion>
+                                    <groupId>io.github.projectunified</groupId>
                                     <artifactId>craftcommand-integration-tests</artifactId>
                                 </dependencyExclusion>
                             </dependencyExclusions>
