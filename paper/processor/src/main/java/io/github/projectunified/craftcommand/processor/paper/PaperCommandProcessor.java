@@ -2,7 +2,6 @@ package io.github.projectunified.craftcommand.processor.paper;
 
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
-import io.github.projectunified.craftcommand.annotation.Command;
 import io.github.projectunified.craftcommand.annotation.Greedy;
 import io.github.projectunified.craftcommand.annotation.Optional;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
@@ -15,12 +14,9 @@ import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
-import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.TypeMirror;
-import java.io.IOException;
 import java.util.*;
 
 /**
@@ -36,9 +32,8 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     private final ClassName commandsClass = ClassName.get("io.papermc.paper.command.brigadier", "Commands");
     private final ClassName commandClass = ClassName.get("com.mojang.brigadier", "Command");
     private final ClassName commandContextClass = ClassName.get("com.mojang.brigadier.context", "CommandContext");
-    private final ClassName argumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "ArgumentBuilder");
-    private final ClassName literalArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "LiteralArgumentBuilder");
     private final ClassName requiredArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "RequiredArgumentBuilder");
+    private final ClassName literalArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "LiteralArgumentBuilder");
     private final ClassName argumentTypesClass = ClassName.get("io.papermc.paper.command.brigadier.argument", "ArgumentTypes");
     private final ClassName errorColorClass = ClassName.get("net.kyori.adventure.text.format", "NamedTextColor");
     private final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
@@ -65,40 +60,48 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
+    protected boolean isSenderType(TypeName typeName) {
+        String name = typeName.toString();
+        return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack")
+                || name.equals("org.bukkit.entity.Player")
+                || name.equals("org.bukkit.command.ConsoleCommandSender")
+                || name.equals("org.bukkit.command.BlockCommandSender")
+                || name.equals("org.bukkit.command.CommandSender");
+    }
+
+    @Override
     protected boolean isSenderBaseType(TypeName typeName) {
         String name = typeName.toString();
-        return name.equals("java.lang.Object") || name.equals("io.papermc.paper.command.brigadier.CommandSourceStack");
+        return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack");
+    }
+
+    @Override
+    protected boolean isPlatformBuiltInType(TypeName typeName) {
+        String name = typeName.toString();
+        return name.equals("org.bukkit.entity.Player")
+                || name.equals("org.bukkit.World")
+                || name.equals("org.bukkit.Location");
+    }
+
+    @Override
+    protected int getPlatformBuiltInWidth(TypeName typeName) {
+        String name = typeName.toString();
+        return 1;
+    }
+
+    @Override
+    protected void generatePlatformParamSuggestions(MethodSpec.Builder methodSpec, TypeName typeName, String senderCastVar, String argsVar, String currentVar, int tempIdx) {
+        methodSpec.addStatement("return $T.emptyList()", Collections.class);
+    }
+
+    @Override
+    protected CodeBlock getSenderExpression(String senderVar) {
+        return CodeBlock.of("($L instanceof $T ? (($T) $L).getSender() : $L)",
+                senderVar, commandSourceStackClass, commandSourceStackClass, senderVar, senderVar);
     }
 
     @Override
     protected void buildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
-        // We override the entire buildWrapperClass, so buildEntryMethods is not used by our custom buildWrapperClass
-    }
-
-    @Override
-    protected void buildWrapperClass(CommandModel model, TypeElement typeElement) throws IOException {
-        String wrapperClassName = model.getClassName().simpleName() + getWrapperClassSuffix();
-        TypeName genericCommandManager = getManagerType();
-
-        TypeSpec.Builder typeSpec = TypeSpec.classBuilder(wrapperClassName)
-                .addJavadoc("Paper Brigadier command wrapper class for {@link $T}.\n", model.getClassName())
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-        configureSuperType(typeSpec);
-
-        typeSpec.addField(FieldSpec.builder(model.getClassName(), "instance", Modifier.PRIVATE, Modifier.FINAL).build());
-        typeSpec.addField(FieldSpec.builder(genericCommandManager, "manager", Modifier.PRIVATE, Modifier.FINAL).build());
-
-        MethodSpec.Builder constructorBuilder = MethodSpec.constructorBuilder()
-                .addModifiers(Modifier.PUBLIC)
-                .addParameter(model.getClassName(), "instance")
-                .addParameter(genericCommandManager, "manager");
-        configureConstructor(constructorBuilder, model);
-        constructorBuilder.addStatement("this.instance = instance")
-                .addStatement("this.manager = manager");
-
-        generateFieldsAndConstructorStatements(model, typeSpec, constructorBuilder, "instance");
-        typeSpec.addMethod(constructorBuilder.build());
-
         // getDescription()
         typeSpec.addMethod(MethodSpec.methodBuilder("getDescription")
                 .addAnnotation(Override.class)
@@ -131,105 +134,8 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         getCommandNodeSpec.addStatement("return builder.build()");
         typeSpec.addMethod(getCommandNodeSpec.build());
 
-        // Generate sender casts
-        generateSenderCasts(typeSpec, model);
-
-        // Generate dynamic resolvers
-        generateDynamicResolvers(typeSpec, model);
-
-        // Generate tab-complete suggestions helpers
-        buildParameterSuggestions(typeSpec, model, model);
-
         // Generate generic suggestions helper
         generateSuggestionsHelper(typeSpec);
-
-        // Generate filterSuggestions helper
-        generateFilterSuggestionsHelper(typeSpec);
-
-        JavaFile javaFile = JavaFile.builder(model.getPackageName(), typeSpec.build()).build();
-        javaFile.writeTo(processingEnv.getFiler());
-    }
-
-    private void generateSenderCasts(TypeSpec.Builder typeSpec, CommandModel model) {
-        Set<TypeName> senderTypes = new HashSet<>();
-        collectSenderTypes(model, senderTypes);
-        for (TypeName type : senderTypes) {
-            if (isSenderBaseType(type)) continue;
-            String methodName = "as" + getSimpleName(type);
-            typeSpec.addMethod(MethodSpec.methodBuilder(methodName)
-                    .addModifiers(Modifier.PRIVATE)
-                    .returns(type)
-                    .addParameter(commandSourceStackClass, "source")
-                    .beginControlFlow("if (!(source.getSender() instanceof $T))", type)
-                    .addStatement("throw new $T($T.class, manager.formatMessage($S, $S, $S))",
-                            io.github.projectunified.craftcommand.exception.InvalidSenderException.class,
-                            type,
-                            "invalid-sender",
-                            "Only players can execute this command.",
-                            "")
-                    .endControlFlow()
-                    .addStatement("return ($T) source.getSender()", type)
-                    .build());
-        }
-    }
-
-    private void collectSenderTypes(CommandModel model, Set<TypeName> types) {
-        if (model.getDefaultMethod() != null) {
-            types.add(TypeName.get(model.getDefaultMethod().getSenderParameter().getType()));
-        }
-        for (MethodModel sub : model.getSubcommands()) {
-            types.add(TypeName.get(sub.getSenderParameter().getType()));
-        }
-        for (CommandModel child : model.getNestedSubcommands()) {
-            collectSenderTypes(child, types);
-        }
-    }
-
-    private void generateDynamicResolvers(TypeSpec.Builder typeSpec, CommandModel model) {
-        for (TypeName type : getDynamicResolverTypes(model)) {
-            String methodName = getResolverMethodName(type);
-            ClassName resolverClassName = ClassName.get("io.github.projectunified.craftcommand", "ArgumentResolver");
-
-            MethodSpec.Builder mb = MethodSpec.methodBuilder(methodName)
-                    .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).addMember("value", "$S", "unchecked").build())
-                    .addModifiers(Modifier.PRIVATE)
-                    .returns(type)
-                    .addException(Exception.class)
-                    .addParameter(getSenderTypeName(), "sender")
-                    .addParameter(String[].class, "args")
-                    .addParameter(String.class, "paramName")
-                    .addParameter(TypeName.BOOLEAN, "optional")
-                    .addParameter(String.class, "defaultValue");
-
-            mb.addStatement("$T<$T, $T> resolver = ($T<$T, $T>) manager.getResolver($T.class)",
-                            resolverClassName, getSenderTypeName(), type,
-                            resolverClassName, getSenderTypeName(), type,
-                            type)
-                    .addStatement("int width = resolver.getWidth()")
-                    .beginControlFlow("if (args.length < width)")
-                    .beginControlFlow("if (optional)")
-                    .beginControlFlow("if (defaultValue == null)")
-                    .addStatement("return null")
-                    .nextControlFlow("else")
-                    .addStatement("return resolver.resolve(sender, new String[]{defaultValue}, defaultValue)")
-                    .endControlFlow()
-                    .endControlFlow()
-                    .addStatement("throw new $T(paramName, manager.formatMessage($S, $S, $S))",
-                            io.github.projectunified.craftcommand.exception.MissingArgumentException.class,
-                            "missing-argument",
-                            "Missing arguments for parameter: %s",
-                            "paramName")
-                    .endControlFlow()
-                    .addStatement("$T result", type)
-                    .beginControlFlow("if (width == 1)")
-                    .addStatement("String argStr = args[0]")
-                    .addStatement("result = argStr == null ? null : resolver.resolve(sender, args, argStr)")
-                    .nextControlFlow("else")
-                    .addStatement("result = resolver.resolve(sender, args, args[args.length - 1])")
-                    .endControlFlow()
-                    .addStatement("return result");
-            typeSpec.addMethod(mb.build());
-        }
     }
 
     private void generateSuggestionsHelper(TypeSpec.Builder typeSpec) {
@@ -275,27 +181,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         typeSpec.addMethod(mb.build());
     }
 
-    private void generateFilterSuggestionsHelper(TypeSpec.Builder typeSpec) {
-        ClassName listClass = ClassName.get("java.util", "List");
-        ClassName arrayListClass = ClassName.get("java.util", "ArrayList");
-        ClassName collectionClass = ClassName.get("java.util", "Collection");
-
-        typeSpec.addMethod(MethodSpec.methodBuilder("filterSuggestions")
-                .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(listClass, ClassName.get(String.class)))
-                .addParameter(ParameterizedTypeName.get(collectionClass, ClassName.get(String.class)), "suggestions")
-                .addParameter(String.class, "current")
-                .addStatement("$T<String> list = new $T<>()", listClass, arrayListClass)
-                .addStatement("String lower = current.toLowerCase()")
-                .beginControlFlow("for (String s : suggestions)")
-                .beginControlFlow("if (s.toLowerCase().startsWith(lower))")
-                .addStatement("list.add(s)")
-                .endControlFlow()
-                .endControlFlow()
-                .addStatement("return list")
-                .build());
-    }
-
     private void buildBrigadierTree(MethodSpec.Builder spec, CommandModel model, String builderVar, String instanceExpr, CommandModel rootModel) {
         // 1. Add nested subcommand classes
         for (CommandModel child : model.getNestedSubcommands()) {
@@ -337,15 +222,30 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
         List<NodeInfo> nodes = new ArrayList<>();
         for (ParameterModel p : cmdArgs) {
-            int width = getParameterWidth(classModel, p, rootModel);
-            CodeBlock typeBlock = getArgumentTypeExpression(p);
-            if (width <= 1) {
-                nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true));
+            ExecutableElement localResolver = findLocalResolver(classModel, p, rootModel);
+            if (localResolver != null) {
+                List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
+                int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
+                int resolverWidth = resolverParams.size() - resolverStartIndex;
+                for (int i = 0; i < resolverWidth; i++) {
+                    javax.lang.model.element.VariableElement rp = resolverParams.get(resolverStartIndex + i);
+                    String rpName = rp.getSimpleName().toString();
+                    TypeName rpTypeName = TypeName.get(rp.asType());
+                    CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp);
+                    boolean rpOptional = rp.getAnnotation(Optional.class) != null;
+                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional));
+                }
             } else {
-                for (int i = 0; i < width; i++) {
-                    nodes.add(new NodeInfo(p.getName() + "_" + i,
-                            CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType")),
-                            p, i, i == width - 1));
+                int width = getParameterWidth(classModel, p, rootModel);
+                CodeBlock typeBlock = getArgumentTypeExpression(classModel, p, rootModel);
+                if (width <= 1) {
+                    nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false));
+                } else {
+                    for (int i = 0; i < width; i++) {
+                        nodes.add(new NodeInfo(p.getName() + "_" + i,
+                                CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType")),
+                                p, i, i == width - 1, false));
+                    }
                 }
             }
         }
@@ -362,28 +262,24 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         if (isPlatformBuiltInType(typeName)) {
             return getPlatformBuiltInWidth(typeName);
         }
-        if (isBuiltInType(typeName)) {
-            return 1;
-        }
         return 1;
     }
 
     private void buildNodeChainRecursive(MethodSpec.Builder spec, String currentBuilderVar, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int index) {
-        // Can we execute at this boundary?
-        // We can execute if we are at the end of the chain, or if the next parameter is optional.
         boolean canExecuteHere = false;
         if (index == nodes.size()) {
             canExecuteHere = true;
         } else if (index > 0 && nodes.get(index - 1).isLastForParameter) {
-            // Next parameter is cmdArgs index of the parameter after nodes.get(index-1).parameter
             ParameterModel nextParam = nodes.get(index).parameter;
             if (nextParam.isOptional()) {
                 canExecuteHere = true;
             }
+        } else if (index > 0 && nodes.get(index).isResolverParamOptional) {
+            // Allow execution here when the next node is an @Optional resolver parameter
+            canExecuteHere = true;
         }
 
         if (canExecuteHere) {
-            // Add executes call to current builder
             spec.beginControlFlow("$L.executes(ctx ->", currentBuilderVar);
             generateExecutionBlock(spec, classModel, method, instanceExpr, rootModel, nodes, index);
             spec.endControlFlow(")");
@@ -399,7 +295,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     node.nodeName,
                     node.typeExpression);
 
-            // Check if we need custom suggestions for this parameter
             ParameterModel p = node.parameter;
             boolean needsSuggestions = p.getSuggestProvider() != null || TypeName.get(p.getType()).toString().equals("boolean") || TypeName.get(p.getType()).toString().equals("java.lang.Boolean");
             if (needsSuggestions && node.isLastForParameter) {
@@ -417,7 +312,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     private void generateExecutionBlock(MethodSpec.Builder spec, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int parsedNodeCount) {
         spec.beginControlFlow("try");
 
-        // Permission check
         Permission permission = method.getElement().getAnnotation(Permission.class);
         if (permission != null) {
             spec.addComment("Permission check: '" + permission.value() + "'");
@@ -430,7 +324,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             spec.endControlFlow();
         }
 
-        // Sender parameter
         ParameterModel senderParam = method.getSenderParameter();
         TypeName senderParamTypeName = TypeName.get(senderParam.getType());
         spec.addComment("Resolve sender");
@@ -444,14 +337,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         List<String> paramNames = new ArrayList<>();
         paramNames.add("senderCast");
 
-        // Resolve argument parameters
         for (ParameterModel pm : method.getParameters()) {
             if (pm == method.getSenderParameter()) continue;
 
             TypeName pmTypeName = TypeName.get(pm.getType());
             String varName = "param_" + pm.getName();
 
-            // Find all NodeInfo segments for this parameter that were parsed
             List<NodeInfo> parsedSegments = new ArrayList<>();
             for (int i = 0; i < parsedNodeCount; i++) {
                 if (nodes.get(i).parameter == pm) {
@@ -462,13 +353,42 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             ExecutableElement localResolver = findLocalResolver(classModel, pm, rootModel);
 
             if (parsedSegments.isEmpty()) {
-                // Not parsed (optional parameter not provided)
                 spec.addComment("Optional parameter '" + pm.getName() + "' not provided");
                 if (localResolver != null) {
-                    // Call local resolver with null values or defaults
+                    List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
+                    int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
+                    List<String> resolverArgNames = new ArrayList<>();
+                    for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
+                        javax.lang.model.element.VariableElement rp = resolverParams.get(j);
+                        TypeName rpTypeName = TypeName.get(rp.asType());
+                        String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
+                        resolverArgNames.add(rpVarName);
+                        Optional optionalAnn = rp.getAnnotation(Optional.class);
+                        boolean isOptional = optionalAnn != null;
+                        String defaultValue = isOptional ? optionalAnn.value() : null;
+                        spec.addStatement("$T $L", rpTypeName, rpVarName);
+                        if (defaultValue != null && !defaultValue.isEmpty()) {
+                            spec.addStatement("$L = $L", rpVarName, getAssignmentValueForType(rpTypeName, defaultValue));
+                        } else {
+                            spec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? getDefaultPrimitiveValue(rp.asType()) : "null");
+                        }
+                    }
                     String resolverInstanceExpr = getInstanceVarExpression(findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
-                    String resolveExpr = generateLocalResolverInvocation(localResolver, resolverInstanceExpr, "senderCast", "new String[0]", "null");
-                    spec.addStatement("$T $L = $L", pmTypeName, varName, resolveExpr);
+                    StringBuilder resolveCall = new StringBuilder(resolverInstanceExpr).append(".").append(localResolver.getSimpleName()).append("(");
+                    if (resolverStartIndex == 1) {
+                        resolveCall.append("senderCast");
+                        if (!resolverArgNames.isEmpty()) {
+                            resolveCall.append(", ");
+                        }
+                    }
+                    for (int j = 0; j < resolverArgNames.size(); j++) {
+                        resolveCall.append(resolverArgNames.get(j));
+                        if (j < resolverArgNames.size() - 1) {
+                            resolveCall.append(", ");
+                        }
+                    }
+                    resolveCall.append(")");
+                    spec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
                 } else if (isBuiltInType(pmTypeName)) {
                     String defVal = pmTypeName.isPrimitive() ? getDefaultPrimitiveValue(pm.getType()) : "null";
                     spec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
@@ -478,41 +398,80 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             pmTypeName, varName, resolverMethod, pm.getName());
                 }
             } else {
-                // Parameter was parsed
-                spec.addComment("Resolve parameter '" + pm.getName() + "'");
-                String typeStr = pmTypeName.toString();
-                if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
-                    spec.addStatement("$T $L = $T.getInteger(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), pm.getName());
-                } else if (typeStr.equals("long") || typeStr.equals("java.lang.Long")) {
-                    spec.addStatement("$T $L = $T.getLong(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"), pm.getName());
-                } else if (typeStr.equals("float") || typeStr.equals("java.lang.Float")) {
-                    spec.addStatement("$T $L = $T.getFloat(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"), pm.getName());
-                } else if (typeStr.equals("double") || typeStr.equals("java.lang.Double")) {
-                    spec.addStatement("$T $L = $T.getDouble(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"), pm.getName());
-                } else if (typeStr.equals("boolean") || typeStr.equals("java.lang.Boolean")) {
-                    spec.addStatement("$T $L = $T.getBool(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"), pm.getName());
-                } else if (typeStr.equals("java.lang.String")) {
-                    spec.addStatement("$T $L = $T.getString(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
-                } else if (typeStr.equals("org.bukkit.entity.Player")) {
-                    spec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()",
-                            pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver"));
-                } else if (typeStr.equals("org.bukkit.World")) {
-                    spec.addStatement("$T $L = ctx.getArgument($S, $T.class)", pmTypeName, varName, pm.getName(), org.bukkit.World.class);
-                } else if (typeStr.equals("org.bukkit.Location")) {
-                    spec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())",
-                            pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver"));
-                } else {
-                    // Resolver fallback
-                    String[] subArgExprs = new String[parsedSegments.size()];
-                    for (int i = 0; i < parsedSegments.size(); i++) {
-                        subArgExprs[i] = "ctx.getArgument(\"" + parsedSegments.get(i).nodeName + "\", String.class)";
+                if (localResolver != null) {
+                    spec.addComment("Resolve parameter '" + pm.getName() + "' using local resolver " + localResolver.getSimpleName());
+                    List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
+                    int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
+                    List<String> resolverArgNames = new ArrayList<>();
+                    for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
+                        javax.lang.model.element.VariableElement rp = resolverParams.get(j);
+                        TypeName rpTypeName = TypeName.get(rp.asType());
+                        String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
+                        resolverArgNames.add(rpVarName);
+                        Optional optionalAnn = rp.getAnnotation(Optional.class);
+                        boolean isOptional = optionalAnn != null;
+                        String defaultValue = isOptional ? optionalAnn.value() : null;
+                        spec.addStatement("$T $L", rpTypeName, rpVarName);
+                        CodeBlock retrievalExpr = getArgumentRetrievalExpression(rpTypeName, rp.getSimpleName().toString());
+                        if (isOptional) {
+                            spec.beginControlFlow("try");
+                            spec.addStatement("$L = $L", rpVarName, retrievalExpr);
+                            spec.nextControlFlow("catch ($T e)", IllegalArgumentException.class);
+                            if (defaultValue != null && !defaultValue.isEmpty()) {
+                                spec.addStatement("$L = $L", rpVarName, getAssignmentValueForType(rpTypeName, defaultValue));
+                            } else {
+                                spec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? getDefaultPrimitiveValue(rp.asType()) : "null");
+                            }
+                            spec.endControlFlow();
+                        } else {
+                            spec.addStatement("$L = $L", rpVarName, retrievalExpr);
+                        }
                     }
-                    String subArgsArray = "new String[]{" + String.join(", ", subArgExprs) + "}";
-                    if (localResolver != null) {
-                        String resolverInstanceExpr = getInstanceVarExpression(findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
-                        String resolveExpr = generateLocalResolverInvocation(localResolver, resolverInstanceExpr, "senderCast", subArgsArray, subArgExprs[subArgExprs.length - 1]);
-                        spec.addStatement("$T $L = $L", pmTypeName, varName, resolveExpr);
+                    String resolverInstanceExpr = getInstanceVarExpression(findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
+                    StringBuilder resolveCall = new StringBuilder(resolverInstanceExpr).append(".").append(localResolver.getSimpleName()).append("(");
+                    if (resolverStartIndex == 1) {
+                        resolveCall.append("senderCast");
+                        if (!resolverArgNames.isEmpty()) {
+                            resolveCall.append(", ");
+                        }
+                    }
+                    for (int j = 0; j < resolverArgNames.size(); j++) {
+                        resolveCall.append(resolverArgNames.get(j));
+                        if (j < resolverArgNames.size() - 1) {
+                            resolveCall.append(", ");
+                        }
+                    }
+                    resolveCall.append(")");
+                    spec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
+                } else {
+                    spec.addComment("Resolve parameter '" + pm.getName() + "'");
+                    String typeStr = pmTypeName.toString();
+                    if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
+                        spec.addStatement("$T $L = $T.getInteger(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), pm.getName());
+                    } else if (typeStr.equals("long") || typeStr.equals("java.lang.Long")) {
+                        spec.addStatement("$T $L = $T.getLong(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"), pm.getName());
+                    } else if (typeStr.equals("float") || typeStr.equals("java.lang.Float")) {
+                        spec.addStatement("$T $L = $T.getFloat(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"), pm.getName());
+                    } else if (typeStr.equals("double") || typeStr.equals("java.lang.Double")) {
+                        spec.addStatement("$T $L = $T.getDouble(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"), pm.getName());
+                    } else if (typeStr.equals("boolean") || typeStr.equals("java.lang.Boolean")) {
+                        spec.addStatement("$T $L = $T.getBool(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"), pm.getName());
+                    } else if (typeStr.equals("java.lang.String")) {
+                        spec.addStatement("$T $L = $T.getString(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
+                    } else if (typeStr.equals("org.bukkit.entity.Player")) {
+                        spec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()",
+                                pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver"));
+                    } else if (typeStr.equals("org.bukkit.World")) {
+                        spec.addStatement("$T $L = ctx.getArgument($S, $T.class)", pmTypeName, varName, pm.getName(), ClassName.get("org.bukkit", "World"));
+                    } else if (typeStr.equals("org.bukkit.Location")) {
+                        spec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())",
+                                pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver"));
                     } else {
+                        String[] subArgExprs = new String[parsedSegments.size()];
+                        for (int i = 0; i < parsedSegments.size(); i++) {
+                            subArgExprs[i] = "ctx.getArgument(\"" + parsedSegments.get(i).nodeName + "\", String.class)";
+                        }
+                        String subArgsArray = "new String[]{" + String.join(", ", subArgExprs) + "}";
                         String resolverMethod = getResolverMethodName(pmTypeName);
                         spec.addStatement("$T $L = $L(senderCast, $L, $S, false, null)",
                                 pmTypeName, varName, resolverMethod, subArgsArray, pm.getName());
@@ -522,7 +481,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             paramNames.add(varName);
         }
 
-        // Method invocation
         StringBuilder call = new StringBuilder(instanceExpr).append(".").append(method.getMethodName()).append("(");
         for (int i = 0; i < paramNames.size(); i++) {
             call.append(paramNames.get(i));
@@ -540,8 +498,14 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
     }
 
-    private CodeBlock getArgumentTypeExpression(ParameterModel param) {
-        TypeName typeName = TypeName.get(param.getType());
+    private CodeBlock getArgumentTypeExpression(CommandModel classModel, ParameterModel param, CommandModel rootModel) {
+        if (findLocalResolver(classModel, param, rootModel) != null) {
+            return CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
+        }
+        return getArgumentTypeExpressionFromTypeName(TypeName.get(param.getType()), param.getElement());
+    }
+
+    private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, javax.lang.model.element.VariableElement element) {
         String name = typeName.toString();
 
         if (name.equals("int") || name.equals("java.lang.Integer")) {
@@ -555,7 +519,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         } else if (name.equals("boolean") || name.equals("java.lang.Boolean")) {
             return CodeBlock.of("$T.bool()", ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"));
         } else if (name.equals("java.lang.String")) {
-            boolean isGreedy = param.getElement().getAnnotation(Greedy.class) != null;
+            boolean isGreedy = element.getAnnotation(Greedy.class) != null;
             if (isGreedy) {
                 return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
             } else {
@@ -572,6 +536,50 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         return CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
     }
 
+    private CodeBlock getArgumentRetrievalExpression(TypeName typeName, String argName) {
+        String typeStr = typeName.toString();
+        if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
+            return CodeBlock.of("$T.getInteger(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), argName);
+        } else if (typeStr.equals("long") || typeStr.equals("java.lang.Long")) {
+            return CodeBlock.of("$T.getLong(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"), argName);
+        } else if (typeStr.equals("float") || typeStr.equals("java.lang.Float")) {
+            return CodeBlock.of("$T.getFloat(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"), argName);
+        } else if (typeStr.equals("double") || typeStr.equals("java.lang.Double")) {
+            return CodeBlock.of("$T.getDouble(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"), argName);
+        } else if (typeStr.equals("boolean") || typeStr.equals("java.lang.Boolean")) {
+            return CodeBlock.of("$T.getBool(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"), argName);
+        } else if (typeStr.equals("java.lang.String")) {
+            return CodeBlock.of("$T.getString(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), argName);
+        } else if (typeStr.equals("org.bukkit.entity.Player")) {
+            return CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()",
+                    argName, ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver"));
+        } else if (typeStr.equals("org.bukkit.World")) {
+            return CodeBlock.of("ctx.getArgument($S, $T.class)", argName, ClassName.get("org.bukkit", "World"));
+        } else if (typeStr.equals("org.bukkit.Location")) {
+            return CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())",
+                    argName, ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver"));
+        }
+        return CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
+    }
+
+    private CodeBlock getAssignmentValueForType(TypeName typeName, String defaultValue) {
+        String name = typeName.toString();
+        if (name.equals("java.lang.String")) {
+            return CodeBlock.of("$S", defaultValue == null ? "" : defaultValue);
+        } else if (name.equals("int") || name.equals("java.lang.Integer")) {
+            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
+        } else if (name.equals("long") || name.equals("java.lang.Long")) {
+            return CodeBlock.of("$LL", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
+        } else if (name.equals("double") || name.equals("java.lang.Double")) {
+            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "0.0" : defaultValue);
+        } else if (name.equals("float") || name.equals("java.lang.Float")) {
+            return CodeBlock.of("$Lf", (defaultValue == null || defaultValue.isEmpty()) ? "0.0" : defaultValue);
+        } else if (name.equals("boolean") || name.equals("java.lang.Boolean")) {
+            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "false" : defaultValue);
+        }
+        return CodeBlock.of("null");
+    }
+
     private String sanitizeIdentifier(String name) {
         return name.replace("-", "_").replace(" ", "_");
     }
@@ -582,13 +590,15 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         final ParameterModel parameter;
         final int resolverArgIndex;
         final boolean isLastForParameter;
+        final boolean isResolverParamOptional;
 
-        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter) {
+        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional) {
             this.nodeName = nodeName;
             this.typeExpression = typeExpression;
             this.parameter = parameter;
             this.resolverArgIndex = resolverArgIndex;
             this.isLastForParameter = isLastForParameter;
+            this.isResolverParamOptional = isResolverParamOptional;
         }
     }
 }

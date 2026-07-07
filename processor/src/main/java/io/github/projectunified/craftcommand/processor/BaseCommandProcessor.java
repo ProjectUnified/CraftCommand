@@ -213,10 +213,17 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     // ── Recursive Fields and Subcommands Generation ──
 
     /**
+     * Checks if the sender type is supported
+     */
+    protected boolean isSenderType(TypeName typeName) {
+        return typeName.toString().equals("java.lang.Object");
+    }
+
+    /**
      * Checks if the sender type name corresponds to java.lang.Object.
      */
     protected boolean isSenderBaseType(TypeName typeName) {
-        return typeName.toString().equals("java.lang.Object");
+        return isSenderType(typeName);
     }
 
     // ── Helper Naming Utilities ──
@@ -594,12 +601,12 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     // ── Tab Completion Suggestion Routing ──
 
-    private boolean firstParamIsSender(ExecutableElement method) {
+    protected boolean firstParamIsSender(ExecutableElement method) {
         if (method.getParameters().isEmpty()) {
             return false;
         }
         TypeName type = TypeName.get(method.getParameters().get(0).asType());
-        return isSenderBaseType(type) || type.toString().equals(getSenderTypeName().toString());
+        return isSenderType(type);
     }
 
     private void generateResolveSingleArgument(MethodSpec.Builder methodSpec, TypeMirror type, String varName, String argStrVar, String senderVar, String argsVar) {
@@ -1200,10 +1207,10 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         TypeName senderTypeName = TypeName.get(method.getSenderType());
         if (!isSenderBaseType(senderTypeName)) {
             methodSpec.addComment("Validate sender type");
-            methodSpec.beginControlFlow("if (!(sender instanceof $T))", senderTypeName)
+            methodSpec.beginControlFlow("if (!(" + getSenderExpression("sender") + " instanceof $T))", senderTypeName)
                     .addStatement("return $T.emptyList()", Collections.class)
                     .endControlFlow();
-            methodSpec.addStatement("$T senderCast = ($T) sender", senderTypeName, senderTypeName);
+            methodSpec.addStatement("$T senderCast = ($T) " + getSenderExpression("sender"), senderTypeName, senderTypeName);
         } else {
             generateDefaultSenderCastForSuggestion(methodSpec);
         }
@@ -1497,6 +1504,10 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
     }
 
+    protected CodeBlock getSenderExpression(String senderVar) {
+        return CodeBlock.of("$L", senderVar);
+    }
+
     /**
      * Generates additional platform-independent helper methods (like suggestBoolean and sender casting helpers).
      */
@@ -1527,7 +1538,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     .addModifiers(Modifier.PRIVATE)
                     .returns(type)
                     .addParameter(getSenderTypeName(), "sender")
-                    .beginControlFlow("if (!(sender instanceof $T))", type)
+                    .beginControlFlow("if (!(" + getSenderExpression("sender") + " instanceof $T))", type)
                     .addStatement("throw new $T($T.class, manager.formatMessage($S, $S, $S))",
                             InvalidSenderException.class,
                             type,
@@ -1535,7 +1546,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                             "Only %s can execute this command.",
                             getSimpleName(type))
                     .endControlFlow()
-                    .addStatement("return ($T) sender", type)
+                    .addStatement("return ($T) " + getSenderExpression("sender"), type)
                     .build());
         }
     }

@@ -4,6 +4,7 @@ import io.github.projectunified.craftcommand.annotation.*;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.validation.annotation.Max;
 import io.github.projectunified.craftcommand.validation.annotation.Min;
+import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -125,6 +126,20 @@ public class TeleportCommand {
     @Permission(value = "example.tp.secret", message = "Access denied! The secret TP area is off-limits.")
     public void secretTp(Player sender) {
         sender.sendMessage("Welcome to the secret teleport area.");
+    }
+
+    // Custom validation method for coordinate
+    public void validateCoordinate(double coord) {
+        if (Math.abs(coord) > 30000000) {
+            throw new IllegalArgumentException("Coordinate cannot exceed 30,000,000!");
+        }
+    }
+
+    // Use Case: Custom validation annotation Showcase
+    @Subcommand("tp-coord")
+    public void tpCoordinate(Player sender, @ValidateWith("validateCoordinate") double x, double y, double z) {
+        sender.teleport(new Location(sender.getWorld(), x, y, z));
+        sender.sendMessage(String.format("Teleported to custom validated coordinates: %.2f, %.2f, %.2f", x, y, z));
     }
 
     // Use Case: Nested subcommand class (inner class)

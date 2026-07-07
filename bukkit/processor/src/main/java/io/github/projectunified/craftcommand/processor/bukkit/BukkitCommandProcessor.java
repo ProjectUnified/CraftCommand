@@ -51,9 +51,9 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected boolean isSenderBaseType(TypeName typeName) {
+    protected boolean isSenderType(TypeName typeName) {
         String name = typeName.toString();
-        return name.equals("java.lang.Object") || name.equals("org.bukkit.command.CommandSender");
+        return name.equals("org.bukkit.command.CommandSender");
     }
 
     @Override
