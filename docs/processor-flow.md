@@ -29,31 +29,62 @@ graph TD
 
 ---
 
-## Detailed Step-by-Step Explanation
+## Unified Execution Architecture
 
-### 1. Scan Code
-When you compile your project, the compiler starts the processor. It searches your files to find any classes marked with command annotations.
+To avoid duplicating logic across different platforms (Bukkit, Standalone, and Brigadier/Paper), the annotation processor uses a unified template pattern driven by the `ExecutionSource` interface.
 
-### 2. Understand & Blueprint
-For every command it finds, the processor builds a blueprint (called a `CommandModel`) by asking questions:
-* What is the name of this command? (e.g., `/teleport`)
-* Does it have subcommands? (e.g., `/teleport here`, `/teleport all`)
-* What inputs (arguments) does it require? (e.g., a target player name, a world name, or coordinates)
-* Are any inputs optional?
+```mermaid
+classDiagram
+    class ExecutionSource {
+        <<interface>>
+        +generateSenderResolution(...)
+        +generateExecutionSetup(...)
+        +generateParameterResolution(...)
+    }
+    class ArrayExecutionSource {
+        +generateSenderResolution(...)
+        +generateExecutionSetup(...)
+        +generateParameterResolution(...)
+    }
+    class PaperExecutionSource {
+        +generateSenderResolution(...)
+        +generateExecutionSetup(...)
+        +generateParameterResolution(...)
+    }
+    ExecutionSource <|.. ArrayExecutionSource
+    ExecutionSource <|.. PaperExecutionSource
+```
 
-### 3. Create Helper Methods (On-Demand)
-To keep the generated files clean, the processor writes helper methods inside the wrapper class to do repeated tasks:
-* **`asPlayer(sender)`**: Verifies if the person running the command is actually a player (and not the console), throwing a clear error message if they are not.
-* **`getPlayer(name)` / `getWorld(name)`**: Converts a simple text argument typed by a user (e.g. `"hsgamer"`) into a real game object (like a `Player` or a `World`), handling errors if that player is offline or the world doesn't exist.
-* **`suggestPlayers(current)`**: Automatically generates matching tab-completion recommendations as you type.
+### Execution Flow Sequence
 
-### 4. Generate Routing Logic
-Next, the processor writes the code that executes when a player runs your command:
-1. **Identify Subcommand:** It reads the first word typed (e.g. `here` in `/tp here player1`) to figure out which method to call.
-2. **Upfront Length Check:** It checks if the player typed enough arguments. If they didn't, it displays the correct usage instructions automatically.
-3. **Parse Parameters:** It calls the helpers created in Step 3 to convert text inputs into Java objects.
-4. **Validation:** It runs validation checks (like checking if a number is between a minimum and maximum value).
-5. **Execution:** Finally, it calls your actual method with the resolved parameters.
+For any command method execution, `BaseCommandProcessor.buildMethodExecution` ensures a single point of truth for the execution flow:
+1. **Resolve Sender:** Platform-specific sender resolution (handled by `ExecutionSource.generateSenderResolution`).
+2. **Method SPI Handlers:** Execute any method-level annotations (like custom permissions or logging).
+3. **Execution Setup:** Static argument checks or setup (handled by `ExecutionSource.generateExecutionSetup`).
+4. **Parameter Resolution:** Loop over method parameters and resolve them using built-in, local, or global resolvers (handled by `ExecutionSource.generateParameterResolution`).
+5. **Parameter SPI Handlers:** Run parameter-level validation check annotations (like `@Min`, `@Max`, `@ValidateWith`).
+6. **Execution:** Invoke the target Java method.
 
-### 5. Save Code File
-The processor saves the newly written Java class file (e.g. `TeleportCommand_Executor.java`) into the target directory of your project. This file is then compiled right along with your own code!
+---
+
+## Message Translation and Customization
+
+Instead of maintaining static maps or configuration entries for error messaging inside the runtime libraries, `CommandManager` exposes a single overridable formatting method:
+
+```java
+public String formatMessage(String key, String defaultValue, Object... args) {
+    try {
+        return String.format(defaultValue, args);
+    } catch (Exception e) {
+        return defaultValue;
+    }
+}
+```
+
+To customize or translate messages (such as validation failures or usage alerts), subclass developers simply override `formatMessage` and route message keys to their own translation dictionary or localization system.
+
+---
+
+## Error Handling
+
+All validation, resolver, and usage errors throw a `CommandException` directly to simplify the exception hierarchy and minimize runtime jar size. Subclass implementations can capture this exception to format and dispatch error feedback to the command sender.

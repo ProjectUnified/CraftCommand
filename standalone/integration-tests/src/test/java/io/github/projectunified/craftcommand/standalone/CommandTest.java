@@ -2,9 +2,6 @@ package io.github.projectunified.craftcommand.standalone;
 
 import io.github.projectunified.craftcommand.ArgumentResolver;
 import io.github.projectunified.craftcommand.exception.CommandException;
-import io.github.projectunified.craftcommand.exception.InvalidSenderException;
-import io.github.projectunified.craftcommand.exception.MissingArgumentException;
-import io.github.projectunified.craftcommand.exception.ValidationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,10 +12,25 @@ import static org.junit.jupiter.api.Assertions.*;
 public class CommandTest {
     private StandaloneCommandManager manager;
     private TestCommand commandInstance;
+    private final java.util.Map<String, String> customMessages = new java.util.HashMap<>();
 
     @BeforeEach
     public void setUp() {
-        manager = new StandaloneCommandManager();
+        customMessages.clear();
+        manager = new StandaloneCommandManager() {
+            @Override
+            public String formatMessage(String key, String defaultValue, Object... args) {
+                String template = customMessages.get(key);
+                if (template != null) {
+                    try {
+                        return String.format(template, args);
+                    } catch (Exception e) {
+                        return template;
+                    }
+                }
+                return super.formatMessage(key, defaultValue, args);
+            }
+        };
 
         // Register hierarchy resolver (CustomInterface -> CustomImpl)
         manager.registerResolver(TestCommand.CustomInterface.class, (sender, args, current) -> new TestCommand.CustomImpl(current));
@@ -256,11 +268,8 @@ public class CommandTest {
     public void testCustomErrorMessagesAndExceptions() {
         StandaloneCommand cmd = manager.getCommand("test");
 
-        // 1. Bulk set custom messages dictionary in manager
-        java.util.Map<String, String> customDict = new java.util.HashMap<>();
-        customDict.put("usage", "Invalid syntax. Correct format: %s");
-        customDict.put("error.range.max", "Value is too big: limit is %2$s");
-        manager.setMessages(customDict);
+        customMessages.put("usage", "Invalid syntax. Correct format: %s");
+        customMessages.put("error.range.max", "Value is too big: limit is %2$s");
 
         // 2. Verify bulk-set usage message and custom exception type
         try {
@@ -273,36 +282,32 @@ public class CommandTest {
         // 3. Verify validation annotation with literal custom message
         try {
             cmd.execute("sender", new String[]{"validate-msg", "4", "8"});
-            fail("Expected ValidationException");
-        } catch (ValidationException e) {
-            assertEquals("val", e.getParameterName());
+            fail("Expected CommandException");
+        } catch (CommandException e) {
             assertEquals("Value is too small!", e.getMessage());
         }
 
         // 4. Verify validation annotation using translation key from dictionary
         try {
             cmd.execute("sender", new String[]{"validate-msg", "6", "11"});
-            fail("Expected ValidationException");
-        } catch (ValidationException e) {
-            assertEquals("val2", e.getParameterName());
+            fail("Expected CommandException");
+        } catch (CommandException e) {
             assertEquals("Value is too big: limit is 10.0", e.getMessage());
         }
 
-        // 5. Verify InvalidSenderException
+        // 5. Verify invalid sender
         try {
             cmd.execute("notASender", new String[]{"custom-sender"});
-            fail("Expected InvalidSenderException");
-        } catch (InvalidSenderException e) {
-            assertEquals(TestCommand.CustomSender.class, e.getRequiredType());
+            fail("Expected CommandException");
+        } catch (CommandException e) {
             assertTrue(e.getMessage().contains("Only"));
         }
 
-        // 6. Verify MissingArgumentException
+        // 6. Verify missing argument
         try {
             cmd.execute("sender", new String[]{"point", "10.5", "20.5"});
-            fail("Expected MissingArgumentException");
-        } catch (MissingArgumentException e) {
-            assertEquals("msg", e.getParameterName());
+            fail("Expected CommandException");
+        } catch (CommandException e) {
             assertTrue(e.getMessage().contains("Missing arguments for parameter: msg"));
         }
     }

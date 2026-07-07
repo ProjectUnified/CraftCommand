@@ -1,7 +1,7 @@
 package io.github.projectunified.craftcommand.validation.processor.extension;
 
 import com.palantir.javapoet.MethodSpec;
-import io.github.projectunified.craftcommand.exception.ValidationException;
+import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
@@ -48,8 +48,8 @@ public class ValidateWithHandler implements ParameterAnnotationHandler<ValidateW
         methodSpec.nextControlFlow("catch ($T e)", Exception.class);
         String messageKey = annotation.message().isEmpty() ? "validation.custom" : annotation.message();
         String defaultTemplate = annotation.message().isEmpty() ? "%2$s" : annotation.message();
-        methodSpec.addStatement("throw new $T($S, manager.formatMessage($S, $S, $S, e.getMessage()), e)",
-                ValidationException.class, parameter.getName(), messageKey, defaultTemplate, parameter.getName());
+        methodSpec.addStatement("throw new $T(manager.formatMessage($S, $S, $S, e.getMessage()), e)",
+                CommandException.class, messageKey, defaultTemplate, parameter.getName());
         methodSpec.endControlFlow();
     }
 

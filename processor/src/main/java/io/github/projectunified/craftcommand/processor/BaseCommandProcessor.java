@@ -5,8 +5,6 @@ import io.github.projectunified.craftcommand.annotation.Command;
 import io.github.projectunified.craftcommand.annotation.Optional;
 import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.exception.CommandException;
-import io.github.projectunified.craftcommand.exception.InvalidSenderException;
-import io.github.projectunified.craftcommand.exception.MissingArgumentException;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -46,7 +44,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * @param typeName the full type name
      * @return the simple type name
      */
-    protected static String getSimpleName(TypeName typeName) {
+    public static String getSimpleName(TypeName typeName) {
         String name = typeName.toString();
         int lastDot = name.lastIndexOf('.');
         return lastDot == -1 ? name : name.substring(lastDot + 1);
@@ -58,7 +56,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * @param type the primitive type mirror
      * @return the default value literal string
      */
-    protected static String getDefaultPrimitiveValue(TypeMirror type) {
+    public static String getDefaultPrimitiveValue(TypeMirror type) {
         String typeStr = type.toString();
         switch (typeStr) {
             case "int":
@@ -216,14 +214,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * Checks if the sender type is supported
      */
     protected boolean isSenderType(TypeName typeName) {
-        return typeName.toString().equals("java.lang.Object");
+        return isSenderBaseType(typeName);
     }
 
-    /**
-     * Checks if the sender type name corresponds to java.lang.Object.
-     */
     protected boolean isSenderBaseType(TypeName typeName) {
-        return isSenderType(typeName);
+        return typeName.toString().equals("java.lang.Object");
     }
 
     // ── Helper Naming Utilities ──
@@ -378,8 +373,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     .endControlFlow()
                     .endControlFlow()
                     .addComment("Throw exception if parameter is required but missing")
-                    .addStatement("throw new $T(paramName, manager.formatMessage($S, $S, $S))",
-                            MissingArgumentException.class,
+                    .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
+                            CommandException.class,
                             "missing-argument",
                             "Missing arguments for parameter: %s",
                             "paramName")
@@ -458,7 +453,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     // ── Local Resolver Helper Utilities ──
 
-    protected String getInstanceVarExpression(CommandModel classModel, CommandModel rootModel) {
+    public String getInstanceVarExpression(CommandModel classModel, CommandModel rootModel) {
         if (classModel == rootModel) {
             return "instance";
         }
@@ -601,7 +596,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     // ── Tab Completion Suggestion Routing ──
 
-    protected boolean firstParamIsSender(ExecutableElement method) {
+    public boolean firstParamIsSender(ExecutableElement method) {
         if (method.getParameters().isEmpty()) {
             return false;
         }
@@ -657,32 +652,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 methodSpec.addStatement("$L = $L", varName, defVal);
             } else {
                 String name = typeName.toString();
-                if (name.equals("java.lang.String")) {
-                    methodSpec.addStatement("$L = $S", varName, defaultValue);
-                } else if (name.equals("int") || name.equals("java.lang.Integer")) {
-                    try {
-                        methodSpec.addStatement("$L = $L", varName, Integer.parseInt(defaultValue));
-                    } catch (NumberFormatException e) {
-                        methodSpec.addStatement("$L = $T.parseInt($S)", varName, Integer.class, defaultValue);
-                    }
-                } else if (name.equals("double") || name.equals("java.lang.Double")) {
-                    try {
-                        methodSpec.addStatement("$L = $L", varName, Double.parseDouble(defaultValue));
-                    } catch (NumberFormatException e) {
-                        methodSpec.addStatement("$L = $T.parseDouble($S)", varName, Double.class, defaultValue);
-                    }
-                } else if (name.equals("float") || name.equals("java.lang.Float")) {
-                    try {
-                        methodSpec.addStatement("$L = $Lf", varName, Float.parseFloat(defaultValue));
-                    } catch (NumberFormatException e) {
-                        methodSpec.addStatement("$L = $T.parseFloat($S)", varName, Float.class, defaultValue);
-                    }
-                } else if (name.equals("long") || name.equals("java.lang.Long")) {
-                    try {
-                        methodSpec.addStatement("$L = $LL", varName, Long.parseLong(defaultValue));
-                    } catch (NumberFormatException e) {
-                        methodSpec.addStatement("$L = $T.parseLong($S)", varName, Long.class, defaultValue);
-                    }
+                if (name.equals("char") || name.equals("java.lang.Character")) {
+                    char c = defaultValue.length() == 1 ? defaultValue.charAt(0) : ' ';
+                    methodSpec.addStatement("$L = '$L'", varName, c);
                 } else if (name.equals("short") || name.equals("java.lang.Short")) {
                     try {
                         methodSpec.addStatement("$L = (short) $L", varName, Short.parseShort(defaultValue));
@@ -695,11 +667,12 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     } catch (NumberFormatException e) {
                         methodSpec.addStatement("$L = $T.parseByte($S)", varName, Byte.class, defaultValue);
                     }
-                } else if (name.equals("boolean") || name.equals("java.lang.Boolean")) {
-                    methodSpec.addStatement("$L = $L", varName, Boolean.parseBoolean(defaultValue));
-                } else if (name.equals("char") || name.equals("java.lang.Character")) {
-                    char c = defaultValue.length() == 1 ? defaultValue.charAt(0) : ' ';
-                    methodSpec.addStatement("$L = '$L'", varName, c);
+                } else if (name.equals("java.lang.String") || name.equals("int") || name.equals("java.lang.Integer")
+                        || name.equals("long") || name.equals("java.lang.Long")
+                        || name.equals("double") || name.equals("java.lang.Double")
+                        || name.equals("float") || name.equals("java.lang.Float")
+                        || name.equals("boolean") || name.equals("java.lang.Boolean")) {
+                    methodSpec.addStatement("$L = $L", varName, getAssignmentValueForType(typeName, defaultValue));
                 } else {
                     methodSpec.addStatement("$T tempDefault = $S", String.class, defaultValue);
                     resolveParameter(methodSpec, typeName, varName, "tempDefault");
@@ -719,44 +692,32 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
     }
 
+    public CodeBlock getAssignmentValueForType(TypeName typeName, String defaultValue) {
+        String name = typeName.toString();
+        if (name.equals("java.lang.String")) {
+            return CodeBlock.of("$S", defaultValue == null ? "" : defaultValue);
+        } else if (name.equals("int") || name.equals("java.lang.Integer")) {
+            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
+        } else if (name.equals("long") || name.equals("java.lang.Long")) {
+            return CodeBlock.of("$LL", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
+        } else if (name.equals("double") || name.equals("java.lang.Double")) {
+            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "0.0" : defaultValue);
+        } else if (name.equals("float") || name.equals("java.lang.Float")) {
+            return CodeBlock.of("$Lf", (defaultValue == null || defaultValue.isEmpty()) ? "0.0" : defaultValue);
+        } else if (name.equals("boolean") || name.equals("java.lang.Boolean")) {
+            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "false" : defaultValue);
+        } else if (name.equals("short") || name.equals("java.lang.Short")) {
+            return CodeBlock.of("(short) $L", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
+        } else if (name.equals("byte") || name.equals("java.lang.Byte")) {
+            return CodeBlock.of("(byte) $L", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
+        } else if (name.equals("char") || name.equals("java.lang.Character")) {
+            char c = (defaultValue == null || defaultValue.isEmpty()) ? ' ' : defaultValue.charAt(0);
+            return CodeBlock.of("'$L'", c);
+        }
+        return CodeBlock.of("null");
+    }
+
     protected void buildMethodExecution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar, String instanceVar, CommandModel rootModel) {
-        methodSpec.addComment("Retrieve, validate, and parse arguments to execute " + classModel.getClassName().simpleName() + "." + method.getElement().getSimpleName() + "(...)");
-
-        // 1. Resolve and Cast the Sender Parameter (index 0)
-        ParameterModel senderParam = method.getSenderParameter();
-        TypeName senderParamTypeName = TypeName.get(senderParam.getType());
-        String senderVarName = "senderCast";
-
-        buildSenderResolution(methodSpec, classModel, method, rootModel, senderVarName, senderParam, senderParamTypeName);
-        runSPIAnnotationHandlers(methodSpec, method, instanceVar, senderVarName, senderParam);
-
-        // 2. Validate Minimum Argument Count Statically
-        int staticRequiredCount = 0;
-        for (ParameterModel p : method.getParameters()) {
-            if (!p.isOptional()) {
-                ExecutableElement localRes = findLocalResolver(classModel, p, rootModel);
-                if (localRes != null) {
-                    staticRequiredCount += getLocalResolverMinWidth(localRes);
-                } else {
-                    staticRequiredCount += 1;
-                }
-            }
-        }
-        if (staticRequiredCount > 0) {
-            methodSpec.addComment("Verify that there are at least " + staticRequiredCount + " arguments provided to satisfy required parameters");
-            methodSpec.beginControlFlow("if ($L.length < $L)", argsVar, staticRequiredCount)
-                    .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
-                            CommandException.class,
-                            "usage",
-                            "Usage: %s",
-                            getUsage(method))
-                    .endControlFlow();
-        }
-
-        // 3. Resolve and Validate Argument Parameters
-        List<String> paramNames = new ArrayList<>();
-        paramNames.add(senderVarName);
-
         boolean hasDynamic = false;
         for (ParameterModel pm : method.getParameters()) {
             TypeName pmTypeName = TypeName.get(pm.getType());
@@ -765,16 +726,46 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 break;
             }
         }
-        String argIdxVar;
-        if (hasDynamic) {
-            methodSpec.addStatement("int[] argIdxHolder = { 0 }");
-            argIdxVar = "argIdxHolder[0]";
-        } else {
-            methodSpec.addStatement("int argIdx = 0");
-            argIdxVar = "argIdx";
-        }
+        String argIdxVar = hasDynamic ? "argIdxHolder[0]" : "argIdx";
 
-        buildParameterParsing(methodSpec, classModel, method, argsVar, instanceVar, rootModel, paramNames, senderVarName, hasDynamic, argIdxVar);
+        ArrayExecutionSource source = new ArrayExecutionSource(this, argsVar, hasDynamic, argIdxVar);
+        buildMethodExecution(methodSpec, classModel, method, instanceVar, rootModel, source);
+    }
+
+    protected void buildMethodExecution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String instanceVar, CommandModel rootModel, ExecutionSource source) {
+        methodSpec.addComment("Retrieve, validate, and parse arguments to execute " + classModel.getClassName().simpleName() + "." + method.getElement().getSimpleName() + "(...)");
+
+        // 1. Resolve and Cast the Sender Parameter (index 0)
+        ParameterModel senderParam = method.getSenderParameter();
+        TypeName senderParamTypeName = TypeName.get(senderParam.getType());
+        String senderVarName = "senderCast";
+
+        source.generateSenderResolution(methodSpec, classModel, method, rootModel, senderVarName, senderParam, senderParamTypeName);
+        runSPIAnnotationHandlers(methodSpec, method, instanceVar, senderVarName, senderParam);
+
+        // 2. Setup execution context / static checks
+        source.generateExecutionSetup(methodSpec, classModel, method, rootModel);
+
+        // 3. Resolve and Validate Argument Parameters
+        List<String> paramNames = new ArrayList<>();
+        paramNames.add(senderVarName);
+
+        for (int i = 0; i < method.getParameters().size(); i++) {
+            ParameterModel p = method.getParameters().get(i);
+            String varName = "param_" + i;
+            paramNames.add(varName);
+
+            // Let the platform resolve the parameter
+            source.generateParameterResolution(methodSpec, classModel, method, rootModel, p, varName, senderVarName, i);
+
+            // Run SPI parameter annotation handlers on normal parameters
+            for (ParameterAnnotationHandler<?> handler : parameterHandlers) {
+                Annotation ann = p.getElement().getAnnotation(handler.annotationType());
+                if (ann != null) {
+                    invokeParameterHandler(handler, ann, p, varName, instanceVar, senderVarName, methodSpec);
+                }
+            }
+        }
 
         // 4. Call Target Command Method Directly
         StringBuilder call = new StringBuilder(instanceVar).append(".").append(method.getMethodName()).append("(");
@@ -788,7 +779,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         methodSpec.addStatement(call.toString());
     }
 
-    private void buildSenderResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
+    protected void buildSenderResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
         ExecutableElement senderResolver = findLocalResolver(classModel, senderParam, rootModel);
         if (senderResolver != null) {
             TypeElement resolverClass = (TypeElement) senderResolver.getEnclosingElement();
@@ -861,21 +852,18 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
     }
 
-    private void buildLocalResolverParameter(MethodSpec.Builder methodSpec, CommandModel classModel, ParameterModel p, TypeName pTypeName, String varName, ExecutableElement localResolver, CommandModel rootModel, String senderVarName, String argsVar, String argIdxVar, boolean hasDynamic, int i) {
+    protected void buildLocalResolverParameter(MethodSpec.Builder methodSpec, CommandModel classModel, ParameterModel p, TypeName pTypeName, String varName, ExecutableElement localResolver, CommandModel rootModel, String senderVarName, String argsVar, String argIdxVar, boolean hasDynamic, int i) {
         // Statically compile-time resolved parameter width
         int minWidth_i = getLocalResolverMinWidth(localResolver);
         int maxWidth_i = getLocalResolverMaxWidth(localResolver);
 
-        if (!p.isOptional() && hasDynamic) {
             methodSpec.beginControlFlow("if ($L + $L > $L.length)", argIdxVar, minWidth_i, argsVar)
-                    .addStatement("throw new $T($S, manager.formatMessage($S, $S, $S))",
-                            MissingArgumentException.class,
-                            p.getName(),
+                    .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
+                            CommandException.class,
                             "missing-argument",
                             "Missing arguments for parameter: %s",
                             p.getName())
                     .endControlFlow();
-        }
 
         methodSpec.addStatement("int actualWidth_$L = $T.min($L, $L.length - $L)", i, Math.class, maxWidth_i, argsVar, argIdxVar);
 
@@ -936,15 +924,14 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 .addStatement("$L += actualWidth_$L", argIdxVar, i);
     }
 
-    private void buildBuiltInParameter(MethodSpec.Builder methodSpec, ParameterModel p, TypeName pTypeName, String varName, String argsVar, String argIdxVar, String senderVarName, boolean hasDynamic, int i) {
+    protected void buildBuiltInParameter(MethodSpec.Builder methodSpec, ParameterModel p, TypeName pTypeName, String varName, String argsVar, String argIdxVar, String senderVarName, boolean hasDynamic, int i) {
         methodSpec.addComment("Parse built-in parameter '" + p.getName() + "' of type " + pTypeName.toString() + " from arguments (optional: " + p.isOptional() + ")");
         if (!p.isOptional()) {
             int width = getBuiltInWidth(pTypeName);
             if (hasDynamic) {
                 methodSpec.beginControlFlow("if ($L + $L > $L.length)", argIdxVar, width, argsVar)
-                        .addStatement("throw new $T($S, manager.formatMessage($S, $S, $S))",
-                                MissingArgumentException.class,
-                                p.getName(),
+                        .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
+                                CommandException.class,
                                 "missing-argument",
                                 "Missing arguments for parameter: %s",
                                 p.getName())
@@ -1200,7 +1187,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                         + "@return the list of suggestions\n", p.getName(), index, method.getMethodName())
                 .addModifiers(Modifier.PRIVATE)
                 .returns(ParameterizedTypeName.get(List.class, String.class))
-                .addParameter(Object.class, "sender")
+                .addParameter(getSenderTypeName(), "sender")
                 .addParameter(String[].class, "args")
                 .addParameter(String.class, "current");
 
@@ -1266,7 +1253,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     // ── Basic Utility Helpers ──
 
-    protected ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p, CommandModel rootModel) {
+    public ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p, CommandModel rootModel) {
         Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
         String explicitName = (resolveAnn != null) ? resolveAnn.value() : "";
 
@@ -1359,7 +1346,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return false;
     }
 
-    protected CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
+    public CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
         if (current.getElement().equals(targetClass)) {
             return current;
         }
@@ -1372,7 +1359,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return null;
     }
 
-    protected boolean isBuiltInType(TypeName typeName) {
+    public boolean isBuiltInType(TypeName typeName) {
         String name = typeName.toString();
         if (name.equals("java.lang.String")
                 || name.equals("int") || name.equals("java.lang.Integer")
@@ -1455,7 +1442,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * @param typeName the parameter type name
      * @return the resolver method name starting with "resolve_"
      */
-    protected String getResolverMethodName(TypeName typeName) {
+    public String getResolverMethodName(TypeName typeName) {
         if (typeName instanceof ClassName) {
             ClassName cn = (ClassName) typeName;
             return "resolve_" + String.join("_", cn.simpleNames());
@@ -1534,14 +1521,13 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     .addJavadoc("Casts the command sender to {@link $T} after verification.\n\n"
                             + "@param sender the raw command sender\n"
                             + "@return the casted sender\n"
-                            + "@throws InvalidSenderException if the sender is not of the expected type\n", type)
+                            + "@throws CommandException if the sender is not of the expected type\n", type)
                     .addModifiers(Modifier.PRIVATE)
                     .returns(type)
                     .addParameter(getSenderTypeName(), "sender")
                     .beginControlFlow("if (!(" + getSenderExpression("sender") + " instanceof $T))", type)
-                    .addStatement("throw new $T($T.class, manager.formatMessage($S, $S, $S))",
-                            InvalidSenderException.class,
-                            type,
+                    .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
+                            CommandException.class,
                             "invalid-sender",
                             "Only %s can execute this command.",
                             getSimpleName(type))

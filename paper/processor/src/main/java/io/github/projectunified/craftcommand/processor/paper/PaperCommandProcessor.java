@@ -27,16 +27,16 @@ import java.util.*;
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class PaperCommandProcessor extends BaseCommandProcessor {
 
-    private final ClassName commandSourceStackClass = ClassName.get("io.papermc.paper.command.brigadier", "CommandSourceStack");
-    private final ClassName literalCommandNodeClass = ClassName.get("com.mojang.brigadier.tree", "LiteralCommandNode");
-    private final ClassName commandsClass = ClassName.get("io.papermc.paper.command.brigadier", "Commands");
-    private final ClassName commandClass = ClassName.get("com.mojang.brigadier", "Command");
-    private final ClassName commandContextClass = ClassName.get("com.mojang.brigadier.context", "CommandContext");
-    private final ClassName requiredArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "RequiredArgumentBuilder");
-    private final ClassName literalArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "LiteralArgumentBuilder");
-    private final ClassName argumentTypesClass = ClassName.get("io.papermc.paper.command.brigadier.argument", "ArgumentTypes");
-    private final ClassName errorColorClass = ClassName.get("net.kyori.adventure.text.format", "NamedTextColor");
-    private final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
+    final ClassName commandSourceStackClass = ClassName.get("io.papermc.paper.command.brigadier", "CommandSourceStack");
+    final ClassName literalCommandNodeClass = ClassName.get("com.mojang.brigadier.tree", "LiteralCommandNode");
+    final ClassName commandsClass = ClassName.get("io.papermc.paper.command.brigadier", "Commands");
+    final ClassName commandClass = ClassName.get("com.mojang.brigadier", "Command");
+    final ClassName commandContextClass = ClassName.get("com.mojang.brigadier.context", "CommandContext");
+    final ClassName requiredArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "RequiredArgumentBuilder");
+    final ClassName literalArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "LiteralArgumentBuilder");
+    final ClassName argumentTypesClass = ClassName.get("io.papermc.paper.command.brigadier.argument", "ArgumentTypes");
+    final ClassName errorColorClass = ClassName.get("net.kyori.adventure.text.format", "NamedTextColor");
+    final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
 
     @Override
     protected String getWrapperClassSuffix() {
@@ -96,8 +96,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected CodeBlock getSenderExpression(String senderVar) {
-        return CodeBlock.of("($L instanceof $T ? (($T) $L).getSender() : $L)",
-                senderVar, commandSourceStackClass, commandSourceStackClass, senderVar, senderVar);
+        return CodeBlock.of("$L.getSender()", senderVar);
     }
 
     @Override
@@ -324,172 +323,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             spec.endControlFlow();
         }
 
-        ParameterModel senderParam = method.getSenderParameter();
-        TypeName senderParamTypeName = TypeName.get(senderParam.getType());
-        spec.addComment("Resolve sender");
-        if (isSenderBaseType(senderParamTypeName)) {
-            spec.addStatement("$T senderCast = ctx.getSource()", commandSourceStackClass);
-        } else {
-            String castMethodName = "as" + getSimpleName(senderParamTypeName);
-            spec.addStatement("$T senderCast = $L(ctx.getSource())", senderParamTypeName, castMethodName);
-        }
+        PaperExecutionSource source = new PaperExecutionSource(this, nodes, parsedNodeCount);
 
-        List<String> paramNames = new ArrayList<>();
-        paramNames.add("senderCast");
-
-        for (ParameterModel pm : method.getParameters()) {
-            if (pm == method.getSenderParameter()) continue;
-
-            TypeName pmTypeName = TypeName.get(pm.getType());
-            String varName = "param_" + pm.getName();
-
-            List<NodeInfo> parsedSegments = new ArrayList<>();
-            for (int i = 0; i < parsedNodeCount; i++) {
-                if (nodes.get(i).parameter == pm) {
-                    parsedSegments.add(nodes.get(i));
-                }
-            }
-
-            ExecutableElement localResolver = findLocalResolver(classModel, pm, rootModel);
-
-            if (parsedSegments.isEmpty()) {
-                spec.addComment("Optional parameter '" + pm.getName() + "' not provided");
-                if (localResolver != null) {
-                    List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
-                    int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
-                    List<String> resolverArgNames = new ArrayList<>();
-                    for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
-                        javax.lang.model.element.VariableElement rp = resolverParams.get(j);
-                        TypeName rpTypeName = TypeName.get(rp.asType());
-                        String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
-                        resolverArgNames.add(rpVarName);
-                        Optional optionalAnn = rp.getAnnotation(Optional.class);
-                        boolean isOptional = optionalAnn != null;
-                        String defaultValue = isOptional ? optionalAnn.value() : null;
-                        spec.addStatement("$T $L", rpTypeName, rpVarName);
-                        if (defaultValue != null && !defaultValue.isEmpty()) {
-                            spec.addStatement("$L = $L", rpVarName, getAssignmentValueForType(rpTypeName, defaultValue));
-                        } else {
-                            spec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? getDefaultPrimitiveValue(rp.asType()) : "null");
-                        }
-                    }
-                    String resolverInstanceExpr = getInstanceVarExpression(findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
-                    StringBuilder resolveCall = new StringBuilder(resolverInstanceExpr).append(".").append(localResolver.getSimpleName()).append("(");
-                    if (resolverStartIndex == 1) {
-                        resolveCall.append("senderCast");
-                        if (!resolverArgNames.isEmpty()) {
-                            resolveCall.append(", ");
-                        }
-                    }
-                    for (int j = 0; j < resolverArgNames.size(); j++) {
-                        resolveCall.append(resolverArgNames.get(j));
-                        if (j < resolverArgNames.size() - 1) {
-                            resolveCall.append(", ");
-                        }
-                    }
-                    resolveCall.append(")");
-                    spec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
-                } else if (isBuiltInType(pmTypeName)) {
-                    String defVal = pmTypeName.isPrimitive() ? getDefaultPrimitiveValue(pm.getType()) : "null";
-                    spec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
-                } else {
-                    String resolverMethod = getResolverMethodName(pmTypeName);
-                    spec.addStatement("$T $L = $L(senderCast, new String[0], $S, true, null)",
-                            pmTypeName, varName, resolverMethod, pm.getName());
-                }
-            } else {
-                if (localResolver != null) {
-                    spec.addComment("Resolve parameter '" + pm.getName() + "' using local resolver " + localResolver.getSimpleName());
-                    List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
-                    int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
-                    List<String> resolverArgNames = new ArrayList<>();
-                    for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
-                        javax.lang.model.element.VariableElement rp = resolverParams.get(j);
-                        TypeName rpTypeName = TypeName.get(rp.asType());
-                        String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
-                        resolverArgNames.add(rpVarName);
-                        Optional optionalAnn = rp.getAnnotation(Optional.class);
-                        boolean isOptional = optionalAnn != null;
-                        String defaultValue = isOptional ? optionalAnn.value() : null;
-                        spec.addStatement("$T $L", rpTypeName, rpVarName);
-                        CodeBlock retrievalExpr = getArgumentRetrievalExpression(rpTypeName, rp.getSimpleName().toString());
-                        if (isOptional) {
-                            spec.beginControlFlow("try");
-                            spec.addStatement("$L = $L", rpVarName, retrievalExpr);
-                            spec.nextControlFlow("catch ($T e)", IllegalArgumentException.class);
-                            if (defaultValue != null && !defaultValue.isEmpty()) {
-                                spec.addStatement("$L = $L", rpVarName, getAssignmentValueForType(rpTypeName, defaultValue));
-                            } else {
-                                spec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? getDefaultPrimitiveValue(rp.asType()) : "null");
-                            }
-                            spec.endControlFlow();
-                        } else {
-                            spec.addStatement("$L = $L", rpVarName, retrievalExpr);
-                        }
-                    }
-                    String resolverInstanceExpr = getInstanceVarExpression(findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
-                    StringBuilder resolveCall = new StringBuilder(resolverInstanceExpr).append(".").append(localResolver.getSimpleName()).append("(");
-                    if (resolverStartIndex == 1) {
-                        resolveCall.append("senderCast");
-                        if (!resolverArgNames.isEmpty()) {
-                            resolveCall.append(", ");
-                        }
-                    }
-                    for (int j = 0; j < resolverArgNames.size(); j++) {
-                        resolveCall.append(resolverArgNames.get(j));
-                        if (j < resolverArgNames.size() - 1) {
-                            resolveCall.append(", ");
-                        }
-                    }
-                    resolveCall.append(")");
-                    spec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
-                } else {
-                    spec.addComment("Resolve parameter '" + pm.getName() + "'");
-                    String typeStr = pmTypeName.toString();
-                    if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
-                        spec.addStatement("$T $L = $T.getInteger(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), pm.getName());
-                    } else if (typeStr.equals("long") || typeStr.equals("java.lang.Long")) {
-                        spec.addStatement("$T $L = $T.getLong(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"), pm.getName());
-                    } else if (typeStr.equals("float") || typeStr.equals("java.lang.Float")) {
-                        spec.addStatement("$T $L = $T.getFloat(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"), pm.getName());
-                    } else if (typeStr.equals("double") || typeStr.equals("java.lang.Double")) {
-                        spec.addStatement("$T $L = $T.getDouble(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"), pm.getName());
-                    } else if (typeStr.equals("boolean") || typeStr.equals("java.lang.Boolean")) {
-                        spec.addStatement("$T $L = $T.getBool(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"), pm.getName());
-                    } else if (typeStr.equals("java.lang.String")) {
-                        spec.addStatement("$T $L = $T.getString(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
-                    } else if (typeStr.equals("org.bukkit.entity.Player")) {
-                        spec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()",
-                                pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver"));
-                    } else if (typeStr.equals("org.bukkit.World")) {
-                        spec.addStatement("$T $L = ctx.getArgument($S, $T.class)", pmTypeName, varName, pm.getName(), ClassName.get("org.bukkit", "World"));
-                    } else if (typeStr.equals("org.bukkit.Location")) {
-                        spec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())",
-                                pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver"));
-                    } else {
-                        String[] subArgExprs = new String[parsedSegments.size()];
-                        for (int i = 0; i < parsedSegments.size(); i++) {
-                            subArgExprs[i] = "ctx.getArgument(\"" + parsedSegments.get(i).nodeName + "\", String.class)";
-                        }
-                        String subArgsArray = "new String[]{" + String.join(", ", subArgExprs) + "}";
-                        String resolverMethod = getResolverMethodName(pmTypeName);
-                        spec.addStatement("$T $L = $L(senderCast, $L, $S, false, null)",
-                                pmTypeName, varName, resolverMethod, subArgsArray, pm.getName());
-                    }
-                }
-            }
-            paramNames.add(varName);
-        }
-
-        StringBuilder call = new StringBuilder(instanceExpr).append(".").append(method.getMethodName()).append("(");
-        for (int i = 0; i < paramNames.size(); i++) {
-            call.append(paramNames.get(i));
-            if (i < paramNames.size() - 1) {
-                call.append(", ");
-            }
-        }
-        call.append(")");
-        spec.addStatement(call.toString());
+        buildMethodExecution(spec, classModel, method, instanceExpr, rootModel, source);
 
         spec.nextControlFlow("catch ($T e)", Exception.class)
                 .addStatement("manager.getErrorHandler().handle(ctx.getSource(), e)")
@@ -536,7 +372,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         return CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
     }
 
-    private CodeBlock getArgumentRetrievalExpression(TypeName typeName, String argName) {
+    CodeBlock getArgumentRetrievalExpression(TypeName typeName, String argName) {
         String typeStr = typeName.toString();
         if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
             return CodeBlock.of("$T.getInteger(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), argName);
@@ -562,29 +398,13 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         return CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
     }
 
-    private CodeBlock getAssignmentValueForType(TypeName typeName, String defaultValue) {
-        String name = typeName.toString();
-        if (name.equals("java.lang.String")) {
-            return CodeBlock.of("$S", defaultValue == null ? "" : defaultValue);
-        } else if (name.equals("int") || name.equals("java.lang.Integer")) {
-            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
-        } else if (name.equals("long") || name.equals("java.lang.Long")) {
-            return CodeBlock.of("$LL", (defaultValue == null || defaultValue.isEmpty()) ? "0" : defaultValue);
-        } else if (name.equals("double") || name.equals("java.lang.Double")) {
-            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "0.0" : defaultValue);
-        } else if (name.equals("float") || name.equals("java.lang.Float")) {
-            return CodeBlock.of("$Lf", (defaultValue == null || defaultValue.isEmpty()) ? "0.0" : defaultValue);
-        } else if (name.equals("boolean") || name.equals("java.lang.Boolean")) {
-            return CodeBlock.of("$L", (defaultValue == null || defaultValue.isEmpty()) ? "false" : defaultValue);
-        }
-        return CodeBlock.of("null");
-    }
+
 
     private String sanitizeIdentifier(String name) {
         return name.replace("-", "_").replace(" ", "_");
     }
 
-    private static class NodeInfo {
+    static class NodeInfo {
         final String nodeName;
         final CodeBlock typeExpression;
         final ParameterModel parameter;

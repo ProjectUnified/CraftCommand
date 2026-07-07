@@ -16,6 +16,7 @@ import java.util.List;
 public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     private final JavaPlugin plugin;
     private final List<PaperCommand> registered = new ArrayList<>();
+    private final List<PaperBasicCommand> registeredBasic = new ArrayList<>();
 
     /**
      * Constructs a PaperCommandManager with a custom error handler.
@@ -53,6 +54,14 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                         command.getAliases()
                 );
             }
+            for (PaperBasicCommand command : registeredBasic) {
+                event.registrar().register(
+                        command.getName(),
+                        command.getDescription(),
+                        command.getAliases(),
+                        command
+                );
+            }
         });
     }
 
@@ -66,6 +75,15 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     }
 
     /**
+     * Registers a PaperBasicCommand wrapper.
+     *
+     * @param command the command wrapper
+     */
+    public void register(PaperBasicCommand command) {
+        this.registeredBasic.add(command);
+    }
+
+    /**
      * Registers an annotated command class instance.
      * Generates and registers the corresponding Paper wrapper command.
      *
@@ -74,12 +92,24 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     public void register(Object commandInstance) {
         if (commandInstance instanceof PaperCommand) {
             register((PaperCommand) commandInstance);
+        } else if (commandInstance instanceof PaperBasicCommand) {
+            register((PaperBasicCommand) commandInstance);
         } else {
             try {
-                String generatedClassName = commandInstance.getClass().getName() + "_Paper";
-                Class<?> clazz = Class.forName(generatedClassName);
+                String paperClassName = commandInstance.getClass().getName() + "_Paper";
+                try {
+                    Class<?> clazz = Class.forName(paperClassName);
+                    Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
+                    PaperCommand command = (PaperCommand) constructor.newInstance(commandInstance, this);
+                    register(command);
+                    return;
+                } catch (ClassNotFoundException ignored) {
+                }
+
+                String basicClassName = commandInstance.getClass().getName() + "_PaperBasic";
+                Class<?> clazz = Class.forName(basicClassName);
                 Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
-                PaperCommand command = (PaperCommand) constructor.newInstance(commandInstance, this);
+                PaperBasicCommand command = (PaperBasicCommand) constructor.newInstance(commandInstance, this);
                 register(command);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);

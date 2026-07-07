@@ -13,7 +13,6 @@ import java.util.Map;
 public class CommandManager<S> {
     private final Map<Class<?>, ArgumentResolver<S, ?>> resolvers = new HashMap<>();
     private final List<ArgumentResolverProvider<S>> providers = new ArrayList<>();
-    private final Map<String, String> messages = new HashMap<>();
     private ErrorHandler<S> errorHandler;
 
     /**
@@ -26,52 +25,19 @@ public class CommandManager<S> {
     }
 
     /**
-     * Sets a custom error message for a given key.
-     *
-     * @param key     the message key
-     * @param message the message template
-     */
-    public void setMessage(String key, String message) {
-        messages.put(key, message);
-    }
-
-    /**
-     * Sets custom error messages in bulk.
-     *
-     * @param messages a map of message keys to templates
-     */
-    public void setMessages(Map<String, String> messages) {
-        this.messages.putAll(messages);
-    }
-
-    /**
-     * Gets the raw message template for a key.
-     *
-     * @param key the message key
-     * @return the message template, or {@code null} if not set
-     */
-    public String getMessage(String key) {
-        return messages.get(key);
-    }
-
-    /**
      * Formats a message template for a key with the given arguments.
-     * If the key is not set, falls back to the defaultValue.
+     * Subclasses can override this method to translate/customize messages based on the key.
      *
-     * @param key          the message key
-     * @param defaultValue the default template to use if the key is not set
+     * @param key          the message key (e.g. "missing-argument", "validation.min")
+     * @param defaultValue the default template to use
      * @param args         the arguments to format the template with
      * @return the formatted message
      */
     public String formatMessage(String key, String defaultValue, Object... args) {
-        String template = messages.get(key);
-        if (template == null) {
-            template = defaultValue;
-        }
         try {
-            return String.format(template, args);
+            return String.format(defaultValue, args);
         } catch (Exception e) {
-            return template;
+            return defaultValue;
         }
     }
 
