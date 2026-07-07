@@ -4,6 +4,7 @@ import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 
 import javax.annotation.processing.Processor;
@@ -26,6 +27,46 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
     private final ClassName commandSenderClass = ClassName.get("org.bukkit.command", "CommandSender");
     private final ClassName chatColorClass = ClassName.get("org.bukkit", "ChatColor");
+
+    {
+        ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
+        ClassName offlinePlayerClass = ClassName.get("org.bukkit", "OfflinePlayer");
+        ClassName worldClass = ClassName.get("org.bukkit", "World");
+        ClassName locationClass = ClassName.get("org.bukkit", "Location");
+
+        typeSupport().register(TypeSupport.Entry.builder(playerClass, 1)
+                .primitiveDefault("null")
+                .literal(d -> CodeBlock.of("null"))
+                .platformResolution((spec, p) -> spec.addStatement("$L = getPlayer($L)", p[0], p[1]))
+                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
+                .build());
+        typeSupport().register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
+                .primitiveDefault("null")
+                .literal(d -> CodeBlock.of("null"))
+                .platformResolution((spec, p) -> spec.addStatement("$L = getOfflinePlayer($L)", p[0], p[1]))
+                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
+                .build());
+        typeSupport().register(TypeSupport.Entry.builder(worldClass, 1)
+                .primitiveDefault("null")
+                .literal(d -> CodeBlock.of("null"))
+                .platformResolution((spec, p) -> spec.addStatement("$L = getWorld($L)", p[0], p[1]))
+                .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p[2]))
+                .build());
+        typeSupport().register(TypeSupport.Entry.builder(locationClass, 4)
+                .primitiveDefault("null")
+                .literal(d -> CodeBlock.of("null"))
+                .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L)", p[0], p[1], p[2]))
+                .platformSuggestions((spec, p) -> {
+                    String argsVar = p[1];
+                    String currentVar = p[2];
+                    String tempIdx = p[3];
+                    spec.beginControlFlow("if ($L.length - 1 == $L)", argsVar, tempIdx)
+                            .addStatement("return suggestWorlds($L)", currentVar)
+                            .endControlFlow()
+                            .addStatement("return $T.emptyList()", Collections.class);
+                })
+                .build());
+    }
 
     @Override
     protected String getWrapperClassSuffix() {
@@ -148,57 +189,6 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
         methodSpec.addStatement(returnStatement)
                 .endControlFlow();
-    }
-
-    @Override
-    protected boolean isPlatformBuiltInType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("org.bukkit.entity.Player")
-                || name.equals("org.bukkit.OfflinePlayer")
-                || name.equals("org.bukkit.World")
-                || name.equals("org.bukkit.Location");
-    }
-
-    @Override
-    protected int getPlatformBuiltInWidth(TypeName typeName) {
-        if (typeName.toString().equals("org.bukkit.Location")) {
-            return 4;
-        }
-        return 1;
-    }
-
-    @Override
-    protected void resolvePlatformParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argStrVar) {
-        String name = typeName.toString();
-        if (name.equals("org.bukkit.entity.Player")) {
-            methodSpec.addStatement("$L = getPlayer($L)", varName, argStrVar);
-        } else if (name.equals("org.bukkit.OfflinePlayer")) {
-            methodSpec.addStatement("$L = getOfflinePlayer($L)", varName, argStrVar);
-        } else if (name.equals("org.bukkit.World")) {
-            methodSpec.addStatement("$L = getWorld($L)", varName, argStrVar);
-        }
-    }
-
-    @Override
-    protected void resolvePlatformMultiParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argsVar, String argIdxVar, String senderVar, int i) {
-        if (typeName.toString().equals("org.bukkit.Location")) {
-            methodSpec.addStatement("$L = getLocation($L, $L)", varName, argsVar, argIdxVar);
-        }
-    }
-
-    @Override
-    protected void generatePlatformParamSuggestions(MethodSpec.Builder methodSpec, TypeName typeName, String senderCastVar, String argsVar, String currentVar, int tempIdx) {
-        String name = typeName.toString();
-        if (name.equals("org.bukkit.entity.Player") || name.equals("org.bukkit.OfflinePlayer")) {
-            methodSpec.addStatement("return suggestPlayers(current)");
-        } else if (name.equals("org.bukkit.World")) {
-            methodSpec.addStatement("return suggestWorlds(current)");
-        } else if (name.equals("org.bukkit.Location")) {
-            methodSpec.beginControlFlow("if ($L.length - 1 == $L)", argsVar, tempIdx)
-                    .addStatement("return suggestWorlds(current)")
-                    .endControlFlow()
-                    .addStatement("return $T.emptyList()", Collections.class);
-        }
     }
 
     @Override

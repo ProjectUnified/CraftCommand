@@ -154,35 +154,14 @@ public class PaperExecutionSource implements ExecutionSource {
                 resolveCall.append(")");
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
             } else {
-                String typeStr = pmTypeName.toString();
-                if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
-                    methodSpec.addStatement("$T $L = $T.getInteger(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), pm.getName());
-                } else if (typeStr.equals("long") || typeStr.equals("java.lang.Long")) {
-                    methodSpec.addStatement("$T $L = $T.getLong(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"), pm.getName());
-                } else if (typeStr.equals("float") || typeStr.equals("java.lang.Float")) {
-                    methodSpec.addStatement("$T $L = $T.getFloat(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"), pm.getName());
-                } else if (typeStr.equals("double") || typeStr.equals("java.lang.Double")) {
-                    methodSpec.addStatement("$T $L = $T.getDouble(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"), pm.getName());
-                } else if (typeStr.equals("boolean") || typeStr.equals("java.lang.Boolean")) {
-                    methodSpec.addStatement("$T $L = $T.getBool(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"), pm.getName());
-                } else if (typeStr.equals("java.lang.String")) {
-                    methodSpec.addStatement("$T $L = $T.getString(ctx, $S)", pmTypeName, varName, ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
-                } else if (typeStr.equals("org.bukkit.entity.Player")) {
-                    methodSpec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()",
-                            pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver"));
-                } else if (typeStr.equals("org.bukkit.World")) {
-                    methodSpec.addStatement("$T $L = ctx.getArgument($S, $T.class)", pmTypeName, varName, pm.getName(), ClassName.get("org.bukkit", "World"));
-                } else if (typeStr.equals("org.bukkit.Location")) {
-                    methodSpec.addStatement("$T $L = ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())",
-                            pmTypeName, varName, pm.getName(), ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver"));
+                if (pm.isGreedy() && !pmTypeName.toString().equals("java.lang.String")) {
+                    // Greedy non-String: get string from Brigadier, then parse
+                    methodSpec.addStatement("$T $L = $T.getString(ctx, $S)", String.class, varName + "_greedy", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
+                    methodSpec.addStatement("$T $L", pmTypeName, varName);
+                    processor.resolveParameterForType(methodSpec, pmTypeName, varName, varName + "_greedy");
                 } else {
-                    String[] subArgExprs = new String[parsedSegments.size()];
-                    for (int i = 0; i < parsedSegments.size(); i++) {
-                        subArgExprs[i] = "ctx.getArgument(\"" + parsedSegments.get(i).nodeName + "\", String.class)";
-                    }
-                    String subArgsArray = "new String[]{" + String.join(", ", subArgExprs) + "}";
-                    methodSpec.addStatement("$T $L = manager.resolveParameter(ctx.getSource(), $T.class, $L, new int[]{0}, $S, false, null)",
-                            pmTypeName, varName, pmTypeName.isPrimitive() ? pmTypeName.box() : pmTypeName, subArgsArray, pm.getName());
+                    CodeBlock retrievalExpr = processor.getArgumentRetrievalExpression(pmTypeName, pm.getName());
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, retrievalExpr);
                 }
             }
         }

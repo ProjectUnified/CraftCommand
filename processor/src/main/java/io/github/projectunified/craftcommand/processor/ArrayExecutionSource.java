@@ -41,6 +41,10 @@ public class ArrayExecutionSource implements ExecutionSource {
 
     @Override
     public void generateExecutionSetup(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel) {
+        if (method.getParameters().isEmpty()) {
+            return;
+        }
+
         int staticRequiredCount = 0;
         for (ParameterModel p : method.getParameters()) {
             if (!p.isOptional()) {
@@ -77,17 +81,18 @@ public class ArrayExecutionSource implements ExecutionSource {
 
         if (localResolver != null) {
             processor.buildLocalResolverParameter(methodSpec, classModel, p, pTypeName, varName, localResolver, rootModel, senderVarName, argsVar, argIdxVar, hasDynamic, paramIndex);
+        } else if (p.isGreedy() && pTypeName.toString().endsWith("[]")) {
+            // Greedy array type: handled directly by buildBuiltInParameter
+            processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
+        } else if (processor.isBuiltInType(pTypeName)) {
+            processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
         } else {
-            if (processor.isBuiltInType(pTypeName)) {
-                processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
-            } else {
-                methodSpec.addComment("Parse parameter '" + p.getName() + "' of type " + pTypeName.toString() + " using manager's resolveParameter");
-                methodSpec.addStatement("$T $L", pTypeName, varName);
-                String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
-                methodSpec.addStatement("$L = manager.resolveParameter(senderCast, $T.class, $L, argIdxHolder, $S, $L, $L)",
-                        varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
-                        argsVar, p.getName(), p.isOptional(), defValLiteral);
-            }
+            methodSpec.addComment("Parse parameter '" + p.getName() + "' of type " + pTypeName.toString() + " using manager's resolveParameter");
+            methodSpec.addStatement("$T $L", pTypeName, varName);
+            String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
+            methodSpec.addStatement("$L = manager.resolveParameter(senderCast, $T.class, $L, argIdxHolder, $S, $L, $L)",
+                    varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
+                    argsVar, p.getName(), p.isOptional(), defValLiteral);
         }
     }
 }

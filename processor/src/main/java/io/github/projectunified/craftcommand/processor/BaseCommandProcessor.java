@@ -211,10 +211,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * Helper statement generator to cast general Object sender to platform-specific sender.
      */
     protected void generateDefaultSenderCastForSuggestion(MethodSpec.Builder methodSpec) {
-        if (getSenderTypeName().toString().equals("java.lang.Object")) {
-            methodSpec.addStatement("$T senderCast = sender", getSenderTypeName());
+        TypeName senderType = getSenderTypeName();
+        if (senderType.toString().equals("java.lang.Object")) {
+            methodSpec.addStatement("$T senderCast = sender", senderType);
         } else {
-            methodSpec.addStatement("$T senderCast = ($T) sender", getSenderTypeName(), getSenderTypeName());
+            methodSpec.addStatement("$T senderCast = ($T) sender", senderType, senderType);
         }
     }
 
@@ -406,57 +407,44 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (!model.getSubcommands().isEmpty() || !model.getNestedSubcommands().isEmpty()) {
             methodSpec.beginControlFlow("if ($L.length >= 1)", argsVar);
             methodSpec.addStatement("String sub = $L[0].toLowerCase()", argsVar);
-            methodSpec.addStatement("String[] subArgs = $T.copyOfRange($L, 1, $L.length)", Arrays.class, argsVar, argsVar);
+            methodSpec.beginControlFlow("switch (sub)");
 
             // 1. Route to nested subcommand classes
             for (CommandModel child : model.getNestedSubcommands()) {
-                List<String> names = new ArrayList<>();
-                names.add(child.getCommandName().toLowerCase());
-                for (String alias : child.getAliases()) {
-                    names.add(alias.toLowerCase());
+                List<String> names = collectLoweredNames(child);
+                for (String name : names) {
+                    methodSpec.addCode("case $S:\n", name);
                 }
-
-                CodeBlock.Builder cond = CodeBlock.builder().add("if (");
-                for (int i = 0; i < names.size(); i++) {
-                    cond.add("sub.equals($S)", names.get(i));
-                    if (i < names.size() - 1) {
-                        cond.add(" || ");
-                    }
-                }
-                cond.add(")");
-
-                methodSpec.beginControlFlow(cond.build().toString());
+                methodSpec.addCode("{\n");
                 onBeforeExecute(methodSpec, child.getElement(), returnStatement);
                 String helperMethodName = Naming.executeHelper(child.getClassName());
+                methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
                 methodSpec.addStatement("$L(sender, subArgs)", helperMethodName);
                 methodSpec.addStatement("$L", returnStatement);
-                methodSpec.endControlFlow();
+                methodSpec.addCode("}\n");
             }
 
             // 2. Route to subcommand methods
             for (MethodModel sub : model.getSubcommands()) {
-                List<String> names = new ArrayList<>();
-                names.add(sub.getSubcommandName().toLowerCase());
-                for (String alias : sub.getAliases()) {
-                    names.add(alias.toLowerCase());
+                List<String> names = collectLoweredNames(sub);
+                for (String name : names) {
+                    methodSpec.addCode("case $S:\n", name);
                 }
-
-                CodeBlock.Builder cond = CodeBlock.builder().add("if (");
-                for (int i = 0; i < names.size(); i++) {
-                    cond.add("sub.equals($S)", names.get(i));
-                    if (i < names.size() - 1) {
-                        cond.add(" || ");
-                    }
-                }
-                cond.add(")");
-
-                methodSpec.beginControlFlow(cond.build().toString());
+                methodSpec.addCode("{\n");
                 onBeforeExecute(methodSpec, sub.getElement(), returnStatement);
-                buildMethodExecution(methodSpec, model, sub, "subArgs", instanceVar, rootModel);
+                if (sub.getParameters().isEmpty()) {
+                    // No params: pass original args, no allocation needed
+                    buildMethodExecution(methodSpec, model, sub, argsVar, instanceVar, rootModel);
+                } else {
+                    methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
+                    buildMethodExecution(methodSpec, model, sub, "subArgs", instanceVar, rootModel);
+                }
                 methodSpec.addStatement("$L", returnStatement);
-                methodSpec.endControlFlow();
+                methodSpec.addCode("}\n");
             }
-            methodSpec.endControlFlow();
+
+            methodSpec.endControlFlow(); // switch
+            methodSpec.endControlFlow(); // if
         }
 
         // 3. Route to Default method
@@ -465,6 +453,47 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             buildMethodExecution(methodSpec, model, model.getDefaultMethod(), argsVar, instanceVar, rootModel);
         } else {
             generateUnknownSubcommandMessage(methodSpec, model);
+        }
+    }
+
+    private List<String> collectLoweredNames(CommandModel child) {
+        List<String> names = new ArrayList<>();
+        names.add(child.getCommandName().toLowerCase());
+        for (String alias : child.getAliases()) {
+            names.add(alias.toLowerCase());
+        }
+        return names;
+    }
+
+    private List<String> collectLoweredNames(MethodModel sub) {
+        List<String> names = new ArrayList<>();
+        names.add(sub.getSubcommandName().toLowerCase());
+        for (String alias : sub.getAliases()) {
+            names.add(alias.toLowerCase());
+        }
+        return names;
+    }
+
+    private boolean allParamsHaveEmptySuggestions(MethodModel method) {
+        for (ParameterModel p : method.getParameters()) {
+            if (!isParamSuggestionEmpty(p)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String getBoxedType(String primitiveType) {
+        switch (primitiveType) {
+            case "int": return "java.lang.Integer";
+            case "long": return "java.lang.Long";
+            case "double": return "java.lang.Double";
+            case "float": return "java.lang.Float";
+            case "short": return "java.lang.Short";
+            case "byte": return "java.lang.Byte";
+            case "char": return "java.lang.Character";
+            case "boolean": return "java.lang.Boolean";
+            default: return primitiveType;
         }
     }
 
@@ -503,35 +532,23 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (typeName.toString().equals("java.lang.String")) {
             methodSpec.addStatement("$L = $L", varName, argStrVar);
         } else if (isBuiltInType(typeName)) {
-            String defVal = typeName.isPrimitive() ? getDefaultPrimitiveValue(type) : "null";
-            String name = typeName.toString();
-            if (name.equals("int") || name.equals("java.lang.Integer")) {
-                methodSpec.addStatement("$L = $L == null ? $L : $T.parseInt($L)", varName, argStrVar, defVal, Integer.class, argStrVar);
-            } else if (name.equals("double") || name.equals("java.lang.Double")) {
-                methodSpec.addStatement("$L = $L == null ? $L : $T.parseDouble($L)", varName, argStrVar, defVal, Double.class, argStrVar);
-            } else if (name.equals("float") || name.equals("java.lang.Float")) {
-                methodSpec.addStatement("$L = $L == null ? $L : $T.parseFloat($L)", varName, argStrVar, defVal, Float.class, argStrVar);
-            } else if (name.equals("long") || name.equals("java.lang.Long")) {
-                methodSpec.addStatement("$L = $L == null ? $L : $T.parseLong($L)", varName, argStrVar, defVal, Long.class, argStrVar);
-            } else if (name.equals("short") || name.equals("java.lang.Short")) {
-                methodSpec.addStatement("$L = $L == null ? $L : $T.parseShort($L)", varName, argStrVar, defVal, Short.class, argStrVar);
-            } else if (name.equals("byte") || name.equals("java.lang.Byte")) {
-                methodSpec.addStatement("$L = $L == null ? $L : $T.parseByte($L)", varName, argStrVar, defVal, Byte.class, argStrVar);
-            } else {
-                methodSpec.beginControlFlow("if ($L == null)", argStrVar)
-                        .addStatement("$L = $L", varName, defVal)
-                        .nextControlFlow("else");
+            TypeSupport.Entry e = typeSupport.get(typeName);
+            if (e != null && e.parse != null) {
                 resolveParameter(methodSpec, typeName, varName, argStrVar);
-                methodSpec.endControlFlow();
+            } else if (e != null && e.platformResolution != null) {
+                resolvePlatformParameter(methodSpec, typeName, varName, argStrVar);
+            } else {
+                String defVal = typeName.isPrimitive() ? getDefaultPrimitiveValue(type) : "null";
+                methodSpec.addStatement("$L = $L", varName, defVal);
             }
         } else {
             if (typeName.isPrimitive()) {
                 String defVal = getDefaultPrimitiveValue(type);
-                methodSpec.addStatement("$L = $L == null ? $L : ($T) manager.getResolver($T.class).resolve($L, new String[]{$L}, $L)",
-                        varName, argStrVar, defVal, typeName.box(), typeName.box(), senderVar, argStrVar, argStrVar);
+                methodSpec.addStatement("$L = ($T) manager.getResolver($T.class).resolve($L, new String[]{$L}, $L)",
+                        varName, typeName.box(), typeName.box(), senderVar, argStrVar, argStrVar);
             } else {
-                methodSpec.addStatement("$L = $L == null ? null : ($T) manager.getResolver($T.class).resolve($L, new String[]{$L}, $L)",
-                        varName, argStrVar, typeName, typeName, senderVar, argStrVar, argStrVar);
+                methodSpec.addStatement("$L = ($T) manager.getResolver($T.class).resolve($L, new String[]{$L}, $L)",
+                        varName, typeName, typeName, senderVar, argStrVar, argStrVar);
             }
         }
     }
@@ -771,22 +788,35 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                                 p.getName())
                         .endControlFlow();
             }
-            if (width == 1) {
-                if (pTypeName.toString().equals("java.lang.String")) {
-                    if (p.isGreedy()) {
-                        methodSpec.addStatement("$T $L = String.join($S, $T.copyOfRange($L, $L, $L.length))", pTypeName, varName, " ", Arrays.class, argsVar, argIdxVar, argsVar);
+            if (p.isGreedy() && pTypeName.toString().endsWith("[]")) {
+                // Greedy array type: create array from remaining args
+                String componentType = pTypeName.toString().replace("[]", "");
+                String boxedComponent = getBoxedType(componentType);
+                int lastDot = boxedComponent.lastIndexOf('.');
+                String packageName = boxedComponent.substring(0, lastDot);
+                String simpleName = boxedComponent.substring(lastDot + 1);
+                methodSpec.addStatement("$T[] $L_raw = $T.copyOfRange($L, $L, $L.length)", String.class, varName, Arrays.class, argsVar, argIdxVar, argsVar);
+                methodSpec.addCode("$T $L = new $L[$L_raw.length];\n", pTypeName, varName, componentType, varName);
+                methodSpec.beginControlFlow("for (int j = 0; j < $L_raw.length; j++)", varName);
+                methodSpec.addStatement("$L[j] = $T.valueOf($L_raw[j])", varName, ClassName.get(packageName, simpleName), varName);
+                methodSpec.endControlFlow();
+            } else if (width == 1) {
+                if (p.isGreedy()) {
+                    if (pTypeName.toString().equals("java.lang.String")) {
+                        // Greedy String: join remaining args with spaces
+                        methodSpec.addStatement("$T $L = String.join($S, $T.copyOfRange($L, $L, $L.length))", String.class, varName, " ", Arrays.class, argsVar, argIdxVar, argsVar);
                     } else {
-                        methodSpec.addStatement("$T $L = $L[$L++]", pTypeName, varName, argsVar, argIdxVar);
+                        // Greedy non-String: join remaining args with spaces, then parse
+                        methodSpec.addStatement("$T $L = String.join($S, $T.copyOfRange($L, $L, $L.length))", String.class, "greedy_" + i, " ", Arrays.class, argsVar, argIdxVar, argsVar);
+                        methodSpec.addStatement("$T $L", pTypeName, varName);
+                        resolveParameter(methodSpec, pTypeName, varName, "greedy_" + i);
                     }
+                } else if (pTypeName.toString().equals("java.lang.String")) {
+                    methodSpec.addStatement("$T $L = $L[$L++]", pTypeName, varName, argsVar, argIdxVar);
                 } else {
                     methodSpec.addStatement("$T $L", pTypeName, varName);
                     methodSpec.addStatement("String argStr_$L = $L[$L++]", i, argsVar, argIdxVar);
-                    String defVal = pTypeName.isPrimitive() ? getDefaultPrimitiveValue(p.getType()) : "null";
-                    methodSpec.beginControlFlow("if (argStr_$L == null)", i)
-                            .addStatement("$L = $L", varName, defVal)
-                            .nextControlFlow("else");
                     resolveParameter(methodSpec, pTypeName, varName, "argStr_" + i);
-                    methodSpec.endControlFlow();
                 }
             } else {
                 methodSpec.addStatement("$T $L", pTypeName, varName);
@@ -796,7 +826,21 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         } else {
             int width = getBuiltInWidth(pTypeName);
             if (width == 1) {
-                if (pTypeName.toString().equals("java.lang.String")) {
+                if (p.isGreedy()) {
+                    // Greedy optional: join remaining args if any, else default
+                    String defVal = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
+                    methodSpec.addStatement("$T $L", pTypeName, varName);
+                    methodSpec.beginControlFlow("if ($L >= $L.length)", argIdxVar, argsVar);
+                    generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue());
+                    methodSpec.nextControlFlow("else");
+                    methodSpec.addStatement("$T greedy_$L = String.join($S, $T.copyOfRange($L, $L, $L.length))", String.class, i, " ", Arrays.class, argsVar, argIdxVar, argsVar);
+                    if (pTypeName.toString().equals("java.lang.String")) {
+                        methodSpec.addStatement("$L = greedy_$L", varName, i);
+                    } else {
+                        resolveParameter(methodSpec, pTypeName, varName, "greedy_" + i);
+                    }
+                    methodSpec.endControlFlow();
+                } else if (pTypeName.toString().equals("java.lang.String")) {
                     String defVal = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
                     methodSpec.addStatement("$T $L = $L >= $L.length ? $L : $L[$L++]", pTypeName, varName, argIdxVar, argsVar, defVal, argsVar, argIdxVar);
                 } else {
@@ -805,12 +849,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue());
                     methodSpec.nextControlFlow("else");
                     methodSpec.addStatement("String argStr_$L = $L[$L++]", i, argsVar, argIdxVar);
-                    String defVal = pTypeName.isPrimitive() ? getDefaultPrimitiveValue(p.getType()) : "null";
-                    methodSpec.beginControlFlow("if (argStr_$L == null)", i)
-                            .addStatement("$L = $L", varName, defVal)
-                            .nextControlFlow("else");
                     resolveParameter(methodSpec, pTypeName, varName, "argStr_" + i);
-                    methodSpec.endControlFlow();
                     methodSpec.endControlFlow();
                 }
             } else {
@@ -865,53 +904,43 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             // Routing for args.length > 1
             methodSpec.beginControlFlow("if ($L.length > 1)", argsVar);
             methodSpec.addStatement("String sub = $L[0].toLowerCase()", argsVar);
-            methodSpec.addStatement("String[] subArgs = $T.copyOfRange($L, 1, $L.length)", Arrays.class, argsVar, argsVar);
+            methodSpec.beginControlFlow("switch (sub)");
 
             // Route to nested subcommand classes
             for (CommandModel child : model.getNestedSubcommands()) {
-                List<String> names = new ArrayList<>();
-                names.add(child.getCommandName().toLowerCase());
-                for (String alias : child.getAliases()) {
-                    names.add(alias.toLowerCase());
+                List<String> names = collectLoweredNames(child);
+                for (String name : names) {
+                    methodSpec.addCode("case $S:\n", name);
                 }
-
-                CodeBlock.Builder cond = CodeBlock.builder().add("if (");
-                for (int i = 0; i < names.size(); i++) {
-                    cond.add("sub.equals($S)", names.get(i));
-                    if (i < names.size() - 1) {
-                        cond.add(" || ");
-                    }
-                }
-                cond.add(")");
-
-                methodSpec.beginControlFlow(cond.build().toString());
+                methodSpec.addCode("{\n");
                 String childHelperName = Naming.suggestHelper(child.getClassName());
+                methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
                 methodSpec.addStatement("return $L(sender, subArgs)", childHelperName);
-                methodSpec.endControlFlow();
+                methodSpec.addCode("}\n");
             }
 
             // Route to subcommand methods
             for (MethodModel sub : model.getSubcommands()) {
-                List<String> names = new ArrayList<>();
-                names.add(sub.getSubcommandName().toLowerCase());
-                for (String alias : sub.getAliases()) {
-                    names.add(alias.toLowerCase());
+                List<String> names = collectLoweredNames(sub);
+                for (String name : names) {
+                    methodSpec.addCode("case $S:\n", name);
                 }
-
-                CodeBlock.Builder cond = CodeBlock.builder().add("if (");
-                for (int i = 0; i < names.size(); i++) {
-                    cond.add("sub.equals($S)", names.get(i));
-                    if (i < names.size() - 1) {
-                        cond.add(" || ");
-                    }
+                methodSpec.addCode("{\n");
+                if (sub.getParameters().isEmpty()) {
+                    // No params: return empty list directly, no allocation needed
+                    methodSpec.addStatement("return $T.emptyList()", Collections.class);
+                } else if (allParamsHaveEmptySuggestions(sub)) {
+                    // All params have empty suggestions: return empty list directly
+                    methodSpec.addStatement("return $T.emptyList()", Collections.class);
+                } else {
+                    methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
+                    buildSubcommandSuggestionRouting(methodSpec, model, sub, "subArgs");
                 }
-                cond.add(")");
-
-                methodSpec.beginControlFlow(cond.build().toString());
-                buildSubcommandSuggestionRouting(methodSpec, model, sub, "subArgs");
-                methodSpec.endControlFlow();
+                methodSpec.addCode("}\n");
             }
-            methodSpec.endControlFlow();
+
+            methodSpec.endControlFlow(); // switch
+            methodSpec.endControlFlow(); // if
         }
 
         // Default command tab complete
@@ -939,6 +968,19 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     protected void buildSubcommandSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar) {
         int paramCount = method.getParameters().size();
         if (paramCount == 0) {
+            methodSpec.addStatement("return $T.emptyList()", Collections.class);
+            return;
+        }
+
+        // If all parameters have empty suggestions, skip routing entirely
+        boolean allEmpty = true;
+        for (ParameterModel p : method.getParameters()) {
+            if (!isParamSuggestionEmpty(p)) {
+                allEmpty = false;
+                break;
+            }
+        }
+        if (allEmpty) {
             methodSpec.addStatement("return $T.emptyList()", Collections.class);
             return;
         }
@@ -1130,51 +1172,53 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     public boolean isBuiltInType(TypeName typeName) {
-        return typeSupport.isBuiltIn(typeName) || isPlatformBuiltInType(typeName);
+        return typeSupport.isBuiltIn(typeName);
     }
 
-    private int getBuiltInWidth(TypeName typeName) {
-        if (typeSupport.isBuiltIn(typeName)) {
-            return typeSupport.getWidth(typeName);
-        }
-        if (isPlatformBuiltInType(typeName)) {
-            return getPlatformBuiltInWidth(typeName);
-        }
-        return 1;
+    protected int getBuiltInWidth(TypeName typeName) {
+        int w = typeSupport.getWidth(typeName);
+        if (w != 1) return w;
+        int pw = typeSupport.getPlatformWidth(typeName);
+        return pw > 0 ? pw : w;
     }
 
     private void resolveParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argStrVar) {
-        if (typeSupport.isBuiltIn(typeName)) {
+        TypeSupport.Entry e = typeSupport.get(typeName);
+        if (e != null && e.parse != null) {
             typeSupport.emitParse(methodSpec, typeName, varName, argStrVar);
-        } else if (isPlatformBuiltInType(typeName)) {
-            resolvePlatformParameter(methodSpec, typeName, varName, argStrVar);
+        } else if (e != null && e.platformResolution != null) {
+            typeSupport.emitPlatformResolution(methodSpec, typeName, varName, argStrVar);
         }
     }
 
     private void resolveMultiParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argsVar, String argIdxVar, String senderVar, int i) {
-        if (isPlatformBuiltInType(typeName)) {
-            resolvePlatformMultiParameter(methodSpec, typeName, varName, argsVar, argIdxVar, senderVar, i);
-        }
+        typeSupport.emitPlatformMultiResolution(methodSpec, typeName, varName, argsVar, argIdxVar, senderVar, String.valueOf(i));
     }
 
     protected boolean isPlatformBuiltInType(TypeName typeName) {
-        return false;
-    }
-
-    protected int getPlatformBuiltInWidth(TypeName typeName) {
-        return 1;
+        TypeSupport.Entry e = typeSupport.get(typeName);
+        return e != null && (e.platformResolution != null || e.platformMultiResolution != null);
     }
 
     protected void resolvePlatformParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argStrVar) {
-        // No-op by default
+        typeSupport.emitPlatformResolution(methodSpec, typeName, varName, argStrVar);
     }
 
     protected void resolvePlatformMultiParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argsVar, String argIdxVar, String senderVar, int i) {
-        // No-op by default
+        typeSupport.emitPlatformMultiResolution(methodSpec, typeName, varName, argsVar, argIdxVar, senderVar, String.valueOf(i));
+    }
+
+    public void resolveParameterForType(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argStrVar) {
+        TypeSupport.Entry e = typeSupport.get(typeName);
+        if (e != null && e.parse != null) {
+            typeSupport.emitParse(methodSpec, typeName, varName, argStrVar);
+        } else if (e != null && e.platformResolution != null) {
+            typeSupport.emitPlatformResolution(methodSpec, typeName, varName, argStrVar);
+        }
     }
 
     protected void generatePlatformParamSuggestions(MethodSpec.Builder methodSpec, TypeName typeName, String senderCastVar, String argsVar, String currentVar, int tempIdx) {
-        // No-op by default
+        typeSupport.emitPlatformSuggestions(methodSpec, typeName, senderCastVar, argsVar, currentVar, String.valueOf(tempIdx));
     }
 
     /**
@@ -1349,42 +1393,30 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (model.getDefaultMethod() != null) {
             String usage = getUsage(model.getDefaultMethod());
             String desc = model.getDescription();
-
-            CodeBlock.Builder pathBuilder = CodeBlock.builder().add("$T.asList(", Arrays.class);
-            for (int i = 0; i < currentPath.size(); i++) {
-                pathBuilder.add("$S", currentPath.get(i));
-                if (i < currentPath.size() - 1) {
-                    pathBuilder.add(", ");
-                }
-            }
-            pathBuilder.add(")");
-
             methodSpec.addStatement("list.add(new $T($L, $S, $S))",
-                    commandInfoClass, pathBuilder.build(), usage, desc);
+                    commandInfoClass, buildPathExpression(currentPath), usage, desc);
         }
 
         for (MethodModel sub : model.getSubcommands()) {
             List<String> subPath = new ArrayList<>(currentPath);
             subPath.add(sub.getSubcommandName());
-
             String usage = getUsage(sub);
             String desc = sub.getDescription();
-
-            CodeBlock.Builder pathBuilder = CodeBlock.builder().add("$T.asList(", Arrays.class);
-            for (int i = 0; i < subPath.size(); i++) {
-                pathBuilder.add("$S", subPath.get(i));
-                if (i < subPath.size() - 1) {
-                    pathBuilder.add(", ");
-                }
-            }
-            pathBuilder.add(")");
-
             methodSpec.addStatement("list.add(new $T($L, $S, $S))",
-                    commandInfoClass, pathBuilder.build(), usage, desc);
+                    commandInfoClass, buildPathExpression(subPath), usage, desc);
         }
 
         for (CommandModel child : model.getNestedSubcommands()) {
             generateCommandInfoStatements(methodSpec, child, currentPath, commandInfoClass);
         }
+    }
+
+    private CodeBlock buildPathExpression(List<String> path) {
+        CodeBlock.Builder b = CodeBlock.builder().add("$T.asList(", Arrays.class);
+        for (int i = 0; i < path.size(); i++) {
+            if (i > 0) b.add(", ");
+            b.add("$S", path.get(i));
+        }
+        return b.add(")").build();
     }
 }

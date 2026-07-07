@@ -111,22 +111,6 @@ public final class TypeSupport {
     }
 
     /**
-     * @return the Brigadier argument-type expression (e.g. {@code IntegerArgumentType.integer()}).
-     */
-    public CodeBlock brigadierArgType(TypeName type, boolean greedy) {
-        Entry e = entries.get(type.toString());
-        return e == null ? null : e.brigadierArgType.apply(greedy);
-    }
-
-    /**
-     * @return the Brigadier retrieval expression (e.g. {@code IntegerArgumentType.getInteger(ctx, argName)}).
-     */
-    public CodeBlock brigadierRetrieval(TypeName type, String argName) {
-        Entry e = entries.get(type.toString());
-        return e == null ? null : e.brigadierRetrieval.apply(argName);
-    }
-
-    /**
      * @return the suggest-method return CodeBlock, or {@code null} if no platform suggestion.
      */
     public CodeBlock suggestReturn(TypeName type, String argsVar, String currentVar) {
@@ -150,37 +134,33 @@ public final class TypeSupport {
                 .primitiveDefault("null")
                 .literal(d -> CodeBlock.of("$S", d == null ? "" : d))
                 .parse((spec, va) -> spec.addStatement("$L = $L", va[0], va[1]))
-                .brigadierArgType(greedy -> CodeBlock.of("$T.$L()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"),
-                        greedy ? "greedyString" : "string"))
-                .brigadierRetrieval(arg -> CodeBlock.of("$T.getString(ctx, $S)",
-                        ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), arg))
                 .build());
 
         // int / Integer
-        register(integerEntry(TypeName.INT, integer, "0", "integer", "IntegerArgumentType", "getInteger", "parseInt").build());
-        register(integerEntry(integer, integer, "0", "integer", "IntegerArgumentType", "getInteger", "parseInt").build());
+        register(integerEntry(TypeName.INT, integer, "0", "parseInt").build());
+        register(integerEntry(integer, integer, "0", "parseInt").build());
         // long / Long
-        register(integerEntry(TypeName.LONG, longC, "0", "longArg", "LongArgumentType", "getLong", "parseLong")
+        register(integerEntry(TypeName.LONG, longC, "0", "parseLong")
                 .literal(d -> CodeBlock.of("$LL", defaultTo(d, "0"))).build());
-        register(integerEntry(longC, longC, "0", "longArg", "LongArgumentType", "getLong", "parseLong")
+        register(integerEntry(longC, longC, "0", "parseLong")
                 .literal(d -> CodeBlock.of("$LL", defaultTo(d, "0"))).build());
         // double / Double
-        register(integerEntry(TypeName.DOUBLE, dbl, "0.0", "doubleArg", "DoubleArgumentType", "getDouble", "parseDouble").build());
-        register(integerEntry(dbl, dbl, "0.0", "doubleArg", "DoubleArgumentType", "getDouble", "parseDouble").build());
+        register(integerEntry(TypeName.DOUBLE, dbl, "0.0", "parseDouble").build());
+        register(integerEntry(dbl, dbl, "0.0", "parseDouble").build());
         // float / Float
-        Entry.Builder floatPrim = integerEntry(TypeName.FLOAT, flt, "0.0", "floatArg", "FloatArgumentType", "getFloat", "parseFloat");
+        Entry.Builder floatPrim = integerEntry(TypeName.FLOAT, flt, "0.0", "parseFloat");
         register(floatPrim.literal(d -> CodeBlock.of("$Lf", defaultTo(d, "0.0"))).build());
-        Entry.Builder floatWrap = integerEntry(flt, flt, "0.0", "floatArg", "FloatArgumentType", "getFloat", "parseFloat");
+        Entry.Builder floatWrap = integerEntry(flt, flt, "0.0", "parseFloat");
         register(floatWrap.literal(d -> CodeBlock.of("$Lf", defaultTo(d, "0.0"))).build());
         // short / Short
-        Entry.Builder shortPrim = integerEntry(TypeName.SHORT, shrt, "0", null, null, null, "parseShort");
+        Entry.Builder shortPrim = integerEntry(TypeName.SHORT, shrt, "0", "parseShort");
         register(shortPrim.literal(d -> CodeBlock.of("(short) $L", defaultTo(d, "0"))).build());
-        Entry.Builder shortWrap = integerEntry(shrt, shrt, "0", null, null, null, "parseShort");
+        Entry.Builder shortWrap = integerEntry(shrt, shrt, "0", "parseShort");
         register(shortWrap.literal(d -> CodeBlock.of("(short) $L", defaultTo(d, "0"))).build());
         // byte / Byte
-        Entry.Builder bytePrim = integerEntry(TypeName.BYTE, byt, "0", null, null, null, "parseByte");
+        Entry.Builder bytePrim = integerEntry(TypeName.BYTE, byt, "0", "parseByte");
         register(bytePrim.literal(d -> CodeBlock.of("(byte) $L", defaultTo(d, "0"))).build());
-        Entry.Builder byteWrap = integerEntry(byt, byt, "0", null, null, null, "parseByte");
+        Entry.Builder byteWrap = integerEntry(byt, byt, "0", "parseByte");
         register(byteWrap.literal(d -> CodeBlock.of("(byte) $L", defaultTo(d, "0"))).build());
         // char / Character
         register(entry(chr, 1)
@@ -206,7 +186,6 @@ public final class TypeSupport {
                 })
                 .build());
         // boolean / Boolean
-        ClassName boolArg = ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType");
         register(entry(bool, 1)
                 .primitiveDefault("false")
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, "false")))
@@ -215,8 +194,6 @@ public final class TypeSupport {
                             "true", va[1], "false", va[1], IllegalArgumentException.class, "Invalid boolean value: ", va[1]);
                     spec.addStatement("$L = $T.parseBoolean($L)", va[0], Boolean.class, va[1]);
                 })
-                .brigadierArgType(g -> CodeBlock.of("$T.bool()", boolArg))
-                .brigadierRetrieval(arg -> CodeBlock.of("$T.getBool(ctx, $S)", boolArg, arg))
                 .build());
         register(entry(TypeName.BOOLEAN, 1)
                 .primitiveDefault("false")
@@ -226,27 +203,65 @@ public final class TypeSupport {
                             "true", va[1], "false", va[1], IllegalArgumentException.class, "Invalid boolean value: ", va[1]);
                     spec.addStatement("$L = $T.parseBoolean($L)", va[0], Boolean.class, va[1]);
                 })
-                .brigadierArgType(g -> CodeBlock.of("$T.bool()", boolArg))
-                .brigadierRetrieval(arg -> CodeBlock.of("$T.getBool(ctx, $S)", boolArg, arg))
                 .build());
     }
 
     /**
-     * Builder for the int/long/double/float/short/byte family (they only differ by parse method + literal).
+     * Builder for the int/long/double/float/short/byte family (they only differ by parse method).
      */
-    private Entry.Builder integerEntry(TypeName keyType, ClassName wrapper, String defaultVal,
-                                       String brigMethod, String brigArgClass, String brigRetrieval,
-                                       String parseMethod) {
-        Entry.Builder b = entry(keyType, 1)
+    private Entry.Builder integerEntry(TypeName keyType, ClassName wrapper, String defaultVal, String parseMethod) {
+        return entry(keyType, 1)
                 .primitiveDefault(defaultVal)
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, defaultVal)))
                 .parse((spec, va) -> spec.addStatement("$L = $T.$L($L)", va[0], wrapper, parseMethod, va[1]));
-        if (brigArgClass != null) {
-            ClassName argClass = ClassName.get("com.mojang.brigadier.arguments", brigArgClass);
-            b.brigadierArgType(g -> CodeBlock.of("$T.$L()", argClass, brigMethod))
-                    .brigadierRetrieval(arg -> CodeBlock.of("$T.$L(ctx, $S)", argClass, brigRetrieval, arg));
+    }
+
+    /**
+     * Emit platform-specific resolution code (e.g. {@code var = getPlayer(arg)}).
+     *
+     * @param spec   the method builder
+     * @param params [varName, argsVar, argIdxVar, senderVar, index]
+     */
+    public void emitPlatformResolution(MethodSpec.Builder spec, TypeName type, String... params) {
+        Entry e = entries.get(type.toString());
+        if (e == null || e.platformResolution == null) {
+            return;
         }
-        return b;
+        e.platformResolution.accept(spec, params);
+    }
+
+    /**
+     * Emit platform-specific multi-arg resolution code (e.g. {@code var = getLocation(args, argIdx)}).
+     *
+     * @param params [varName, argsVar, argIdxVar, senderVar, index]
+     */
+    public void emitPlatformMultiResolution(MethodSpec.Builder spec, TypeName type, String... params) {
+        Entry e = entries.get(type.toString());
+        if (e == null || e.platformMultiResolution == null) {
+            return;
+        }
+        e.platformMultiResolution.accept(spec, params);
+    }
+
+    /**
+     * @return the platform-specific width for multi-arg types (e.g. Location=4), defaulting to 1.
+     */
+    public int getPlatformWidth(TypeName type) {
+        Entry e = entries.get(type.toString());
+        return e == null ? 1 : e.platformWidth;
+    }
+
+    /**
+     * Emit platform-specific suggestion code.
+     *
+     * @param params [senderCastVar, argsVar, currentVar, tempIdx]
+     */
+    public void emitPlatformSuggestions(MethodSpec.Builder spec, TypeName type, String... params) {
+        Entry e = entries.get(type.toString());
+        if (e == null || e.platformSuggestions == null) {
+            return;
+        }
+        e.platformSuggestions.accept(spec, params);
     }
 
     /**
@@ -258,9 +273,11 @@ public final class TypeSupport {
         final String primitiveDefault;
         final Function<String, CodeBlock> literal;
         final BiConsumer<MethodSpec.Builder, String[]> parse;
-        final Function<Boolean, CodeBlock> brigadierArgType;
-        final Function<String, CodeBlock> brigadierRetrieval;
         final BiFunction<String, String, CodeBlock> suggestReturn;
+        final int platformWidth;
+        final BiConsumer<MethodSpec.Builder, String[]> platformResolution;
+        final BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
+        final BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
 
         private Entry(Builder b) {
             this.type = b.type;
@@ -268,12 +285,14 @@ public final class TypeSupport {
             this.primitiveDefault = b.primitiveDefault;
             this.literal = b.literal;
             this.parse = b.parse;
-            this.brigadierArgType = b.brigadierArgType;
-            this.brigadierRetrieval = b.brigadierRetrieval;
             this.suggestReturn = b.suggestReturn;
+            this.platformWidth = b.platformWidth;
+            this.platformResolution = b.platformResolution;
+            this.platformMultiResolution = b.platformMultiResolution;
+            this.platformSuggestions = b.platformSuggestions;
         }
 
-        static Builder builder(TypeName type, int width) {
+        public static Builder builder(TypeName type, int width) {
             return new Builder(type, width);
         }
 
@@ -286,9 +305,11 @@ public final class TypeSupport {
             String primitiveDefault;
             Function<String, CodeBlock> literal;
             BiConsumer<MethodSpec.Builder, String[]> parse;
-            Function<Boolean, CodeBlock> brigadierArgType;
-            Function<String, CodeBlock> brigadierRetrieval;
             BiFunction<String, String, CodeBlock> suggestReturn;
+            int platformWidth = 1;
+            BiConsumer<MethodSpec.Builder, String[]> platformResolution;
+            BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
+            BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
 
             Builder(TypeName type, int width) {
                 this.type = type;
@@ -310,18 +331,28 @@ public final class TypeSupport {
                 return this;
             }
 
-            public Builder brigadierArgType(Function<Boolean, CodeBlock> f) {
-                this.brigadierArgType = f;
-                return this;
-            }
-
-            public Builder brigadierRetrieval(Function<String, CodeBlock> f) {
-                this.brigadierRetrieval = f;
-                return this;
-            }
-
             public Builder suggestReturn(BiFunction<String, String, CodeBlock> f) {
                 this.suggestReturn = f;
+                return this;
+            }
+
+            public Builder platformWidth(int w) {
+                this.platformWidth = w;
+                return this;
+            }
+
+            public Builder platformResolution(BiConsumer<MethodSpec.Builder, String[]> f) {
+                this.platformResolution = f;
+                return this;
+            }
+
+            public Builder platformMultiResolution(BiConsumer<MethodSpec.Builder, String[]> f) {
+                this.platformMultiResolution = f;
+                return this;
+            }
+
+            public Builder platformSuggestions(BiConsumer<MethodSpec.Builder, String[]> f) {
+                this.platformSuggestions = f;
                 return this;
             }
 

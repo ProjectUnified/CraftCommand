@@ -6,6 +6,7 @@ import io.github.projectunified.craftcommand.annotation.Greedy;
 import io.github.projectunified.craftcommand.annotation.Optional;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
@@ -20,7 +21,11 @@ import javax.lang.model.element.TypeElement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Annotation processor for Paper Brigadier platform.
@@ -40,6 +45,65 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     final ClassName argumentTypesClass = ClassName.get("io.papermc.paper.command.brigadier.argument", "ArgumentTypes");
     final ClassName errorColorClass = ClassName.get("net.kyori.adventure.text.format", "NamedTextColor");
     final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
+
+    private final Map<String, Function<Boolean, CodeBlock>> brigadierArgTypes = new HashMap<>();
+    private final Map<String, Function<String, CodeBlock>> brigadierRetrievals = new HashMap<>();
+
+    {
+        ClassName strArgClass = ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType");
+        ClassName intArgClass = ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType");
+        ClassName longArgClass = ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType");
+        ClassName dblArgClass = ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType");
+        ClassName fltArgClass = ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType");
+        ClassName boolArgClass = ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType");
+        ClassName playerResolverClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver");
+        ClassName worldClass = ClassName.get("org.bukkit", "World");
+        ClassName finePositionClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver");
+
+        // JDK types
+        brigadierArgTypes.put("java.lang.String", g -> CodeBlock.of("$T.$L()", strArgClass, g ? "greedyString" : "string"));
+        brigadierRetrievals.put("java.lang.String", a -> CodeBlock.of("$T.getString(ctx, $S)", strArgClass, a));
+        brigadierArgTypes.put("int", g -> CodeBlock.of("$T.integer()", intArgClass));
+        brigadierArgTypes.put("java.lang.Integer", g -> CodeBlock.of("$T.integer()", intArgClass));
+        brigadierRetrievals.put("int", a -> CodeBlock.of("$T.getInteger(ctx, $S)", intArgClass, a));
+        brigadierRetrievals.put("java.lang.Integer", a -> CodeBlock.of("$T.getInteger(ctx, $S)", intArgClass, a));
+        brigadierArgTypes.put("long", g -> CodeBlock.of("$T.longArg()", longArgClass));
+        brigadierArgTypes.put("java.lang.Long", g -> CodeBlock.of("$T.longArg()", longArgClass));
+        brigadierRetrievals.put("long", a -> CodeBlock.of("$T.getLong(ctx, $S)", longArgClass, a));
+        brigadierRetrievals.put("java.lang.Long", a -> CodeBlock.of("$T.getLong(ctx, $S)", longArgClass, a));
+        brigadierArgTypes.put("double", g -> CodeBlock.of("$T.doubleArg()", dblArgClass));
+        brigadierArgTypes.put("java.lang.Double", g -> CodeBlock.of("$T.doubleArg()", dblArgClass));
+        brigadierRetrievals.put("double", a -> CodeBlock.of("$T.getDouble(ctx, $S)", dblArgClass, a));
+        brigadierRetrievals.put("java.lang.Double", a -> CodeBlock.of("$T.getDouble(ctx, $S)", dblArgClass, a));
+        brigadierArgTypes.put("float", g -> CodeBlock.of("$T.floatArg()", fltArgClass));
+        brigadierArgTypes.put("java.lang.Float", g -> CodeBlock.of("$T.floatArg()", fltArgClass));
+        brigadierRetrievals.put("float", a -> CodeBlock.of("$T.getFloat(ctx, $S)", fltArgClass, a));
+        brigadierRetrievals.put("java.lang.Float", a -> CodeBlock.of("$T.getFloat(ctx, $S)", fltArgClass, a));
+        brigadierArgTypes.put("boolean", g -> CodeBlock.of("$T.bool()", boolArgClass));
+        brigadierArgTypes.put("java.lang.Boolean", g -> CodeBlock.of("$T.bool()", boolArgClass));
+        brigadierRetrievals.put("boolean", a -> CodeBlock.of("$T.getBool(ctx, $S)", boolArgClass, a));
+        brigadierRetrievals.put("java.lang.Boolean", a -> CodeBlock.of("$T.getBool(ctx, $S)", boolArgClass, a));
+
+        // Platform types
+        brigadierArgTypes.put("org.bukkit.entity.Player", g -> CodeBlock.of("$L.player()", argumentTypesClass));
+        brigadierRetrievals.put("org.bukkit.entity.Player", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()", a, playerResolverClass));
+        brigadierArgTypes.put("org.bukkit.World", g -> CodeBlock.of("$L.world()", argumentTypesClass));
+        brigadierRetrievals.put("org.bukkit.World", a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, worldClass));
+        brigadierArgTypes.put("org.bukkit.Location", g -> CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
+        brigadierRetrievals.put("org.bukkit.Location", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())", a, finePositionClass));
+
+        // Register platform types in TypeSupport for base processor
+        ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
+        ClassName worldClass2 = ClassName.get("org.bukkit", "World");
+        ClassName locationClass = ClassName.get("org.bukkit", "Location");
+
+        typeSupport().register(TypeSupport.Entry.builder(playerClass, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
+        typeSupport().register(TypeSupport.Entry.builder(worldClass2, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
+        typeSupport().register(TypeSupport.Entry.builder(locationClass, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
+    }
 
     @Override
     protected String getWrapperClassSuffix() {
@@ -81,25 +145,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     protected boolean isSenderBaseType(TypeName typeName) {
         String name = typeName.toString();
         return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack");
-    }
-
-    @Override
-    protected boolean isPlatformBuiltInType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("org.bukkit.entity.Player")
-                || name.equals("org.bukkit.World")
-                || name.equals("org.bukkit.Location");
-    }
-
-    @Override
-    protected int getPlatformBuiltInWidth(TypeName typeName) {
-        String name = typeName.toString();
-        return 1;
-    }
-
-    @Override
-    protected void generatePlatformParamSuggestions(MethodSpec.Builder methodSpec, TypeName typeName, String senderCastVar, String argsVar, String currentVar, int tempIdx) {
-        methodSpec.addStatement("return $T.emptyList()", Collections.class);
     }
 
     @Override
@@ -267,7 +312,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         }
         TypeName typeName = TypeName.get(param.getType());
         if (isPlatformBuiltInType(typeName)) {
-            return getPlatformBuiltInWidth(typeName);
+            return getBuiltInWidth(typeName);
         }
         return 1;
     }
@@ -349,60 +394,18 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, javax.lang.model.element.VariableElement element) {
-        String name = typeName.toString();
-
-        if (name.equals("int") || name.equals("java.lang.Integer")) {
-            return CodeBlock.of("$T.integer()", ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"));
-        } else if (name.equals("long") || name.equals("java.lang.Long")) {
-            return CodeBlock.of("$T.longArg()", ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"));
-        } else if (name.equals("float") || name.equals("java.lang.Float")) {
-            return CodeBlock.of("$T.floatArg()", ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"));
-        } else if (name.equals("double") || name.equals("java.lang.Double")) {
-            return CodeBlock.of("$T.doubleArg()", ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"));
-        } else if (name.equals("boolean") || name.equals("java.lang.Boolean")) {
-            return CodeBlock.of("$T.bool()", ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"));
-        } else if (name.equals("java.lang.String")) {
-            boolean isGreedy = element.getAnnotation(Greedy.class) != null;
-            if (isGreedy) {
-                return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
-            } else {
-                return CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
-            }
-        } else if (name.equals("org.bukkit.entity.Player")) {
-            return CodeBlock.of("$L.player()", argumentTypesClass);
-        } else if (name.equals("org.bukkit.World")) {
-            return CodeBlock.of("$L.world()", argumentTypesClass);
-        } else if (name.equals("org.bukkit.Location")) {
-            return CodeBlock.of("$L.finePosition(true)", argumentTypesClass);
+        boolean isGreedy = element.getAnnotation(Greedy.class) != null;
+        if (isGreedy) {
+            // Greedy always uses StringArgumentType.greedyString() regardless of target type
+            return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
         }
-
-        return CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
+        Function<Boolean, CodeBlock> provider = brigadierArgTypes.get(typeName.toString());
+        return provider != null ? provider.apply(false) : CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
     }
 
     CodeBlock getArgumentRetrievalExpression(TypeName typeName, String argName) {
-        String typeStr = typeName.toString();
-        if (typeStr.equals("int") || typeStr.equals("java.lang.Integer")) {
-            return CodeBlock.of("$T.getInteger(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType"), argName);
-        } else if (typeStr.equals("long") || typeStr.equals("java.lang.Long")) {
-            return CodeBlock.of("$T.getLong(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType"), argName);
-        } else if (typeStr.equals("float") || typeStr.equals("java.lang.Float")) {
-            return CodeBlock.of("$T.getFloat(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType"), argName);
-        } else if (typeStr.equals("double") || typeStr.equals("java.lang.Double")) {
-            return CodeBlock.of("$T.getDouble(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType"), argName);
-        } else if (typeStr.equals("boolean") || typeStr.equals("java.lang.Boolean")) {
-            return CodeBlock.of("$T.getBool(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType"), argName);
-        } else if (typeStr.equals("java.lang.String")) {
-            return CodeBlock.of("$T.getString(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), argName);
-        } else if (typeStr.equals("org.bukkit.entity.Player")) {
-            return CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()",
-                    argName, ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver"));
-        } else if (typeStr.equals("org.bukkit.World")) {
-            return CodeBlock.of("ctx.getArgument($S, $T.class)", argName, ClassName.get("org.bukkit", "World"));
-        } else if (typeStr.equals("org.bukkit.Location")) {
-            return CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())",
-                    argName, ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver"));
-        }
-        return CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
+        Function<String, CodeBlock> provider = brigadierRetrievals.get(typeName.toString());
+        return provider != null ? provider.apply(argName) : CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
     }
 
     private String sanitizeIdentifier(String name) {
