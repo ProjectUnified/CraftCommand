@@ -941,7 +941,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             }
             if (width == 1) {
                 if (pTypeName.toString().equals("java.lang.String")) {
-                    methodSpec.addStatement("$T $L = $L[$L++]", pTypeName, varName, argsVar, argIdxVar);
+                    if (p.isGreedy()) {
+                        methodSpec.addStatement("$T $L = String.join($S, $T.copyOfRange($L, $L, $L.length))", pTypeName, varName, " ", Arrays.class, argsVar, argIdxVar, argsVar);
+                    } else {
+                        methodSpec.addStatement("$T $L = $L[$L++]", pTypeName, varName, argsVar, argIdxVar);
+                    }
                 } else {
                     methodSpec.addStatement("$T $L", pTypeName, varName);
                     methodSpec.addStatement("String argStr_$L = $L[$L++]", i, argsVar, argIdxVar);
