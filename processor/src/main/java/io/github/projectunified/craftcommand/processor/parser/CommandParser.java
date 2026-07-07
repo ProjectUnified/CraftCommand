@@ -145,6 +145,7 @@ public class CommandParser {
                         method.getSimpleName().toString(),
                         subcommandAnn != null ? subcommandAnn.value() : null,
                         subcommandAnn != null ? Arrays.asList(subcommandAnn.aliases()) : new ArrayList<>(),
+                        subcommandAnn != null ? subcommandAnn.description() : "",
                         senderParamModel,
                         paramModels,
                         defaultAnn != null,

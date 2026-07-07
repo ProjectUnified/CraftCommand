@@ -107,7 +107,7 @@ public class CommandTest {
                 .findFirst()
                 .orElse(null);
         assertNotNull(modeInfo);
-        assertEquals("mode <mode>", modeInfo.getUsage());
+        assertEquals("<mode>", modeInfo.getUsage());
         assertEquals("", modeInfo.getDescription());
     }
 

@@ -25,4 +25,11 @@ public @interface Subcommand {
      * @return the subcommand aliases
      */
     String[] aliases() default {};
+
+    /**
+     * The description of the subcommand.
+     *
+     * @return the command description
+     */
+    String description() default "";
 }

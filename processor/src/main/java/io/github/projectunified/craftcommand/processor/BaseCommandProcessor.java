@@ -82,9 +82,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      */
     protected static String getUsage(MethodModel method) {
         StringBuilder sb = new StringBuilder();
-        if (!method.isDefault()) {
-            sb.append(method.getSubcommandName()).append(" ");
-        }
         for (ParameterModel p : method.getParameters()) {
             if (p.isOptional()) {
                 sb.append("[").append(p.getName()).append("] ");
@@ -1371,7 +1368,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             subPath.add(sub.getSubcommandName());
 
             String usage = getUsage(sub);
-            String desc = ""; // Subcommand methods do not have descriptions in Subcommand annotation
+            String desc = sub.getDescription();
 
             CodeBlock.Builder pathBuilder = CodeBlock.builder().add("$T.asList(", Arrays.class);
             for (int i = 0; i < subPath.size(); i++) {

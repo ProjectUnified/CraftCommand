@@ -11,6 +11,7 @@ public class MethodModel {
     private final String methodName;
     private final String subcommandName;
     private final List<String> aliases;
+    private final String description;
     private final ParameterModel senderParameter;
     private final List<ParameterModel> parameters;
     private final boolean isDefault;
@@ -22,15 +23,17 @@ public class MethodModel {
      * @param methodName      the name of the Java method
      * @param subcommandName  the name of the subcommand, or {@code null} if default action
      * @param aliases         the subcommand aliases
+     * @param description       the subcommand description
      * @param senderParameter the model for the first (sender) parameter
      * @param parameters      the models for the remaining command arguments
      * @param isDefault       {@code true} if marked with {@code @Default}
      * @param element         the underlying ExecutableElement
      */
-    public MethodModel(String methodName, String subcommandName, List<String> aliases, ParameterModel senderParameter, List<ParameterModel> parameters, boolean isDefault, ExecutableElement element) {
+    public MethodModel(String methodName, String subcommandName, List<String> aliases, String description, ParameterModel senderParameter, List<ParameterModel> parameters, boolean isDefault, ExecutableElement element) {
         this.methodName = methodName;
         this.subcommandName = subcommandName;
         this.aliases = aliases;
+        this.description = description;
         this.senderParameter = senderParameter;
         this.parameters = parameters;
         this.isDefault = isDefault;
@@ -62,6 +65,15 @@ public class MethodModel {
      */
     public List<String> getAliases() {
         return aliases;
+    }
+
+    /**
+     * Gets the subcommand description.
+     *
+     * @return the description
+     */
+    public String getDescription() {
+        return description;
     }
 
     /**
