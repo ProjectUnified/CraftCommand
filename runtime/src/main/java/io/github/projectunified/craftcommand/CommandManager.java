@@ -9,7 +9,7 @@ import java.util.*;
  *
  * @param <S> the type of command sender
  */
-public class CommandManager<S> {
+public abstract class CommandManager<S> {
     private final Map<Class<?>, ArgumentResolver<S, ?>> resolvers = new HashMap<>();
     private final List<ArgumentResolverProvider<S>> providers = new ArrayList<>();
     private final Map<Object, CommandInfoExposer> exposers = new java.util.concurrent.ConcurrentHashMap<>();
@@ -44,6 +44,14 @@ public class CommandManager<S> {
         }
         return result;
     }
+
+    /**
+     * Registers a command.
+     * Implementations should implement this with their own platform code.
+     *
+     * @param command the command
+     */
+    public abstract void register(Object command);
 
     /**
      * Formats a message template for a key with the given arguments.

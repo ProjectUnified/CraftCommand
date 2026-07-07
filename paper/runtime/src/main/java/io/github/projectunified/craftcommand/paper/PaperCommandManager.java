@@ -82,14 +82,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
         this.registeredBasic.add(command);
     }
 
-    /**
-     * Registers an annotated command class instance.
-     * Uses constructor reflection to instantiate the generated wrapper class.
-     * Tries the Brigadier ({@code _Paper}) wrapper first,
-     * then falls back to the BasicCommand ({@code _PaperBasic}) wrapper.
-     *
-     * @param commandInstance the annotated command class instance
-     */
+    @Override
     public void register(Object commandInstance) {
         if (commandInstance instanceof PaperCommand) {
             register((PaperCommand) commandInstance);

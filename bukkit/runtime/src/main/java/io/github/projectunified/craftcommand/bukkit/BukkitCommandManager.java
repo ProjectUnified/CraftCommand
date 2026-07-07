@@ -148,12 +148,7 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
         this.registered.clear();
     }
 
-    /**
-     * Registers an annotated command class instance.
-     * Uses constructor reflection to instantiate the generated wrapper class.
-     *
-     * @param commandInstance the annotated command class instance
-     */
+    @Override
     public void register(Object commandInstance) {
         if (commandInstance instanceof Command) {
             register((Command) commandInstance);
