@@ -25,6 +25,27 @@ public class CommandManager<S> {
     }
 
     /**
+     * Filters the list of suggestions by checking if they start with the current input (case-insensitive).
+     *
+     * @param suggestions the raw list of suggestions
+     * @param current     the current user input to filter by
+     * @return the filtered list of suggestions
+     */
+    public static List<String> filterSuggestions(List<String> suggestions, String current) {
+        if (suggestions == null) {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>();
+        String lower = current.toLowerCase();
+        for (String s : suggestions) {
+            if (s.toLowerCase().startsWith(lower)) {
+                result.add(s);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Formats a message template for a key with the given arguments.
      * Subclasses can override this method to translate/customize messages based on the key.
      *

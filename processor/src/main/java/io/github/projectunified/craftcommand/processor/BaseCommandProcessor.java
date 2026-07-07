@@ -294,57 +294,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         // Generate subcommand execution and completion helpers recursively
         generateSubcommandClassExecutors(typeSpec, model, model);
 
-        // Helper filterSuggestions
-        typeSpec.addMethod(MethodSpec.methodBuilder("filterSuggestions")
-                .addJavadoc("Filters the list of suggestions by checking if they start with the current input (case-insensitive).\n\n"
-                        + "@param suggestions the raw list of suggestions\n"
-                        + "@param current the current user input to filter by\n"
-                        + "@return the filtered list of suggestions\n")
-                .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(List.class, String.class))
-                .addParameter(ParameterizedTypeName.get(List.class, String.class), "suggestions")
-                .addParameter(String.class, "current")
-                .addStatement("if (suggestions == null) return $T.emptyList()", Collections.class)
-                .addStatement("$T<$T> result = new $T<>()", List.class, String.class, ArrayList.class)
-                .addStatement("String lower = current.toLowerCase()")
-                .beginControlFlow("for ($T s : suggestions)", String.class)
-                .beginControlFlow("if (s.toLowerCase().startsWith(lower))")
-                .addStatement("result.add(s)")
-                .endControlFlow()
-                .endControlFlow()
-                .addStatement("return result")
-                .build());
-
-        for (TypeName type : getDynamicResolverTypes(model)) {
-            String methodName = getResolverMethodName(type);
-
-            MethodSpec.Builder mb = MethodSpec.methodBuilder(methodName)
-                    .addJavadoc("Resolves a parameter of type {@link $T} using the manager's registered argument resolver.\n\n"
-                            + "@param sender the command sender\n"
-                            + "@param args the full command arguments array\n"
-                            + "@param paramName the name of the parameter for error message generation\n"
-                            + "@param indexHolder a single-element array holding the current argument index\n"
-                            + "@param optional whether the parameter is optional\n"
-                            + "@param defaultValue the default value string if optional\n"
-                            + "@return the resolved value of type {@code $T}\n"
-                            + "@throws Exception if resolution fails or required arguments are missing\n", type, type)
-                    .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class)
-                            .addMember("value", "$S", "unchecked")
-                            .build())
-                    .addModifiers(Modifier.PRIVATE)
-                    .returns(type)
-                    .addException(Exception.class)
-                    .addParameter(getSenderTypeName(), "sender")
-                    .addParameter(String[].class, "args")
-                    .addParameter(String.class, "paramName")
-                    .addParameter(int[].class, "indexHolder")
-                    .addParameter(TypeName.BOOLEAN, "optional")
-                    .addParameter(String.class, "defaultValue");
-
-            mb.addStatement("return manager.resolveParameter(sender, $T.class, args, indexHolder, paramName, optional, defaultValue)", type);
-            typeSpec.addMethod(mb.build());
-        }
-
         // Generate parameter suggestions helpers recursively
         buildParameterSuggestions(typeSpec, model, model);
 
@@ -353,21 +302,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
         // Generate CommandInfoExposer implementation
         buildCommandInfoExposer(typeSpec, model);
-
-        // Generate static factory method for least-reflection instantiation
-        typeSpec.addMethod(MethodSpec.methodBuilder("factory")
-                .addJavadoc("Instantiates this wrapper. Called by the platform manager via {@link $T}.\n\n"
-                                + "@param instance the annotated command instance\n"
-                                + "@param manager the command manager\n"
-                                + "@return the instantiated wrapper\n",
-                        ClassName.get("io.github.projectunified.craftcommand", "CommandFactory"))
-                .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                .returns(getCommandInterfaceType())
-                .addParameter(Object.class, "instance")
-                .addParameter(getManagerType(), "manager")
-                .addStatement("return new $T(($T) instance, manager)",
-                        ClassName.get(model.getPackageName(), wrapperClassName), model.getClassName())
-                .build());
 
         JavaFile javaFile = JavaFile.builder(model.getPackageName(), typeSpec.build())
                 .skipJavaLangImports(true)
@@ -928,7 +862,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 }
             }
 
-            methodSpec.addStatement("return filterSuggestions(suggestions, current)");
+            methodSpec.addStatement("return $T.filterSuggestions(suggestions, current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"));
             methodSpec.endControlFlow();
 
             // Routing for args.length > 1
@@ -1104,19 +1038,19 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             if (suggestMethod != null) {
                 int argCount = suggestMethod.getParameters().size();
                 if (argCount == 0) {
-                    methodSpec.addStatement("return filterSuggestions($L.$L(), current)", instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
                 } else if (argCount == 1) {
-                    methodSpec.addStatement("return filterSuggestions($L.$L(senderCast), current)", instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(senderCast), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
                 } else if (argCount == 2) {
-                    methodSpec.addStatement("return filterSuggestions($L.$L(senderCast, current), current)", instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(senderCast, current), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
                 } else if (argCount == 3) {
-                    methodSpec.addStatement("return filterSuggestions($L.$L(senderCast, args, current), current)", instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(senderCast, args, current), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
                 } else {
                     processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Invalid signature for suggest method: " + provider + ". Must accept 0-3 parameters matching (sender, args, current).", suggestMethod);
                     methodSpec.addStatement("return $T.emptyList()", Collections.class);
                 }
             } else if (isField(typeElement, provider)) {
-                methodSpec.addStatement("return filterSuggestions($L.$L, current)", instanceExpr, provider);
+                methodSpec.addStatement("return $T.filterSuggestions($L.$L, current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
             } else {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Could not find a field or method named '" + provider + "' for parameter suggestions in class " + classModel.getClassName().simpleName());
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);

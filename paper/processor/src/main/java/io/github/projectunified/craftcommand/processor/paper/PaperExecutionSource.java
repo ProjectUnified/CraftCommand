@@ -105,9 +105,8 @@ public class PaperExecutionSource implements ExecutionSource {
                 String defVal = pmTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(pm.getType()) : "null";
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
             } else {
-                String resolverMethod = processor.getResolverMethodName(pmTypeName);
-                methodSpec.addStatement("$T $L = $L(ctx.getSource(), new String[0], $S, new int[]{0}, true, null)",
-                        pmTypeName, varName, resolverMethod, pm.getName());
+                methodSpec.addStatement("$T $L = manager.resolveParameter(ctx.getSource(), $T.class, new String[0], new int[]{0}, $S, true, null)",
+                        pmTypeName, varName, pmTypeName.isPrimitive() ? pmTypeName.box() : pmTypeName, pm.getName());
             }
         } else {
             if (localResolver != null) {
@@ -182,9 +181,8 @@ public class PaperExecutionSource implements ExecutionSource {
                         subArgExprs[i] = "ctx.getArgument(\"" + parsedSegments.get(i).nodeName + "\", String.class)";
                     }
                     String subArgsArray = "new String[]{" + String.join(", ", subArgExprs) + "}";
-                    String resolverMethod = processor.getResolverMethodName(pmTypeName);
-                    methodSpec.addStatement("$T $L = $L(ctx.getSource(), $L, $S, new int[]{0}, false, null)",
-                            pmTypeName, varName, resolverMethod, subArgsArray, pm.getName());
+                    methodSpec.addStatement("$T $L = manager.resolveParameter(ctx.getSource(), $T.class, $L, new int[]{0}, $S, false, null)",
+                            pmTypeName, varName, pmTypeName.isPrimitive() ? pmTypeName.box() : pmTypeName, subArgsArray, pm.getName());
                 }
             }
         }

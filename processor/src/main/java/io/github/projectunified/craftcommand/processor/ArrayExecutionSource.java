@@ -81,12 +81,11 @@ public class ArrayExecutionSource implements ExecutionSource {
             if (processor.isBuiltInType(pTypeName)) {
                 processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
             } else {
-                String resolverMethodName = processor.getResolverMethodName(pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
-                methodSpec.addComment("Parse parameter '" + p.getName() + "' of type " + pTypeName.toString() + " using helper method " + resolverMethodName);
+                methodSpec.addComment("Parse parameter '" + p.getName() + "' of type " + pTypeName.toString() + " using manager's resolveParameter");
                 methodSpec.addStatement("$T $L", pTypeName, varName);
                 String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
-                methodSpec.addStatement("$L = $L(senderCast, $L, $S, argIdxHolder, $L, $L)",
-                        varName, resolverMethodName,
+                methodSpec.addStatement("$L = manager.resolveParameter(senderCast, $T.class, $L, argIdxHolder, $S, $L, $L)",
+                        varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
                         argsVar, p.getName(), p.isOptional(), defValLiteral);
             }
         }
