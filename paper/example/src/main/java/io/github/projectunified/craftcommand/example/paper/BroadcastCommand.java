@@ -22,4 +22,14 @@ public class BroadcastCommand {
     public void executeStack(CommandSourceStack sender, @Greedy String message) {
         Bukkit.broadcastMessage("[Stack Broadcast] " + message);
     }
+
+    public enum BroadcastType {
+        MESSAGE,
+        ACTION_BAR
+    }
+
+    @Subcommand("type")
+    public void executeType(CommandSender sender, BroadcastType type, @Greedy String message) {
+
+    }
 }

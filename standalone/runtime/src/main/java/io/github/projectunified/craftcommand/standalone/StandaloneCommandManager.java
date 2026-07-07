@@ -1,9 +1,9 @@
 package io.github.projectunified.craftcommand.standalone;
 
+import io.github.projectunified.craftcommand.CommandFactory;
 import io.github.projectunified.craftcommand.CommandManager;
 import io.github.projectunified.craftcommand.ErrorHandler;
 
-import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,6 +13,7 @@ import java.util.Map;
  */
 public class StandaloneCommandManager extends CommandManager<Object> {
     private final Map<String, StandaloneCommand> commands = new HashMap<>();
+    private final Map<Class<?>, CommandFactory<Object>> factoryCache = new HashMap<>();
 
     /**
      * Constructs a StandaloneCommandManager with a custom error handler.
@@ -37,16 +38,25 @@ public class StandaloneCommandManager extends CommandManager<Object> {
 
     /**
      * Registers an annotated command class instance.
-     * Generates and registers the corresponding StandaloneCommand wrapper.
+     * Uses a cached {@link CommandFactory} to instantiate the generated wrapper
+     * with minimal reflection (one {@code Class.forName} + one {@code MethodHandle}
+     * per unique command class, then direct invocation).
      *
      * @param commandInstance the annotated command class instance
      */
     public void register(Object commandInstance) {
         try {
-            String generatedClassName = commandInstance.getClass().getName() + "_Standalone";
-            Class<?> clazz = Class.forName(generatedClassName);
-            Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
-            StandaloneCommand command = (StandaloneCommand) constructor.newInstance(commandInstance, this);
+            CommandFactory<Object> factory = factoryCache.computeIfAbsent(
+                    commandInstance.getClass(),
+                    c -> {
+                        try {
+                            return new CommandFactory<>(Class.forName(c.getName() + "_Standalone"));
+                        } catch (ReflectiveOperationException e) {
+                            throw new IllegalArgumentException("Cannot load wrapper for " + c.getName(), e);
+                        }
+                    }
+            );
+            StandaloneCommand command = (StandaloneCommand) factory.create(commandInstance, this);
             if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
                 registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
             }

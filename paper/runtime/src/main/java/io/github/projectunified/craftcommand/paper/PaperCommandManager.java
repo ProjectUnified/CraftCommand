@@ -1,14 +1,16 @@
 package io.github.projectunified.craftcommand.paper;
 
+import io.github.projectunified.craftcommand.CommandFactory;
 import io.github.projectunified.craftcommand.CommandManager;
 import io.github.projectunified.craftcommand.ErrorHandler;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * CommandManager implementation for Paper plugins using Brigadier.
@@ -17,6 +19,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     private final JavaPlugin plugin;
     private final List<PaperCommand> registered = new ArrayList<>();
     private final List<PaperBasicCommand> registeredBasic = new ArrayList<>();
+    private final Map<Class<?>, CommandFactory<CommandSourceStack>> factoryCache = new HashMap<>();
 
     /**
      * Constructs a PaperCommandManager with a custom error handler.
@@ -85,7 +88,9 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
 
     /**
      * Registers an annotated command class instance.
-     * Generates and registers the corresponding Paper wrapper command.
+     * Uses a cached {@link CommandFactory} to instantiate the generated wrapper
+     * with minimal reflection. Tries the Brigadier ({@code _Paper}) wrapper first,
+     * then falls back to the BasicCommand ({@code _PaperBasic}) wrapper.
      *
      * @param commandInstance the annotated command class instance
      */
@@ -96,27 +101,37 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
             register((PaperBasicCommand) commandInstance);
         } else {
             try {
-                String paperClassName = commandInstance.getClass().getName() + "_Paper";
-                try {
-                    Class<?> clazz = Class.forName(paperClassName);
-                    Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
-                    PaperCommand command = (PaperCommand) constructor.newInstance(commandInstance, this);
-                    if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
-                        registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
+                Object wrapper = null;
+                Class<?> cmdClass = commandInstance.getClass();
+                CommandFactory<CommandSourceStack> factory = factoryCache.get(cmdClass);
+
+                if (factory != null) {
+                    wrapper = factory.create(commandInstance, this);
+                } else {
+                    try {
+                        factory = new CommandFactory<>(Class.forName(cmdClass.getName() + "_Paper"));
+                        wrapper = factory.create(commandInstance, this);
+                        factoryCache.put(cmdClass, factory);
+                    } catch (ClassNotFoundException ignored) {
+                        factory = new CommandFactory<>(Class.forName(cmdClass.getName() + "_PaperBasic"));
+                        wrapper = factory.create(commandInstance, this);
+                        factoryCache.put(cmdClass, factory);
                     }
-                    register(command);
-                    return;
-                } catch (ClassNotFoundException ignored) {
                 }
 
-                String basicClassName = commandInstance.getClass().getName() + "_PaperBasic";
-                Class<?> clazz = Class.forName(basicClassName);
-                Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
-                PaperBasicCommand command = (PaperBasicCommand) constructor.newInstance(commandInstance, this);
-                if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
-                    registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
+                if (wrapper instanceof PaperCommand) {
+                    if (wrapper instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
+                        registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) wrapper);
+                    }
+                    register((PaperCommand) wrapper);
+                } else if (wrapper instanceof PaperBasicCommand) {
+                    if (wrapper instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
+                        registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) wrapper);
+                    }
+                    register((PaperBasicCommand) wrapper);
+                } else {
+                    throw new IllegalArgumentException("Wrapper is neither PaperCommand nor PaperBasicCommand: " + wrapper.getClass());
                 }
-                register(command);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);
             }

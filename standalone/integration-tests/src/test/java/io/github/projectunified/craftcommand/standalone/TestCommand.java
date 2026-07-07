@@ -103,6 +103,18 @@ public class TestCommand {
         // Do nothing
     }
 
+    // Asserts the resolved Point (global resolver, width=2) and that index advancement
+    // places the trailing argument at the correct position.
+    @Subcommand("point-check")
+    public void runPointCheck(Object sender, Point pt, String msg) {
+        if (pt.x != 10.5 || pt.y != 20.5) {
+            throw new IllegalArgumentException("Bad point: " + pt.x + "," + pt.y);
+        }
+        if (!"hello".equals(msg)) {
+            throw new IllegalArgumentException("Bad msg (index not advanced past width=2): " + msg);
+        }
+    }
+
     public Point resolvePointLocal(double x, @Optional("0") double y) {
         return new Point(x, y);
     }

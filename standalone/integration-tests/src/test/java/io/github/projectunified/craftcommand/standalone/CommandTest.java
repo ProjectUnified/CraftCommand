@@ -353,4 +353,19 @@ public class CommandTest {
             cmd.execute("sender", new String[]{"primitives", "100", "5", "2", "AB"});
         });
     }
+
+    @Test
+    public void testCustomResolverValueAndIndexAdvancement() {
+        StandaloneCommand cmd = manager.getCommand("test");
+
+        // /test point-check 10.5 20.5 hello
+        // Verifies the global Point resolver (width=2) returned the correct values AND
+        // that indexHolder advanced by exactly 2, so the trailing String argument reads
+        // "hello" from args[2].
+        assertTrue(cmd.execute("sender", new String[]{"point-check", "10.5", "20.5", "hello"}));
+
+        // Wrong second coordinate -> resolver produces wrong Point -> assertion inside method throws
+        assertThrows(RuntimeException.class, () ->
+                cmd.execute("sender", new String[]{"point-check", "10.5", "99.0", "hello"}));
+    }
 }

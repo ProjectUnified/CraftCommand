@@ -1,5 +1,6 @@
 package io.github.projectunified.craftcommand.bukkit;
 
+import io.github.projectunified.craftcommand.CommandFactory;
 import io.github.projectunified.craftcommand.CommandManager;
 import io.github.projectunified.craftcommand.ErrorHandler;
 import org.bukkit.Bukkit;
@@ -10,7 +11,6 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.SimpleCommandMap;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -91,6 +91,7 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
 
     private final JavaPlugin plugin;
     private final Map<String, Command> registered = new HashMap<>();
+    private final Map<Class<?>, CommandFactory<CommandSender>> factoryCache = new HashMap<>();
 
     public BukkitCommandManager(JavaPlugin plugin, ErrorHandler<CommandSender> errorHandler) {
         super(errorHandler);
@@ -151,7 +152,9 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
 
     /**
      * Registers an annotated command class instance.
-     * Generates and registers the corresponding Bukkit wrapper Executor command.
+     * Uses a cached {@link CommandFactory} to instantiate the generated wrapper
+     * with minimal reflection (one {@code Class.forName} + one {@code MethodHandle}
+     * per unique command class, then direct invocation).
      *
      * @param commandInstance the annotated command class instance
      */
@@ -160,10 +163,17 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
             register((Command) commandInstance);
         } else {
             try {
-                String generatedClassName = commandInstance.getClass().getName() + "_Executor";
-                Class<?> clazz = Class.forName(generatedClassName);
-                Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
-                Command command = (Command) constructor.newInstance(commandInstance, this);
+                CommandFactory<CommandSender> factory = factoryCache.computeIfAbsent(
+                        commandInstance.getClass(),
+                        c -> {
+                            try {
+                                return new CommandFactory<>(Class.forName(c.getName() + "_Executor"));
+                            } catch (ReflectiveOperationException e) {
+                                throw new IllegalArgumentException("Cannot load wrapper for " + c.getName(), e);
+                            }
+                        }
+                );
+                Command command = (Command) factory.create(commandInstance, this);
                 if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
                     registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
                 }

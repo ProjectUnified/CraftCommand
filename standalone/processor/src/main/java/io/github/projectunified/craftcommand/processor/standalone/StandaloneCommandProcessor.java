@@ -33,6 +33,11 @@ public class StandaloneCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
+    protected TypeName getCommandInterfaceType() {
+        return ClassName.get("io.github.projectunified.craftcommand.standalone", "StandaloneCommand");
+    }
+
+    @Override
     protected ClassName getSenderTypeName() {
         return ClassName.get("java.lang", "Object");
     }

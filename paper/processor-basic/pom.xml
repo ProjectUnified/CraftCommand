@@ -32,6 +32,10 @@
             <artifactId>craftcommand-bukkit-annotations</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.projectunified</groupId>
+            <artifactId>craftcommand-bukkit-processor</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.palantir.javapoet</groupId>
             <artifactId>javapoet</artifactId>
         </dependency>

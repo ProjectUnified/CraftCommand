@@ -52,6 +52,11 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
+    protected TypeName getCommandInterfaceType() {
+        return ClassName.get("io.github.projectunified.craftcommand.paper", "PaperCommand");
+    }
+
+    @Override
     protected ClassName getSenderTypeName() {
         return commandSourceStackClass;
     }
@@ -316,7 +321,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
         Permission permission = method.getElement().getAnnotation(Permission.class);
         if (permission != null) {
-            spec.addComment("Permission check: '" + permission.value() + "'");
             spec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
             String messageKey = permission.message().isEmpty() ? "permission" : permission.message();
             String defaultTemplate = permission.message().isEmpty() ? "You do not have permission to execute this command." : permission.message();

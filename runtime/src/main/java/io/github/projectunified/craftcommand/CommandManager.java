@@ -1,6 +1,9 @@
 package io.github.projectunified.craftcommand;
 
+import io.github.projectunified.craftcommand.exception.CommandException;
+
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +64,62 @@ public class CommandManager<S> {
      */
     public void registerProvider(ArgumentResolverProvider<S> provider) {
         providers.add(provider);
+    }
+
+    /**
+     * Resolves a command parameter of the given type using the registered argument resolver,
+     * advancing the supplied argument index holder in place based on the resolver's width.
+     *
+     * <p>This centralizes the per-parameter resolution logic so generated command wrappers
+     * can delegate to the manager instead of duplicating resolver lookup, width tracking,
+     * optional/default handling, and missing-argument reporting.
+     *
+     * @param sender       the command sender as observed by the wrapper. Must be an instance of this
+     *                     manager's sender type {@code S}; the wrapper is responsible for passing
+     *                     the platform-native sender (e.g. {@code CommandSourceStack} for Paper),
+     *                     not whatever sender type the user-facing command method declares.
+     * @param type         the target class type to resolve
+     * @param args         the full command arguments array available to the resolver
+     * @param indexHolder  a single-element array holding the current argument index; updated in place
+     * @param paramName    the parameter name used in missing-argument error messages
+     * @param optional     whether the parameter is optional
+     * @param defaultValue the default value string to use when optional and missing
+     * @param <T>          the target parameter type
+     * @return the resolved parameter value, or {@code null} when optional and missing with no default
+     * @throws Exception               if the registered resolver throws during resolution
+     * @throws CommandException        when a required parameter has insufficient arguments
+     */
+    public <T> T resolveParameter(S sender, Class<T> type, String[] args,
+                                  int[] indexHolder, String paramName, boolean optional, String defaultValue)
+            throws Exception {
+        ArgumentResolver<S, T> resolver = getResolver(type);
+        int width = resolver.getWidth();
+        int argIdx = indexHolder[0];
+
+        if (argIdx + width > args.length) {
+            if (optional) {
+                if (defaultValue == null) {
+                    return null;
+                }
+                return resolver.resolve(sender, new String[]{defaultValue}, defaultValue);
+            }
+            throw new CommandException(formatMessage(
+                    "missing-argument",
+                    "Missing arguments for parameter: %s",
+                    paramName));
+        }
+
+        T result;
+        if (width == 1) {
+            String argStr = args[argIdx];
+            result = argStr == null ? null : resolver.resolve(sender, args, argStr);
+            indexHolder[0] = argIdx + 1;
+        } else {
+            String[] subArgs = Arrays.copyOfRange(args, argIdx, argIdx + width);
+            result = resolver.resolve(sender, subArgs, subArgs[subArgs.length - 1]);
+            indexHolder[0] = argIdx + width;
+        }
+        return result;
     }
 
     /**
