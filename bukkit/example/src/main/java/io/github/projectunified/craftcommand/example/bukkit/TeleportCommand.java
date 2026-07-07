@@ -1,6 +1,8 @@
 package io.github.projectunified.craftcommand.example.bukkit;
 
+import io.github.projectunified.craftcommand.CommandInfo;
 import io.github.projectunified.craftcommand.annotation.*;
+import io.github.projectunified.craftcommand.bukkit.BukkitCommandManager;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.validation.annotation.Max;
 import io.github.projectunified.craftcommand.validation.annotation.Min;
@@ -18,6 +20,11 @@ import java.util.List;
 @Command(value = "tp", aliases = {"teleport"}, description = "Comprehensive Teleport Commands")
 @Permission("example.tp")
 public class TeleportCommand {
+    private final BukkitCommandManager commandManager;
+
+    public TeleportCommand(BukkitCommandManager commandManager) {
+        this.commandManager = commandManager;
+    }
 
     // 1. Suggestion provider from a Field
     public final List<String> modes = Arrays.asList("normal", "silent", "instant");
@@ -154,6 +161,17 @@ public class TeleportCommand {
         @Subcommand("spawn")
         public void setSpawn(Player sender, String worldName) {
             sender.sendMessage("Spawn for world " + worldName + " has been set.");
+        }
+    }
+
+    @Subcommand("help")
+    public void getHelp(CommandSender sender) {
+        sender.sendMessage("--- Teleport Command Help ---");
+        for (CommandInfo info : commandManager.getCommandInfo(this)) {
+            String path = String.join(" ", info.getPath());
+            String usage = info.getUsage();
+            String desc = info.getDescription();
+            sender.sendMessage("/" + path + (usage.isEmpty() ? "" : " " + usage) + (desc.isEmpty() ? "" : " - " + desc));
         }
     }
 }

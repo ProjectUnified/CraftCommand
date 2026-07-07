@@ -1,6 +1,7 @@
 package io.github.projectunified.craftcommand;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -139,7 +140,7 @@ public class CommandManager<S> {
     public List<CommandInfo> getCommandInfo(Object commandInstance) {
         CommandInfoExposer exposer = exposers.get(commandInstance);
         if (exposer == null) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
         return exposer.getCommandInfo();
     }

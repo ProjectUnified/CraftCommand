@@ -11,7 +11,7 @@ public class ExamplePlugin extends JavaPlugin {
         this.commandManager = new PaperCommandManager(this);
 
         // Register the command
-        commandManager.register(new TeleportCommand());
+        commandManager.register(new TeleportCommand(commandManager));
         commandManager.register(new BroadcastCommand());
 
         getLogger().info("ExamplePlugin enabled and Paper commands registered!");

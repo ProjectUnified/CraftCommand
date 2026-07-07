@@ -13,8 +13,8 @@ public class CommandInfo {
     /**
      * Constructs a CommandInfo.
      *
-     * @param path        the subcommand path (e.g. ["teleport", "here"])
-     * @param usage       the usage syntax (e.g. "<target>")
+     * @param path        the subcommand path
+     * @param usage       the usage syntax
      * @param description the description
      */
     public CommandInfo(List<String> path, String usage, String description) {
