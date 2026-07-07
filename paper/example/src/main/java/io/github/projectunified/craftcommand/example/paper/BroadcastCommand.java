@@ -23,13 +23,13 @@ public class BroadcastCommand {
         Bukkit.broadcastMessage("[Stack Broadcast] " + message);
     }
 
-    public enum BroadcastType {
-        MESSAGE,
-        ACTION_BAR
-    }
-
     @Subcommand("type")
     public void executeType(CommandSender sender, BroadcastType type, @Greedy String message) {
 
+    }
+
+    public enum BroadcastType {
+        MESSAGE,
+        ACTION_BAR
     }
 }

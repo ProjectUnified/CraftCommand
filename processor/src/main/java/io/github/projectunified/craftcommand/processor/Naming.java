@@ -26,7 +26,7 @@ public final class Naming {
 
     /**
      * @return the field name for a nested subcommand class instance, e.g.
-     *         {@code subInstance_outer_inner} for class {@code Outer.Inner}.
+     * {@code subInstance_outer_inner} for class {@code Outer.Inner}.
      */
     public static String subcommandField(ClassName nestedClass) {
         return "subInstance_" + String.join("_", nestedClass.simpleNames()).toLowerCase();
@@ -34,7 +34,7 @@ public final class Naming {
 
     /**
      * @return the helper method name for resolving a dynamic (global-resolver)
-     *         parameter type, e.g. {@code resolve_com_example_Foo}.
+     * parameter type, e.g. {@code resolve_com_example_Foo}.
      */
     public static String resolverMethod(TypeName type) {
         if (type instanceof ClassName) {
@@ -44,10 +44,10 @@ public final class Naming {
     }
 
     /**
-     * @return the helper method name for a parameter's suggestion provider.
      * @param classModelPath  the lowercased dot-joined class simple-names
      * @param methodOrDefault the subcommand name, or {@code "default"} for the default action
      * @param paramIndex      the zero-based parameter index
+     * @return the helper method name for a parameter's suggestion provider.
      */
     public static String suggestMethod(String classModelPath, String methodOrDefault, int paramIndex) {
         String sanitized = methodOrDefault.replaceAll("[^a-zA-Z0-9_]", "_");
@@ -56,7 +56,7 @@ public final class Naming {
 
     /**
      * @return the lowercased dot-joined simple-names of a class, used as a
-     *         disambiguating prefix for generated identifiers.
+     * disambiguating prefix for generated identifiers.
      */
     public static String classPath(ClassName className) {
         return String.join("_", className.simpleNames()).toLowerCase();
@@ -64,7 +64,7 @@ public final class Naming {
 
     /**
      * @return {@code "execute_" + lowercased class path} — the routing helper
-     *         for a nested subcommand class.
+     * for a nested subcommand class.
      */
     public static String executeHelper(ClassName nestedClass) {
         return "execute_" + classPath(nestedClass);
@@ -72,7 +72,7 @@ public final class Naming {
 
     /**
      * @return {@code "suggest_" + lowercased class path} — the suggestion
-     *         routing helper for a nested subcommand class.
+     * routing helper for a nested subcommand class.
      */
     public static String suggestHelper(ClassName nestedClass) {
         return "suggest_" + classPath(nestedClass);
@@ -80,7 +80,7 @@ public final class Naming {
 
     /**
      * @return a valid Java identifier derived from an arbitrary command name
-     *         (replaces {@code -} and spaces with {@code _}).
+     * (replaces {@code -} and spaces with {@code _}).
      */
     public static String sanitizeIdentifier(String name) {
         return name.replace("-", "_").replace(" ", "_");

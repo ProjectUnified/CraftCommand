@@ -7,9 +7,9 @@ If you are new to annotations and code generation, this guide will help you unde
 ## What is an Annotation Processor?
 
 Imagine you are a head chef. Instead of writing out every single step of a recipe for your staff, you just write down key sticky notes:
-* 🏷️ **`@Command`**: "This class is a command."
-* 🏷️ **`@Subcommand`**: "This method is a sub-part of that command."
-* 🏷️ **`@Optional`**: "This ingredient (argument) is optional."
+* **`@Command`**: "This class is a command."
+* **`@Subcommand`**: "This method is a sub-part of that command."
+* **`@Optional`**: "This ingredient (argument) is optional."
 
 The **Annotation Processor** is like an automated kitchen assistant. During compilation, it scans your code for these sticky notes, reads your methods, and automatically writes the complex, repetitive "boilerplate" code (called a **Wrapper Class**) that bridges Minecraft/Bukkit or custom CLI arguments to your Java code.
 
@@ -22,7 +22,7 @@ Here is the step-by-step journey of how your annotated command becomes executabl
 ```mermaid
 graph TD
     A["1. Scan Code"] -->|Finds @Command notes| B["2. Understand & Blueprint"]
-    B -->|Builds command structure model| C["3. Create Helper Methods"]
+    B -->|Builds CommandModel tree| C["3. Create Helper Methods"]
     C -->|On-demand player/world/boolean conversion| D["4. Generate Routing Logic"]
     D -->|Matches user text to your subcommands| E["5. Save Code File"]
 ```
@@ -59,11 +59,29 @@ classDiagram
 
 For any command method execution, `BaseCommandProcessor.buildMethodExecution` ensures a single point of truth for the execution flow:
 1. **Resolve Sender:** Platform-specific sender resolution (handled by `ExecutionSource.generateSenderResolution`).
-2. **Method SPI Handlers:** Execute any method-level annotations (like custom permissions or logging).
-3. **Execution Setup:** Static argument checks or setup (handled by `ExecutionSource.generateExecutionSetup`).
-4. **Parameter Resolution:** Loop over method parameters and resolve them using built-in, local, or global resolvers (handled by `ExecutionSource.generateParameterResolution`).
-5. **Parameter SPI Handlers:** Run parameter-level validation check annotations (like `@Min`, `@Max`, `@ValidateWith`).
-6. **Execution:** Invoke the target Java method.
+2. **Execution Setup:** Static argument checks or setup (handled by `ExecutionSource.generateExecutionSetup`).
+3. **Parameter Resolution:** Loop over method parameters and resolve them using built-in, local, or global resolvers (handled by `ExecutionSource.generateParameterResolution`).
+4. **Parameter SPI Handlers:** Run parameter-level validation check annotations (like `@Min`, `@Max`, `@ValidateWith`).
+5. **Execution:** Invoke the target Java method.
+
+---
+
+## Key Components
+
+### Naming
+Static helper that generates consistent identifiers for wrapper classes, resolver methods, and parameter variables.
+
+### TypeSupport
+Registry of 17 JDK types (String, int, Player, World, etc.) that replaces scattered if-chains. Maps each type to its resolver method, default value, and Brigadier expression.
+
+### ResolverLookup
+Compile-time lookups for `@Resolve` methods, suggest providers, and command model tree navigation.
+
+### SpiLoader
+Static SPI loading with explicit class loader and graceful fallback on `ServiceConfigurationError`.
+
+### CommandFactory&lt;S&gt;
+Runtime wrapper that caches a `MethodHandle` to each generated wrapper's `static factory(Object, CommandManager)` method. Platform managers use `CommandFactory` to create wrappers with zero reflection per `register()` call.
 
 ---
 

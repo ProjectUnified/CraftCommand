@@ -5,8 +5,6 @@ import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
-import io.github.projectunified.craftcommand.processor.model.MethodModel;
-import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;

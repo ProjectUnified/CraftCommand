@@ -1,13 +1,9 @@
 package io.github.projectunified.craftcommand.processor.bukkit;
 
-import com.palantir.javapoet.ClassName;
-import com.palantir.javapoet.MethodSpec;
-import com.palantir.javapoet.ParameterizedTypeName;
-import com.palantir.javapoet.TypeSpec;
+import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
-import com.palantir.javapoet.TypeName;
 
 import javax.lang.model.element.Modifier;
 import java.util.List;
@@ -34,7 +30,12 @@ public final class BukkitHelperMethods {
     private static final ClassName STRING = ClassName.get(String.class);
     private static final ClassName NUMBER_FORMAT_EX = ClassName.get(NumberFormatException.class);
 
-    /** Generate all needed helpers into the given TypeSpec, based on which types the command uses. */
+    private BukkitHelperMethods() {
+    }
+
+    /**
+     * Generate all needed helpers into the given TypeSpec, based on which types the command uses.
+     */
     public static void generate(TypeSpec.Builder typeSpec, CommandModel model) {
         boolean hasPlayer = hasParameterType(model, "org.bukkit.entity.Player");
         boolean hasOfflinePlayer = hasParameterType(model, "org.bukkit.OfflinePlayer");
@@ -61,7 +62,9 @@ public final class BukkitHelperMethods {
         }
     }
 
-    /** Check if any method in the command tree has a parameter of the given type name. */
+    /**
+     * Check if any method in the command tree has a parameter of the given type name.
+     */
     public static boolean hasParameterType(CommandModel model, String typeName) {
         if (model.getDefaultMethod() != null && hasParameterType(model.getDefaultMethod(), typeName)) return true;
         for (MethodModel sub : model.getSubcommands()) {
@@ -199,8 +202,5 @@ public final class BukkitHelperMethods {
                 .addStatement("throw new $T($S)", ILLEGAL_ARG, "Invalid coordinate format; must be numeric values.")
                 .endControlFlow()
                 .build();
-    }
-
-    private BukkitHelperMethods() {
     }
 }

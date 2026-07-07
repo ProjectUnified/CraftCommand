@@ -21,7 +21,7 @@ public final class SpiLoader {
 
     /**
      * @return all registered {@link ParameterAnnotationHandler} instances,
-     *         discovered via {@link ServiceLoader} on the given classloader.
+     * discovered via {@link ServiceLoader} on the given classloader.
      */
     public static List<ParameterAnnotationHandler<?>> loadParameterHandlers(ClassLoader classLoader) {
         List<ParameterAnnotationHandler<?>> list = new ArrayList<>();
@@ -33,7 +33,7 @@ public final class SpiLoader {
 
     /**
      * @return all registered {@link MethodAnnotationHandler} instances,
-     *         discovered via {@link ServiceLoader} on the given classloader.
+     * discovered via {@link ServiceLoader} on the given classloader.
      */
     public static List<MethodAnnotationHandler<?>> loadMethodHandlers(ClassLoader classLoader) {
         List<MethodAnnotationHandler<?>> list = new ArrayList<>();

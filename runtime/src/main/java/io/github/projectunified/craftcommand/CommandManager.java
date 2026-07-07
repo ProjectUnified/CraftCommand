@@ -2,12 +2,7 @@ package io.github.projectunified.craftcommand;
 
 import io.github.projectunified.craftcommand.exception.CommandException;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Base command manager responsible for registering argument resolvers and handling errors.
@@ -86,8 +81,8 @@ public class CommandManager<S> {
      * @param defaultValue the default value string to use when optional and missing
      * @param <T>          the target parameter type
      * @return the resolved parameter value, or {@code null} when optional and missing with no default
-     * @throws Exception               if the registered resolver throws during resolution
-     * @throws CommandException        when a required parameter has insufficient arguments
+     * @throws Exception        if the registered resolver throws during resolution
+     * @throws CommandException when a required parameter has insufficient arguments
      */
     public <T> T resolveParameter(S sender, Class<T> type, String[] args,
                                   int[] indexHolder, String paramName, boolean optional, String defaultValue)

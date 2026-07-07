@@ -3,7 +3,6 @@ package io.github.projectunified.craftcommand.processor;
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.annotation.Command;
 import io.github.projectunified.craftcommand.annotation.Optional;
-import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
@@ -37,26 +36,16 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * Handlers for method-level execution and extension annotations loaded via SPI.
      */
     private final List<MethodAnnotationHandler<?>> methodHandlers = new ArrayList<>();
-
-    /**
-     * Compile-time resolver/suggest/field lookups. Initialized in {@link #init}.
-     */
-    private ResolverLookup resolverLookup;
-
     /**
      * Registry of built-in and platform parameter types. Replaces the four
      * scattered {@code if (name.equals("int") ...)} chains. Platforms register
      * their types here via {@link TypeSupport#register(TypeSupport.Entry)}.
      */
     private final TypeSupport typeSupport = TypeSupport.builtins();
-
     /**
-     * @return the type support registry. Platform processors use this to
-     * register platform-specific types (Player, World, Location, ...).
+     * Compile-time resolver/suggest/field lookups. Initialized in {@link #init}.
      */
-    protected TypeSupport typeSupport() {
-        return typeSupport;
-    }
+    private ResolverLookup resolverLookup;
 
     /**
      * Utility method to get the simple name of a type.
@@ -67,19 +56,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     public static String getSimpleName(TypeName typeName) {
         return Naming.simpleName(typeName);
     }
-
-    /**
-     * Gets the default literal value expression for a primitive (or wrapper) type.
-     * Delegates to {@link TypeSupport}; returns {@code "null"} for non-primitives.
-     *
-     * @param type the type mirror
-     * @return the default value literal string
-     */
-    public String getDefaultPrimitiveValue(TypeMirror type) {
-        return typeSupport.primitiveDefault(TypeName.get(type));
-    }
-
-    // ── Platform-Specific Configuration Hooks ──
 
     /**
      * Utility method to format a list of all subcommand names defined in a command model.
@@ -117,6 +93,27 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             }
         }
         return sb.toString().trim();
+    }
+
+    // ── Platform-Specific Configuration Hooks ──
+
+    /**
+     * @return the type support registry. Platform processors use this to
+     * register platform-specific types (Player, World, Location, ...).
+     */
+    protected TypeSupport typeSupport() {
+        return typeSupport;
+    }
+
+    /**
+     * Gets the default literal value expression for a primitive (or wrapper) type.
+     * Delegates to {@link TypeSupport}; returns {@code "null"} for non-primitives.
+     *
+     * @param type the type mirror
+     * @return the default value literal string
+     */
+    public String getDefaultPrimitiveValue(TypeMirror type) {
+        return typeSupport.primitiveDefault(TypeName.get(type));
     }
 
     @Override
@@ -360,9 +357,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         // Generate static factory method for least-reflection instantiation
         typeSpec.addMethod(MethodSpec.methodBuilder("factory")
                 .addJavadoc("Instantiates this wrapper. Called by the platform manager via {@link $T}.\n\n"
-                        + "@param instance the annotated command instance\n"
-                        + "@param manager the command manager\n"
-                        + "@return the instantiated wrapper\n",
+                                + "@param instance the annotated command instance\n"
+                                + "@param manager the command manager\n"
+                                + "@return the instantiated wrapper\n",
                         ClassName.get("io.github.projectunified.craftcommand", "CommandFactory"))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                 .returns(getCommandInterfaceType())
@@ -756,40 +753,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             Annotation ann = senderParam.getElement().getAnnotation(handler.annotationType());
             if (ann != null) {
                 invokeParameterHandler(handler, ann, senderParam, senderVarName, instanceVar, "sender", methodSpec);
-            }
-        }
-    }
-
-    private void buildParameterParsing(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar, String instanceVar, CommandModel rootModel, List<String> paramNames, String senderVarName, boolean hasDynamic, String argIdxVar) {
-        for (int i = 0; i < method.getParameters().size(); i++) {
-            ParameterModel p = method.getParameters().get(i);
-            TypeName pTypeName = TypeName.get(p.getType());
-            String varName = "param_" + i;
-            paramNames.add(varName);
-
-            ExecutableElement localResolver = findLocalResolver(classModel, p, rootModel);
-
-            if (localResolver != null) {
-                buildLocalResolverParameter(methodSpec, classModel, p, pTypeName, varName, localResolver, rootModel, senderVarName, argsVar, argIdxVar, hasDynamic, i);
-            } else {
-                if (isBuiltInType(pTypeName)) {
-                    buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, i);
-                } else {
-                    String resolverMethodName = getResolverMethodName(pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
-                    methodSpec.addStatement("$T $L", pTypeName, varName);
-                    String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
-                    methodSpec.addStatement("$L = $L(senderCast, $L, $S, argIdxHolder, $L, $L)",
-                            varName, resolverMethodName,
-                            argsVar, p.getName(), p.isOptional(), defValLiteral);
-                }
-            }
-
-            // Run SPI parameter annotation handlers on normal parameters
-            for (ParameterAnnotationHandler<?> handler : parameterHandlers) {
-                Annotation ann = p.getElement().getAnnotation(handler.annotationType());
-                if (ann != null) {
-                    invokeParameterHandler(handler, ann, p, varName, instanceVar, senderVarName, methodSpec);
-                }
             }
         }
     }

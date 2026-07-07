@@ -27,47 +27,81 @@ import java.util.function.Function;
 public final class TypeSupport {
     private final Map<String, Entry> entries = new HashMap<>();
 
-    /** @return the shared, immutable registry of JDK built-in types. */
+    /**
+     * @return the shared, immutable registry of JDK built-in types.
+     */
     public static TypeSupport builtins() {
         TypeSupport ts = new TypeSupport();
         ts.registerJdkTypes();
         return ts;
     }
 
-    /** Register a platform-specific type entry (e.g. Player, World, Location). */
+    /**
+     * Convenience to start building an entry keyed by a TypeName.
+     */
+    private static Entry.Builder entry(TypeName type, int width) {
+        return Entry.builder(type, width);
+    }
+
+    /**
+     * Convenience to start building an entry keyed by a wrapper ClassName but storing under a primitive key.
+     */
+    private static Entry.Builder entry(TypeName keyType, ClassName wrapper, int width) {
+        return Entry.builder(keyType, width);
+    }
+
+    private static String defaultTo(String d, String fallback) {
+        return (d == null || d.isEmpty()) ? fallback : d;
+    }
+
+    /**
+     * Register a platform-specific type entry (e.g. Player, World, Location).
+     */
     public void register(Entry e) {
         entries.put(e.type.toString(), e);
     }
 
-    /** @return the entry for the given type, or {@code null} if not registered. */
+    /**
+     * @return the entry for the given type, or {@code null} if not registered.
+     */
     public Entry get(TypeName type) {
         return entries.get(type.toString());
     }
 
-    /** @return true if the type is registered (built-in or platform). */
+    /**
+     * @return true if the type is registered (built-in or platform).
+     */
     public boolean isBuiltIn(TypeName type) {
         return entries.containsKey(type.toString());
     }
 
-    /** @return the argument width, defaulting to 1 for unregistered types. */
+    /**
+     * @return the argument width, defaulting to 1 for unregistered types.
+     */
     public int getWidth(TypeName type) {
         Entry e = entries.get(type.toString());
         return e == null ? 1 : e.width;
     }
 
-    /** @return the primitive default literal ("0", "0.0", "false", "'\\0'", or "null"). */
+    /**
+     * @return the primitive default literal ("0", "0.0", "false", "'\\0'", or "null").
+     */
     public String primitiveDefault(TypeName type) {
         Entry e = entries.get(type.toString());
         return e == null || e.primitiveDefault == null ? "null" : e.primitiveDefault;
     }
 
-    /** @return the literal CodeBlock for a default value, or {@code null} for unregistered types. */
+    /**
+     * @return the literal CodeBlock for a default value, or {@code null} for unregistered types.
+     */
     public CodeBlock literal(TypeName type, String defaultValue) {
         Entry e = entries.get(type.toString());
         return e == null ? null : e.literal.apply(defaultValue);
     }
 
-    /** Emit parse statements (e.g. {@code var = Integer.parseInt(arg)}) into the given builder. */
+    /**
+     * Emit parse statements (e.g. {@code var = Integer.parseInt(arg)}) into the given builder.
+     */
     public void emitParse(MethodSpec.Builder spec, TypeName type, String var, String arg) {
         Entry e = entries.get(type.toString());
         if (e == null || e.parse == null) {
@@ -76,19 +110,25 @@ public final class TypeSupport {
         e.parse.accept(spec, new String[]{var, arg});
     }
 
-    /** @return the Brigadier argument-type expression (e.g. {@code IntegerArgumentType.integer()}). */
+    /**
+     * @return the Brigadier argument-type expression (e.g. {@code IntegerArgumentType.integer()}).
+     */
     public CodeBlock brigadierArgType(TypeName type, boolean greedy) {
         Entry e = entries.get(type.toString());
         return e == null ? null : e.brigadierArgType.apply(greedy);
     }
 
-    /** @return the Brigadier retrieval expression (e.g. {@code IntegerArgumentType.getInteger(ctx, argName)}). */
+    /**
+     * @return the Brigadier retrieval expression (e.g. {@code IntegerArgumentType.getInteger(ctx, argName)}).
+     */
     public CodeBlock brigadierRetrieval(TypeName type, String argName) {
         Entry e = entries.get(type.toString());
         return e == null ? null : e.brigadierRetrieval.apply(argName);
     }
 
-    /** @return the suggest-method return CodeBlock, or {@code null} if no platform suggestion. */
+    /**
+     * @return the suggest-method return CodeBlock, or {@code null} if no platform suggestion.
+     */
     public CodeBlock suggestReturn(TypeName type, String argsVar, String currentVar) {
         Entry e = entries.get(type.toString());
         return e == null ? null : e.suggestReturn.apply(argsVar, currentVar);
@@ -191,7 +231,9 @@ public final class TypeSupport {
                 .build());
     }
 
-    /** Builder for the int/long/double/float/short/byte family (they only differ by parse method + literal). */
+    /**
+     * Builder for the int/long/double/float/short/byte family (they only differ by parse method + literal).
+     */
     private Entry.Builder integerEntry(TypeName keyType, ClassName wrapper, String defaultVal,
                                        String brigMethod, String brigArgClass, String brigRetrieval,
                                        String parseMethod) {
@@ -207,21 +249,9 @@ public final class TypeSupport {
         return b;
     }
 
-    /** Convenience to start building an entry keyed by a TypeName. */
-    private static Entry.Builder entry(TypeName type, int width) {
-        return Entry.builder(type, width);
-    }
-
-    /** Convenience to start building an entry keyed by a wrapper ClassName but storing under a primitive key. */
-    private static Entry.Builder entry(TypeName keyType, ClassName wrapper, int width) {
-        return Entry.builder(keyType, width);
-    }
-
-    private static String defaultTo(String d, String fallback) {
-        return (d == null || d.isEmpty()) ? fallback : d;
-    }
-
-    /** A registered type's behaviors. Immutable once built. */
+    /**
+     * A registered type's behaviors. Immutable once built.
+     */
     public static final class Entry {
         public final TypeName type;
         public final int width;
@@ -247,7 +277,9 @@ public final class TypeSupport {
             return new Builder(type, width);
         }
 
-        /** Fluent builder. */
+        /**
+         * Fluent builder.
+         */
         public static final class Builder {
             private final TypeName type;
             private final int width;
@@ -263,14 +295,39 @@ public final class TypeSupport {
                 this.width = width;
             }
 
-            public Builder primitiveDefault(String v) { this.primitiveDefault = v; return this; }
-            public Builder literal(Function<String, CodeBlock> f) { this.literal = f; return this; }
-            public Builder parse(BiConsumer<MethodSpec.Builder, String[]> f) { this.parse = f; return this; }
-            public Builder brigadierArgType(Function<Boolean, CodeBlock> f) { this.brigadierArgType = f; return this; }
-            public Builder brigadierRetrieval(Function<String, CodeBlock> f) { this.brigadierRetrieval = f; return this; }
-            public Builder suggestReturn(BiFunction<String, String, CodeBlock> f) { this.suggestReturn = f; return this; }
+            public Builder primitiveDefault(String v) {
+                this.primitiveDefault = v;
+                return this;
+            }
 
-            public Entry build() { return new Entry(this); }
+            public Builder literal(Function<String, CodeBlock> f) {
+                this.literal = f;
+                return this;
+            }
+
+            public Builder parse(BiConsumer<MethodSpec.Builder, String[]> f) {
+                this.parse = f;
+                return this;
+            }
+
+            public Builder brigadierArgType(Function<Boolean, CodeBlock> f) {
+                this.brigadierArgType = f;
+                return this;
+            }
+
+            public Builder brigadierRetrieval(Function<String, CodeBlock> f) {
+                this.brigadierRetrieval = f;
+                return this;
+            }
+
+            public Builder suggestReturn(BiFunction<String, String, CodeBlock> f) {
+                this.suggestReturn = f;
+                return this;
+            }
+
+            public Entry build() {
+                return new Entry(this);
+            }
         }
     }
 }

@@ -20,14 +20,13 @@ import java.util.List;
 @Command(value = "tp", aliases = {"teleport"}, description = "Comprehensive Teleport Commands for Paper")
 @Permission("example.tp")
 public class TeleportCommand {
+    // 1. Suggestion provider from a Field
+    public final List<String> modes = Arrays.asList("normal", "silent", "instant");
     private final PaperCommandManager commandManager;
 
     public TeleportCommand(PaperCommandManager commandManager) {
         this.commandManager = commandManager;
     }
-
-    // 1. Suggestion provider from a Field
-    public final List<String> modes = Arrays.asList("normal", "silent", "instant");
 
     // 2. Suggestion provider from a Method (context-aware, filters players within 50 blocks)
     public List<String> getNearPlayers(Player sender, String[] args, String current) {
@@ -149,6 +148,17 @@ public class TeleportCommand {
         sender.sendMessage(String.format("Teleported to custom validated coordinates: %.2f, %.2f, %.2f", x, y, z));
     }
 
+    @Subcommand("help")
+    public void getHelp(CommandSender sender) {
+        sender.sendMessage("--- Teleport Command Help ---");
+        for (CommandInfo info : commandManager.getCommandInfo(this)) {
+            String path = String.join(" ", info.getPath());
+            String usage = info.getUsage();
+            String desc = info.getDescription();
+            sender.sendMessage("/" + path + (usage.isEmpty() ? "" : " " + usage) + (desc.isEmpty() ? "" : " - " + desc));
+        }
+    }
+
     // Use Case: Nested subcommand class (inner class)
     @Subcommand("admin")
     @Permission("example.tp.admin")
@@ -161,17 +171,6 @@ public class TeleportCommand {
         @Subcommand("spawn")
         public void setSpawn(Player sender, String worldName) {
             sender.sendMessage("Spawn for world " + worldName + " has been set.");
-        }
-    }
-
-    @Subcommand("help")
-    public void getHelp(CommandSender sender) {
-        sender.sendMessage("--- Teleport Command Help ---");
-        for (CommandInfo info : commandManager.getCommandInfo(this)) {
-            String path = String.join(" ", info.getPath());
-            String usage = info.getUsage();
-            String desc = info.getDescription();
-            sender.sendMessage("/" + path + (usage.isEmpty() ? "" : " " + usage) + (desc.isEmpty() ? "" : " - " + desc));
         }
     }
 }
