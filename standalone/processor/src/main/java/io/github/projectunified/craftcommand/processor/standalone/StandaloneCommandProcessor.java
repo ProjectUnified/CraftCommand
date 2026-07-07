@@ -39,13 +39,13 @@ public class StandaloneCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected ClassName getSenderTypeName() {
-        return ClassName.get("java.lang", "Object");
+        return ClassName.get(Object.class);
     }
 
     @Override
     protected TypeName getManagerType() {
         ClassName commandManagerClass = ClassName.get("io.github.projectunified.craftcommand", "CommandManager");
-        return ParameterizedTypeName.get(commandManagerClass, ClassName.get("java.lang", "Object"));
+        return ParameterizedTypeName.get(commandManagerClass, ClassName.get(Object.class));
     }
 
     /**

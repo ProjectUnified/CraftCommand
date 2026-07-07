@@ -86,21 +86,19 @@ public class PaperExecutionSource implements ExecutionSource {
                     }
                 }
                 String resolverInstanceExpr = processor.getInstanceVarExpression(processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
-                StringBuilder resolveCall = new StringBuilder(resolverInstanceExpr).append(".").append(localResolver.getSimpleName()).append("(");
+                CodeBlock.Builder resolveCallBuilder1 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
                 if (resolverStartIndex == 1) {
-                    resolveCall.append(senderVarName);
+                    resolveCallBuilder1.add("$L", senderVarName);
                     if (!resolverArgNames.isEmpty()) {
-                        resolveCall.append(", ");
+                        resolveCallBuilder1.add(", ");
                     }
                 }
                 for (int j = 0; j < resolverArgNames.size(); j++) {
-                    resolveCall.append(resolverArgNames.get(j));
-                    if (j < resolverArgNames.size() - 1) {
-                        resolveCall.append(", ");
-                    }
+                    if (j > 0) resolveCallBuilder1.add(", ");
+                    resolveCallBuilder1.add("$L", resolverArgNames.get(j));
                 }
-                resolveCall.append(")");
-                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
+                resolveCallBuilder1.add(")");
+                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCallBuilder1.build());
             } else if (processor.isBuiltInType(pmTypeName)) {
                 String defVal = pmTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(pm.getType()) : "null";
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
@@ -137,22 +135,20 @@ public class PaperExecutionSource implements ExecutionSource {
                         methodSpec.addStatement("$L = $L", rpVarName, retrievalExpr);
                     }
                 }
-                String resolverInstanceExpr = processor.getInstanceVarExpression(processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
-                StringBuilder resolveCall = new StringBuilder(resolverInstanceExpr).append(".").append(localResolver.getSimpleName()).append("(");
+                String resolverInstanceExpr2 = processor.getInstanceVarExpression(processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
+                CodeBlock.Builder resolveCallBuilder2 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr2, localResolver.getSimpleName());
                 if (resolverStartIndex == 1) {
-                    resolveCall.append(senderVarName);
+                    resolveCallBuilder2.add("$L", senderVarName);
                     if (!resolverArgNames.isEmpty()) {
-                        resolveCall.append(", ");
+                        resolveCallBuilder2.add(", ");
                     }
                 }
                 for (int j = 0; j < resolverArgNames.size(); j++) {
-                    resolveCall.append(resolverArgNames.get(j));
-                    if (j < resolverArgNames.size() - 1) {
-                        resolveCall.append(", ");
-                    }
+                    if (j > 0) resolveCallBuilder2.add(", ");
+                    resolveCallBuilder2.add("$L", resolverArgNames.get(j));
                 }
-                resolveCall.append(")");
-                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCall.toString());
+                resolveCallBuilder2.add(")");
+                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCallBuilder2.build());
             } else {
                 if (pm.isGreedy() && !pmTypeName.toString().equals("java.lang.String")) {
                     // Greedy non-String: get string from Brigadier, then parse

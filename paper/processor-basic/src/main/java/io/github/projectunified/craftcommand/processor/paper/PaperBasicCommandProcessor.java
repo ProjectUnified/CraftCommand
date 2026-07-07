@@ -24,6 +24,14 @@ public class PaperBasicCommandProcessor extends BaseCommandProcessor {
     final ClassName commandSourceStackClass = ClassName.get("io.papermc.paper.command.brigadier", "CommandSourceStack");
 
     {
+        // Register sender types
+        senderTypeRegistry().registerSenderBaseType("io.papermc.paper.command.brigadier.CommandSourceStack");
+        senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.CommandSender");
+
+        // Register platform types
         ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
         ClassName worldClass = ClassName.get("org.bukkit", "World");
         ClassName locationClass = ClassName.get("org.bukkit", "Location");
@@ -43,22 +51,6 @@ public class PaperBasicCommandProcessor extends BaseCommandProcessor {
                 .literal(d -> CodeBlock.of("null"))
                 .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L)", p[0], p[1], p[2]))
                 .build());
-    }
-
-    @Override
-    protected boolean isSenderType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack")
-                || name.equals("org.bukkit.entity.Player")
-                || name.equals("org.bukkit.command.ConsoleCommandSender")
-                || name.equals("org.bukkit.command.BlockCommandSender")
-                || name.equals("org.bukkit.command.CommandSender");
-    }
-
-    @Override
-    protected boolean isSenderBaseType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack");
     }
 
     @Override

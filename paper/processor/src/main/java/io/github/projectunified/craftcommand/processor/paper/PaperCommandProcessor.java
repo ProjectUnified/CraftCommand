@@ -44,6 +44,14 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     private final Map<String, Function<String, CodeBlock>> brigadierRetrievals = new HashMap<>();
 
     {
+        // Register sender types
+        senderTypeRegistry().registerSenderBaseType("io.papermc.paper.command.brigadier.CommandSourceStack");
+        senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.CommandSender");
+
+        // Register Brigadier types
         ClassName strArgClass = ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType");
         ClassName intArgClass = ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType");
         ClassName longArgClass = ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType");
@@ -123,22 +131,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     protected TypeName getManagerType() {
         ClassName commandManagerClass = ClassName.get("io.github.projectunified.craftcommand", "CommandManager");
         return ParameterizedTypeName.get(commandManagerClass, commandSourceStackClass);
-    }
-
-    @Override
-    protected boolean isSenderType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack")
-                || name.equals("org.bukkit.entity.Player")
-                || name.equals("org.bukkit.command.ConsoleCommandSender")
-                || name.equals("org.bukkit.command.BlockCommandSender")
-                || name.equals("org.bukkit.command.CommandSender");
-    }
-
-    @Override
-    protected boolean isSenderBaseType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("io.papermc.paper.command.brigadier.CommandSourceStack");
     }
 
     @Override

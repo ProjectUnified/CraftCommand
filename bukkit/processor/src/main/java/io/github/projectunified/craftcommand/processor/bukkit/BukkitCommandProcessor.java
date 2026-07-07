@@ -29,6 +29,14 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     private final ClassName chatColorClass = ClassName.get("org.bukkit", "ChatColor");
 
     {
+        // Register sender types
+        senderTypeRegistry().registerSenderBaseType("java.lang.Object");
+        senderTypeRegistry().registerSenderBaseType("org.bukkit.command.CommandSender");
+        senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
+        senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
+
+        // Register platform types
         ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
         ClassName offlinePlayerClass = ClassName.get("org.bukkit", "OfflinePlayer");
         ClassName worldClass = ClassName.get("org.bukkit", "World");
@@ -92,21 +100,6 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     protected TypeName getManagerType() {
         ClassName commandManagerClass = ClassName.get("io.github.projectunified.craftcommand", "CommandManager");
         return ParameterizedTypeName.get(commandManagerClass, commandSenderClass);
-    }
-
-    @Override
-    protected boolean isSenderType(TypeName typeName) {
-        String name = typeName.toString();
-        return isSenderBaseType(typeName)
-                || name.equals("org.bukkit.entity.Player")
-                || name.equals("org.bukkit.command.ConsoleCommandSender")
-                || name.equals("org.bukkit.command.BlockCommandSender");
-    }
-
-    @Override
-    protected boolean isSenderBaseType(TypeName typeName) {
-        String name = typeName.toString();
-        return name.equals("java.lang.Object") || name.equals("org.bukkit.command.CommandSender");
     }
 
     @Override
