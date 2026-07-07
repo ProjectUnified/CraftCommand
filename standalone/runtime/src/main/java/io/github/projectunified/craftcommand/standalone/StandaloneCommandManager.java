@@ -47,6 +47,9 @@ public class StandaloneCommandManager extends CommandManager<Object> {
             Class<?> clazz = Class.forName(generatedClassName);
             Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
             StandaloneCommand command = (StandaloneCommand) constructor.newInstance(commandInstance, this);
+            if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
+                registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
+            }
             registerCommand(command);
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to register standalone command: " + commandInstance.getClass().getName(), e);

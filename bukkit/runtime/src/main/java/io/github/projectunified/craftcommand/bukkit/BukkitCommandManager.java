@@ -164,6 +164,9 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
                 Class<?> clazz = Class.forName(generatedClassName);
                 Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
                 Command command = (Command) constructor.newInstance(commandInstance, this);
+                if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
+                    registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
+                }
                 register(command);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Failed to register Bukkit command: " + commandInstance.getClass().getName(), e);

@@ -17,7 +17,10 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Annotation processor for Paper Brigadier platform.
@@ -397,8 +400,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         }
         return CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
     }
-
-
 
     private String sanitizeIdentifier(String name) {
         return name.replace("-", "_").replace(" ", "_");

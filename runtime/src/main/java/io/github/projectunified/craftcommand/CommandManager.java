@@ -13,6 +13,7 @@ import java.util.Map;
 public class CommandManager<S> {
     private final Map<Class<?>, ArgumentResolver<S, ?>> resolvers = new HashMap<>();
     private final List<ArgumentResolverProvider<S>> providers = new ArrayList<>();
+    private final Map<Object, CommandInfoExposer> exposers = new java.util.concurrent.ConcurrentHashMap<>();
     private ErrorHandler<S> errorHandler;
 
     /**
@@ -119,5 +120,27 @@ public class CommandManager<S> {
         this.errorHandler = errorHandler;
     }
 
+    /**
+     * Registers a CommandInfoExposer for a command instance.
+     *
+     * @param commandInstance the command instance
+     * @param exposer         the exposer
+     */
+    public void registerExposer(Object commandInstance, CommandInfoExposer exposer) {
+        exposers.put(commandInstance, exposer);
+    }
 
+    /**
+     * Gets the list of command information for the given command instance.
+     *
+     * @param commandInstance the command instance
+     * @return the list of command information, or an empty list if not registered
+     */
+    public List<CommandInfo> getCommandInfo(Object commandInstance) {
+        CommandInfoExposer exposer = exposers.get(commandInstance);
+        if (exposer == null) {
+            return java.util.Collections.emptyList();
+        }
+        return exposer.getCommandInfo();
+    }
 }

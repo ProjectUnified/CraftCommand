@@ -1,6 +1,7 @@
 package io.github.projectunified.craftcommand.paper;
 
 import io.papermc.paper.command.brigadier.BasicCommand;
+
 import java.util.Collection;
 
 /**

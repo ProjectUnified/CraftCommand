@@ -101,6 +101,9 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                     Class<?> clazz = Class.forName(paperClassName);
                     Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
                     PaperCommand command = (PaperCommand) constructor.newInstance(commandInstance, this);
+                    if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
+                        registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
+                    }
                     register(command);
                     return;
                 } catch (ClassNotFoundException ignored) {
@@ -110,6 +113,9 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                 Class<?> clazz = Class.forName(basicClassName);
                 Constructor<?> constructor = clazz.getConstructor(commandInstance.getClass(), CommandManager.class);
                 PaperBasicCommand command = (PaperBasicCommand) constructor.newInstance(commandInstance, this);
+                if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
+                    registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
+                }
                 register(command);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);

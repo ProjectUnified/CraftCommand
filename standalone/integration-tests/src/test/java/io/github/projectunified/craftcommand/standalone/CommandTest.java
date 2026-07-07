@@ -10,9 +10,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CommandTest {
+    private final java.util.Map<String, String> customMessages = new java.util.HashMap<>();
     private StandaloneCommandManager manager;
     private TestCommand commandInstance;
-    private final java.util.Map<String, String> customMessages = new java.util.HashMap<>();
 
     @BeforeEach
     public void setUp() {
@@ -84,6 +84,31 @@ public class CommandTest {
         assertEquals("test", cmd.getName());
         assertTrue(cmd.getAliases().contains("t"));
         assertEquals("Test Command", cmd.getDescription());
+    }
+
+    @Test
+    public void testCommandInfo() {
+        List<io.github.projectunified.craftcommand.CommandInfo> infoList = manager.getCommandInfo(commandInstance);
+        assertNotNull(infoList);
+        assertFalse(infoList.isEmpty());
+
+        // Find default command info
+        io.github.projectunified.craftcommand.CommandInfo defaultInfo = infoList.stream()
+                .filter(info -> info.getPath().size() == 1 && info.getPath().get(0).equals("test"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(defaultInfo);
+        assertEquals("<item> [amount]", defaultInfo.getUsage());
+        assertEquals("Test Command", defaultInfo.getDescription());
+
+        // Find mode subcommand info
+        io.github.projectunified.craftcommand.CommandInfo modeInfo = infoList.stream()
+                .filter(info -> info.getPath().size() == 2 && info.getPath().get(1).equals("mode"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(modeInfo);
+        assertEquals("mode <mode>", modeInfo.getUsage());
+        assertEquals("", modeInfo.getDescription());
     }
 
     @Test

@@ -3,7 +3,6 @@ package io.github.projectunified.craftcommand.processor.paper;
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
-import io.github.projectunified.craftcommand.processor.ArrayExecutionSource;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;

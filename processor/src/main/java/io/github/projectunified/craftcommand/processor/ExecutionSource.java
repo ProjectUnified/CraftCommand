@@ -39,11 +39,11 @@ public interface ExecutionSource {
      * @param methodSpec the target method builder
      * @param classModel the command class model
      * @param method     the command method model
-     * @param rootModel   the root command model
-     * @param p           the parameter model to resolve
-     * @param varName     the variable name to assign the resolved parameter to
-     * @param senderVar   the variable name of the resolved sender
-     * @param paramIndex  the index of the parameter in the command method (excluding sender)
+     * @param rootModel  the root command model
+     * @param p          the parameter model to resolve
+     * @param varName    the variable name to assign the resolved parameter to
+     * @param senderVar  the variable name of the resolved sender
+     * @param paramIndex the index of the parameter in the command method (excluding sender)
      */
     void generateParameterResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, ParameterModel p, String varName, String senderVar, int paramIndex);
 }

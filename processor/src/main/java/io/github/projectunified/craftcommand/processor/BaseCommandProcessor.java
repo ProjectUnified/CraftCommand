@@ -103,9 +103,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      */
     protected static String getUsage(MethodModel method) {
         StringBuilder sb = new StringBuilder();
-        if (method.isDefault()) {
-            sb.append("/");
-        } else {
+        if (!method.isDefault()) {
             sb.append(method.getSubcommandName()).append(" ");
         }
         for (ParameterModel p : method.getParameters()) {
@@ -274,6 +272,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                         + "Do not modify this class directly.\n", model.getClassName())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
         configureSuperType(typeSpec);
+        typeSpec.addSuperinterface(ClassName.get("io.github.projectunified.craftcommand", "CommandInfoExposer"));
 
         // Fields
         typeSpec.addField(FieldSpec.builder(model.getClassName(), "instance", Modifier.PRIVATE, Modifier.FINAL)
@@ -401,6 +400,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
         // Generate additional shared helper methods (e.g. for boolean suggestions)
         buildAdditionalHelpers(typeSpec, model);
+
+        // Generate CommandInfoExposer implementation
+        buildCommandInfoExposer(typeSpec, model);
 
         JavaFile javaFile = JavaFile.builder(model.getPackageName(), typeSpec.build())
                 .build();
@@ -857,13 +859,13 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         int minWidth_i = getLocalResolverMinWidth(localResolver);
         int maxWidth_i = getLocalResolverMaxWidth(localResolver);
 
-            methodSpec.beginControlFlow("if ($L + $L > $L.length)", argIdxVar, minWidth_i, argsVar)
-                    .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
-                            CommandException.class,
-                            "missing-argument",
-                            "Missing arguments for parameter: %s",
-                            p.getName())
-                    .endControlFlow();
+        methodSpec.beginControlFlow("if ($L + $L > $L.length)", argIdxVar, minWidth_i, argsVar)
+                .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
+                        CommandException.class,
+                        "missing-argument",
+                        "Missing arguments for parameter: %s",
+                        p.getName())
+                .endControlFlow();
 
         methodSpec.addStatement("int actualWidth_$L = $T.min($L, $L.length - $L)", i, Math.class, maxWidth_i, argsVar, argIdxVar);
 
@@ -1588,5 +1590,65 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             }
         }
         return false;
+    }
+
+    private void buildCommandInfoExposer(TypeSpec.Builder typeSpec, CommandModel model) {
+        ClassName commandInfoClass = ClassName.get("io.github.projectunified.craftcommand", "CommandInfo");
+        MethodSpec.Builder methodSpec = MethodSpec.methodBuilder("getCommandInfo")
+                .addAnnotation(Override.class)
+                .addModifiers(Modifier.PUBLIC)
+                .returns(ParameterizedTypeName.get(ClassName.get(List.class), commandInfoClass))
+                .addStatement("$T<$T> list = new $T<>()", List.class, commandInfoClass, ArrayList.class);
+
+        generateCommandInfoStatements(methodSpec, model, new ArrayList<>(), commandInfoClass);
+
+        methodSpec.addStatement("return list");
+        typeSpec.addMethod(methodSpec.build());
+    }
+
+    private void generateCommandInfoStatements(MethodSpec.Builder methodSpec, CommandModel model, List<String> parentPath, ClassName commandInfoClass) {
+        List<String> currentPath = new ArrayList<>(parentPath);
+        currentPath.add(model.getCommandName());
+
+        if (model.getDefaultMethod() != null) {
+            String usage = getUsage(model.getDefaultMethod());
+            String desc = model.getDescription();
+
+            CodeBlock.Builder pathBuilder = CodeBlock.builder().add("$T.asList(", Arrays.class);
+            for (int i = 0; i < currentPath.size(); i++) {
+                pathBuilder.add("$S", currentPath.get(i));
+                if (i < currentPath.size() - 1) {
+                    pathBuilder.add(", ");
+                }
+            }
+            pathBuilder.add(")");
+
+            methodSpec.addStatement("list.add(new $T($L, $S, $S))",
+                    commandInfoClass, pathBuilder.build(), usage, desc);
+        }
+
+        for (MethodModel sub : model.getSubcommands()) {
+            List<String> subPath = new ArrayList<>(currentPath);
+            subPath.add(sub.getSubcommandName());
+
+            String usage = getUsage(sub);
+            String desc = ""; // Subcommand methods do not have descriptions in Subcommand annotation
+
+            CodeBlock.Builder pathBuilder = CodeBlock.builder().add("$T.asList(", Arrays.class);
+            for (int i = 0; i < subPath.size(); i++) {
+                pathBuilder.add("$S", subPath.get(i));
+                if (i < subPath.size() - 1) {
+                    pathBuilder.add(", ");
+                }
+            }
+            pathBuilder.add(")");
+
+            methodSpec.addStatement("list.add(new $T($L, $S, $S))",
+                    commandInfoClass, pathBuilder.build(), usage, desc);
+        }
+
+        for (CommandModel child : model.getNestedSubcommands()) {
+            generateCommandInfoStatements(methodSpec, child, currentPath, commandInfoClass);
+        }
     }
 }
