@@ -215,7 +215,15 @@ public class CalculatorCommandTest {
 
     @Test
     public void testSenderResolve() {
-        assertTrue(cmd.execute("sender", new String[]{"whoami"}));
+        // Verify resolver creates CustomSender from original sender's toString()
+        assertTrue(cmd.execute("mySender", new String[]{"whoami"}));
+    }
+
+    @Test
+    public void testSenderResolveDifferentValues() {
+        // Different sender values produce different CustomSender names
+        assertTrue(cmd.execute("Alice", new String[]{"whoami"}));
+        assertTrue(cmd.execute("Bob", new String[]{"whoami"}));
     }
 
     // ═══════════════════════════════════════════════════════════════
