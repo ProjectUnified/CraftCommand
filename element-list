@@ -3,12 +3,15 @@ io.github.projectunified.craftcommand.annotation
 io.github.projectunified.craftcommand.bukkit
 io.github.projectunified.craftcommand.bukkit.annotation
 io.github.projectunified.craftcommand.example.bukkit
+io.github.projectunified.craftcommand.example.paper
 io.github.projectunified.craftcommand.example.standalone
 io.github.projectunified.craftcommand.exception
+io.github.projectunified.craftcommand.paper
 io.github.projectunified.craftcommand.processor
 io.github.projectunified.craftcommand.processor.bukkit
 io.github.projectunified.craftcommand.processor.extension
 io.github.projectunified.craftcommand.processor.model
+io.github.projectunified.craftcommand.processor.paper
 io.github.projectunified.craftcommand.processor.parser
 io.github.projectunified.craftcommand.processor.standalone
 io.github.projectunified.craftcommand.standalone
