@@ -316,6 +316,31 @@ public class CalculatorCommandTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // Inner Class @Resolve Outer Method (Issue #4)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testInnerClassResolveOuterDefault() {
+        assertTrue(cmd.execute("sender", new String[]{"resolve", "10", "20"}));
+    }
+
+    @Test
+    public void testInnerClassResolveOuterWithOptional() {
+        // resolvePoint has optional y defaulting to 0
+        assertTrue(cmd.execute("sender", new String[]{"resolve", "5"}));
+    }
+
+    @Test
+    public void testInnerClassResolveOuterSubcommand() {
+        assertTrue(cmd.execute("sender", new String[]{"resolve", "display", "3", "4"}));
+    }
+
+    @Test
+    public void testInnerClassResolveOuterSubcommandWithOptional() {
+        assertTrue(cmd.execute("sender", new String[]{"resolve", "display", "7"}));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // Tab Completion
     // ═══════════════════════════════════════════════════════════════
 
@@ -339,6 +364,7 @@ public class CalculatorCommandTest {
         assertTrue(suggestions.contains("level"));
         assertTrue(suggestions.contains("enumop"));
         assertTrue(suggestions.contains("advanced"));
+        assertTrue(suggestions.contains("resolve"));
     }
 
     @Test

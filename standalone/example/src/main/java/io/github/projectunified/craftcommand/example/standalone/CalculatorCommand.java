@@ -24,6 +24,7 @@ import java.util.List;
  *   <li>{@link Min}, {@link Max} validation annotations</li>
  *   <li>{@link ValidateWith} custom validation</li>
  *   <li>Nested subcommand classes</li>
+ *   <li>{@link Resolve} from inner class referencing outer class method</li>
  *   <li>Multiple sender types</li>
  * </ul>
  */
@@ -332,6 +333,28 @@ public class CalculatorCommand {
         @Command("log")
         public void logarithm(Object sender, double value, @Default("10") double base) {
             System.out.println("Result: " + (Math.log(value) / Math.log(base)));
+        }
+    }
+
+    /**
+     * Nested subcommand class demonstrating {@link Resolve} referencing
+     * a resolver method defined in the outer class.
+     * <p>
+     * This verifies the fix for NPE when {@code @Resolve} references an outer
+     * class method from a {@code @Command} inner class.
+     * <p>
+     * Usage: /calc resolve 10 20, /calc resolve display 5 6
+     */
+    @Command("resolve")
+    public class ResolveCommands {
+        @Default
+        public void execute(Object sender, @Resolve("resolvePoint") Point pt) {
+            System.out.println("Resolved point: (" + pt.x + ", " + pt.y + ")");
+        }
+
+        @Command("display")
+        public void display(Object sender, @Resolve("resolvePoint") Point pt) {
+            System.out.println("Displaying point: (" + pt.x + ", " + pt.y + ")");
         }
     }
 }

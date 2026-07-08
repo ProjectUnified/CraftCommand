@@ -303,6 +303,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         for (Element element : roundEnv.getElementsAnnotatedWith(Command.class)) {
             if (element instanceof TypeElement) {
                 TypeElement typeElement = (TypeElement) element;
+                // Skip inner @Command classes — they are routed through the root wrapper's helper methods
+                Element enclosing = typeElement.getEnclosingElement();
+                if (enclosing instanceof TypeElement && ((TypeElement) enclosing).getAnnotation(Command.class) != null) {
+                    continue;
+                }
                 // Parse element tree into CommandModel
                 CommandModel commandModel = CommandParser.parse(typeElement, processingEnv);
                 if (commandModel != null) {
@@ -433,6 +438,20 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             return "instance";
         }
         return "this." + getSubcommandFieldName(classModel);
+    }
+
+    /**
+     * Returns the instance expression for calling a resolver method.
+     * When the resolver is on an outer class (not in the command tree),
+     * returns null to indicate the resolver cannot be called from this wrapper.
+     */
+    public String getResolverInstanceExpr(ExecutableElement resolver, CommandModel classModel, CommandModel rootModel) {
+        TypeElement resolverClass = (TypeElement) resolver.getEnclosingElement();
+        CommandModel resolverModel = findModelForClass(rootModel, resolverClass);
+        if (resolverModel != null) {
+            return getInstanceVarExpression(resolverModel, rootModel);
+        }
+        return null;
     }
 
     protected String getParameterSuggestionMethodName(CommandModel classModel, MethodModel method, int index) {
@@ -764,12 +783,20 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     protected void buildSenderResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
         ExecutableElement senderResolver = findLocalResolver(classModel, senderParam, rootModel);
         if (senderResolver != null) {
-            TypeElement resolverClass = (TypeElement) senderResolver.getEnclosingElement();
-            CommandModel resolverModel = findModelForClass(rootModel, resolverClass);
-            if (resolverModel == null) resolverModel = rootModel;
-            String resolverInstanceExpr = getInstanceVarExpression(resolverModel, rootModel);
-            String resolveExpr = generateLocalResolverInvocation(senderResolver, resolverInstanceExpr, "sender", "new String[0]", "sender");
-            methodSpec.addStatement("$T $L = ($T) $L", senderParamTypeName, senderVarName, senderParamTypeName, resolveExpr);
+            String resolverInstanceExpr = getResolverInstanceExpr(senderResolver, classModel, rootModel);
+            if (resolverInstanceExpr == null) {
+                // Resolver is on an outer class not accessible from this wrapper.
+                // Generate a cast from the sender parameter.
+                if (!isSenderBaseType(senderParamTypeName)) {
+                    String castMethodName = "as" + getSimpleName(senderParamTypeName);
+                    methodSpec.addStatement("$T $L = $L(sender)", senderParamTypeName, senderVarName, castMethodName);
+                } else {
+                    methodSpec.addStatement("$T $L = sender", getSenderTypeName(), senderVarName);
+                }
+            } else {
+                String resolveExpr = generateLocalResolverInvocation(senderResolver, resolverInstanceExpr, "sender", "new String[0]", "sender");
+                methodSpec.addStatement("$T $L = ($T) $L", senderParamTypeName, senderVarName, senderParamTypeName, resolveExpr);
+            }
         } else if (!senderVarName.equals("sender")) {
             // Only generate assignment when we need a separate variable
             if (!isSenderBaseType(senderParamTypeName)) {
@@ -848,10 +875,16 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
 
         // Invoke Local Resolver
-        TypeElement resolverClass = (TypeElement) localResolver.getEnclosingElement();
-        CommandModel resolverModel = findModelForClass(rootModel, resolverClass);
-        if (resolverModel == null) resolverModel = rootModel;
-        String resolverInstanceExpr = getInstanceVarExpression(resolverModel, rootModel);
+        String resolverInstanceExpr = getResolverInstanceExpr(localResolver, classModel, rootModel);
+
+        if (resolverInstanceExpr == null) {
+            // Resolver is on an outer class not accessible from this wrapper.
+            // This wrapper is not used at runtime (root wrapper handles routing),
+            // so generate a null placeholder to satisfy the compiler.
+            methodSpec.addStatement("$T $L = null", pTypeName, varName)
+                    .addStatement("$L += actualWidth_$L", argIdxVar, i);
+            return;
+        }
 
         CodeBlock.Builder resolveCallBuilder = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
         if (firstParamIsSender(localResolver)) {

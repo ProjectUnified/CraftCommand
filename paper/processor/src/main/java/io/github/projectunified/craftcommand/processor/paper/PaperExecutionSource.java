@@ -67,40 +67,43 @@ public class PaperExecutionSource implements ExecutionSource {
 
         if (parsedSegments.isEmpty()) {
             if (localResolver != null) {
-                List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
-                int resolverStartIndex = processor.firstParamIsSender(localResolver) ? 1 : 0;
-                List<String> resolverArgNames = new ArrayList<>();
-                for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
-                    javax.lang.model.element.VariableElement rp = resolverParams.get(j);
-                    TypeName rpTypeName = TypeName.get(rp.asType());
-                    String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
-                    resolverArgNames.add(rpVarName);
-                    Default defaultAnn = rp.getAnnotation(Default.class);
-                    boolean isOptional = defaultAnn != null;
-                    String defaultValue = (isOptional && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
-                    methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
-                    if (defaultValue != null && !defaultValue.isEmpty()) {
-                        methodSpec.addStatement("$L = $L", rpVarName, processor.getAssignmentValueForType(rpTypeName, defaultValue));
-                    } else {
-                        methodSpec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(rp.asType()) : "null");
+                String resolverInstanceExpr = processor.getResolverInstanceExpr(localResolver, classModel, rootModel);
+                if (resolverInstanceExpr == null) {
+                    // Resolver is on an outer class not accessible from this wrapper.
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, pmTypeName.isPrimitive() ? "false" : "null");
+                } else {
+                    List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
+                    int resolverStartIndex = processor.firstParamIsSender(localResolver) ? 1 : 0;
+                    List<String> resolverArgNames = new ArrayList<>();
+                    for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
+                        javax.lang.model.element.VariableElement rp = resolverParams.get(j);
+                        TypeName rpTypeName = TypeName.get(rp.asType());
+                        String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
+                        resolverArgNames.add(rpVarName);
+                        Default defaultAnn = rp.getAnnotation(Default.class);
+                        boolean isOptional = defaultAnn != null;
+                        String defaultValue = (isOptional && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
+                        methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
+                        if (defaultValue != null && !defaultValue.isEmpty()) {
+                            methodSpec.addStatement("$L = $L", rpVarName, processor.getAssignmentValueForType(rpTypeName, defaultValue));
+                        } else {
+                            methodSpec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(rp.asType()) : "null");
+                        }
                     }
-                }
-                CommandModel resolverModel = processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement());
-                if (resolverModel == null) resolverModel = rootModel;
-                String resolverInstanceExpr = processor.getInstanceVarExpression(resolverModel, rootModel);
-                CodeBlock.Builder resolveCallBuilder1 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
-                if (resolverStartIndex == 1) {
-                    resolveCallBuilder1.add("$L", senderVarName);
-                    if (!resolverArgNames.isEmpty()) {
-                        resolveCallBuilder1.add(", ");
+                    CodeBlock.Builder resolveCallBuilder1 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
+                    if (resolverStartIndex == 1) {
+                        resolveCallBuilder1.add("$L", senderVarName);
+                        if (!resolverArgNames.isEmpty()) {
+                            resolveCallBuilder1.add(", ");
+                        }
                     }
+                    for (int j = 0; j < resolverArgNames.size(); j++) {
+                        if (j > 0) resolveCallBuilder1.add(", ");
+                        resolveCallBuilder1.add("$L", resolverArgNames.get(j));
+                    }
+                    resolveCallBuilder1.add(")");
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCallBuilder1.build());
                 }
-                for (int j = 0; j < resolverArgNames.size(); j++) {
-                    if (j > 0) resolveCallBuilder1.add(", ");
-                    resolveCallBuilder1.add("$L", resolverArgNames.get(j));
-                }
-                resolveCallBuilder1.add(")");
-                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCallBuilder1.build());
             } else if (processor.isBuiltInType(pmTypeName)) {
                 String defVal = pmTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(pm.getType()) : "null";
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
@@ -110,49 +113,52 @@ public class PaperExecutionSource implements ExecutionSource {
             }
         } else {
             if (localResolver != null) {
-                List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
-                int resolverStartIndex = processor.firstParamIsSender(localResolver) ? 1 : 0;
-                List<String> resolverArgNames = new ArrayList<>();
-                for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
-                    javax.lang.model.element.VariableElement rp = resolverParams.get(j);
-                    TypeName rpTypeName = TypeName.get(rp.asType());
-                    String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
-                    resolverArgNames.add(rpVarName);
-                    Default defaultAnn = rp.getAnnotation(Default.class);
-                    boolean isOptional = defaultAnn != null;
-                    String defaultValue = (isOptional && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
-                    methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
-                    CodeBlock retrievalExpr = processor.getArgumentRetrievalExpression(rpTypeName, rp.getSimpleName().toString());
-                    if (isOptional) {
-                        methodSpec.beginControlFlow("try");
-                        methodSpec.addStatement("$L = $L", rpVarName, retrievalExpr);
-                        methodSpec.nextControlFlow("catch ($T e)", IllegalArgumentException.class);
-                        if (defaultValue != null && !defaultValue.isEmpty()) {
-                            methodSpec.addStatement("$L = $L", rpVarName, processor.getAssignmentValueForType(rpTypeName, defaultValue));
+                String resolverInstanceExpr2 = processor.getResolverInstanceExpr(localResolver, classModel, rootModel);
+                if (resolverInstanceExpr2 == null) {
+                    // Resolver is on an outer class not accessible from this wrapper.
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, pmTypeName.isPrimitive() ? "false" : "null");
+                } else {
+                    List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
+                    int resolverStartIndex = processor.firstParamIsSender(localResolver) ? 1 : 0;
+                    List<String> resolverArgNames = new ArrayList<>();
+                    for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
+                        javax.lang.model.element.VariableElement rp = resolverParams.get(j);
+                        TypeName rpTypeName = TypeName.get(rp.asType());
+                        String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
+                        resolverArgNames.add(rpVarName);
+                        Default defaultAnn = rp.getAnnotation(Default.class);
+                        boolean isOptional = defaultAnn != null;
+                        String defaultValue = (isOptional && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
+                        methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
+                        CodeBlock retrievalExpr = processor.getArgumentRetrievalExpression(rpTypeName, rp.getSimpleName().toString());
+                        if (isOptional) {
+                            methodSpec.beginControlFlow("try");
+                            methodSpec.addStatement("$L = $L", rpVarName, retrievalExpr);
+                            methodSpec.nextControlFlow("catch ($T e)", IllegalArgumentException.class);
+                            if (defaultValue != null && !defaultValue.isEmpty()) {
+                                methodSpec.addStatement("$L = $L", rpVarName, processor.getAssignmentValueForType(rpTypeName, defaultValue));
+                            } else {
+                                methodSpec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(rp.asType()) : "null");
+                            }
+                            methodSpec.endControlFlow();
                         } else {
-                            methodSpec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(rp.asType()) : "null");
+                            methodSpec.addStatement("$L = $L", rpVarName, retrievalExpr);
                         }
-                        methodSpec.endControlFlow();
-                    } else {
-                        methodSpec.addStatement("$L = $L", rpVarName, retrievalExpr);
                     }
-                }
-                CommandModel resolverModel2 = processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement());
-                if (resolverModel2 == null) resolverModel2 = rootModel;
-                String resolverInstanceExpr2 = processor.getInstanceVarExpression(resolverModel2, rootModel);
-                CodeBlock.Builder resolveCallBuilder2 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr2, localResolver.getSimpleName());
-                if (resolverStartIndex == 1) {
-                    resolveCallBuilder2.add("$L", senderVarName);
-                    if (!resolverArgNames.isEmpty()) {
-                        resolveCallBuilder2.add(", ");
+                    CodeBlock.Builder resolveCallBuilder2 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr2, localResolver.getSimpleName());
+                    if (resolverStartIndex == 1) {
+                        resolveCallBuilder2.add("$L", senderVarName);
+                        if (!resolverArgNames.isEmpty()) {
+                            resolveCallBuilder2.add(", ");
+                        }
                     }
+                    for (int j = 0; j < resolverArgNames.size(); j++) {
+                        if (j > 0) resolveCallBuilder2.add(", ");
+                        resolveCallBuilder2.add("$L", resolverArgNames.get(j));
+                    }
+                    resolveCallBuilder2.add(")");
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCallBuilder2.build());
                 }
-                for (int j = 0; j < resolverArgNames.size(); j++) {
-                    if (j > 0) resolveCallBuilder2.add(", ");
-                    resolveCallBuilder2.add("$L", resolverArgNames.get(j));
-                }
-                resolveCallBuilder2.add(")");
-                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, resolveCallBuilder2.build());
             } else {
                 if (pm.isGreedy() && !pmTypeName.toString().equals("java.lang.String")) {
                     // Greedy non-String: get string from Brigadier, then parse
