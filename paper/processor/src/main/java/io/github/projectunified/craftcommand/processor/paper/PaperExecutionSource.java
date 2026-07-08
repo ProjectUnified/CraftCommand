@@ -85,7 +85,9 @@ public class PaperExecutionSource implements ExecutionSource {
                         methodSpec.addStatement("$L = $L", rpVarName, rpTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(rp.asType()) : "null");
                     }
                 }
-                String resolverInstanceExpr = processor.getInstanceVarExpression(processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
+                CommandModel resolverModel = processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement());
+                if (resolverModel == null) resolverModel = rootModel;
+                String resolverInstanceExpr = processor.getInstanceVarExpression(resolverModel, rootModel);
                 CodeBlock.Builder resolveCallBuilder1 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
                 if (resolverStartIndex == 1) {
                     resolveCallBuilder1.add("$L", senderVarName);
@@ -135,7 +137,9 @@ public class PaperExecutionSource implements ExecutionSource {
                         methodSpec.addStatement("$L = $L", rpVarName, retrievalExpr);
                     }
                 }
-                String resolverInstanceExpr2 = processor.getInstanceVarExpression(processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement()), rootModel);
+                CommandModel resolverModel2 = processor.findModelForClass(rootModel, (TypeElement) localResolver.getEnclosingElement());
+                if (resolverModel2 == null) resolverModel2 = rootModel;
+                String resolverInstanceExpr2 = processor.getInstanceVarExpression(resolverModel2, rootModel);
                 CodeBlock.Builder resolveCallBuilder2 = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr2, localResolver.getSimpleName());
                 if (resolverStartIndex == 1) {
                     resolveCallBuilder2.add("$L", senderVarName);

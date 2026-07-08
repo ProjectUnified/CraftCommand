@@ -766,6 +766,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (senderResolver != null) {
             TypeElement resolverClass = (TypeElement) senderResolver.getEnclosingElement();
             CommandModel resolverModel = findModelForClass(rootModel, resolverClass);
+            if (resolverModel == null) resolverModel = rootModel;
             String resolverInstanceExpr = getInstanceVarExpression(resolverModel, rootModel);
             String resolveExpr = generateLocalResolverInvocation(senderResolver, resolverInstanceExpr, "sender", "new String[0]", "sender");
             methodSpec.addStatement("$T $L = ($T) $L", senderParamTypeName, senderVarName, senderParamTypeName, resolveExpr);
@@ -849,6 +850,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         // Invoke Local Resolver
         TypeElement resolverClass = (TypeElement) localResolver.getEnclosingElement();
         CommandModel resolverModel = findModelForClass(rootModel, resolverClass);
+        if (resolverModel == null) resolverModel = rootModel;
         String resolverInstanceExpr = getInstanceVarExpression(resolverModel, rootModel);
 
         CodeBlock.Builder resolveCallBuilder = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
