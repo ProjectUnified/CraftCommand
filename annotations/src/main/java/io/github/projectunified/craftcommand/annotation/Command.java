@@ -6,30 +6,27 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation used to define a main command.
- * Apply this to a class to mark it as a command entry point.
+ * Defines a command or subcommand.
+ *
+ * <p>On a class: marks it as the main command entry point.
+ * On a method or nested class: marks it as a subcommand.
  */
-@Target(ElementType.TYPE)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.CLASS)
 public @interface Command {
     /**
-     * The primary name of the command.
-     *
-     * @return the command name
+     * Command or subcommand name.
      */
     String value();
 
     /**
-     * The aliases of the command.
-     *
-     * @return the command aliases
+     * Alternative names for this command.
      */
     String[] aliases() default {};
 
     /**
-     * The description of the command.
-     *
-     * @return the command description
+     * Command description. Prefix with {@code i18n:} for runtime i18n lookup.
+     * e.g. {@code "Static text"} or {@code "i18n:commands.cmd.desc"}.
      */
     String description() default "";
 }

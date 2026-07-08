@@ -6,19 +6,16 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Declares a local resolver method inside a command class, or binds a parameter to one.
- * When placed on a method, it marks it as a resolver.
- * When placed on a parameter, it binds the parameter to a specific resolver by name.
+ * Binds a parameter to a local resolver method, or marks a method as a resolver.
+ *
+ * <p>On a method: declares it as a resolver for its return type.
+ * On a parameter: binds to a resolver by name (value).
  */
 @Target({ElementType.METHOD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.CLASS)
 public @interface Resolve {
     /**
-     * The name of the resolver.
-     * If placed on a method, this specifies an optional name to reference this resolver.
-     * If placed on a parameter, this specifies the name of the resolver method to bind to.
-     *
-     * @return the resolver name
+     * Resolver method name. Optional on methods, required on parameters.
      */
     String value() default "";
 }

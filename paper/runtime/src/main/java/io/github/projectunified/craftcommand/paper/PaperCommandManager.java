@@ -90,18 +90,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
             register((PaperBasicCommand) commandInstance);
         } else {
             try {
-                Object wrapper = null;
-                Class<?> cmdClass = commandInstance.getClass();
-
-                try {
-                    Class<?> wrapperClass = Class.forName(cmdClass.getName() + "_Paper");
-                    wrapper = wrapperClass.getConstructor(cmdClass, CommandManager.class)
-                            .newInstance(commandInstance, this);
-                } catch (ClassNotFoundException ignored) {
-                    Class<?> wrapperClass = Class.forName(cmdClass.getName() + "_PaperBasic");
-                    wrapper = wrapperClass.getConstructor(cmdClass, CommandManager.class)
-                            .newInstance(commandInstance, this);
-                }
+                Object wrapper = instantiate(commandInstance.getClass(), commandInstance);
 
                 if (wrapper instanceof PaperCommand) {
                     if (wrapper instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
@@ -116,9 +105,24 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                 } else {
                     throw new IllegalArgumentException("Wrapper is neither PaperCommand nor PaperBasicCommand: " + wrapper.getClass());
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);
             }
         }
+    }
+
+    private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
+        // Try _Paper first, then _PaperBasic
+        for (String suffix : new String[]{"_Paper", "_PaperBasic"}) {
+            try {
+                Class<?> wrapperClass = Class.forName(commandClass.getName() + suffix);
+                java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
+                        .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
+                return handle.invoke(instance, this);
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        throw new ClassNotFoundException("No generated wrapper for " + commandClass.getName()
+                + " (tried _Paper and _PaperBasic). Is the class annotated with @Command and the processor configured?");
     }
 }

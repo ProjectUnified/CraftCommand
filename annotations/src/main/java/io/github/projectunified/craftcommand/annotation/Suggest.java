@@ -6,16 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Binds a command parameter to a suggestion provider method inside the command class.
- * This method is invoked when tab completing arguments for the parameter.
+ * Binds a parameter to a suggestion provider method in the command class.
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.CLASS)
 public @interface Suggest {
     /**
-     * The name of the suggestion provider method inside the command class.
-     *
-     * @return the suggestion provider method name
+     * Name of the suggestion provider method.
      */
     String value();
 }

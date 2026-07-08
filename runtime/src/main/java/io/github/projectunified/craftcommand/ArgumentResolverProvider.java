@@ -1,18 +1,13 @@
 package io.github.projectunified.craftcommand;
 
 /**
- * A provider for dynamic argument resolvers.
- * Useful for registering resolvers for entire class hierarchies or generic types.
+ * Provides dynamic argument resolvers for types not registered directly.
  *
- * @param <S> the command sender type
+ * @param <S> sender type
  */
 public interface ArgumentResolverProvider<S> {
-
     /**
-     * Gets a resolver for the specified type.
-     *
-     * @param type the type to resolve
-     * @return the argument resolver, or {@code null} if this provider cannot resolve the type
+     * Returns a resolver for the type, or null if not supported.
      */
     ArgumentResolver<S, ?> getResolver(Class<?> type);
 }

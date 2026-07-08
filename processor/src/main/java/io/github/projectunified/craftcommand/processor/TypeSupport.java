@@ -43,22 +43,16 @@ public final class TypeSupport {
         return Entry.builder(type, width);
     }
 
-    /**
-     * Convenience to start building an entry keyed by a wrapper ClassName but storing under a primitive key.
-     */
-    private static Entry.Builder entry(TypeName keyType, ClassName wrapper, int width) {
-        return Entry.builder(keyType, width);
-    }
-
     private static String defaultTo(String d, String fallback) {
         return (d == null || d.isEmpty()) ? fallback : d;
     }
 
     /**
      * Register a platform-specific type entry (e.g. Player, World, Location).
+     * If the type is already registered, the new entry is ignored (idempotent).
      */
     public void register(Entry e) {
-        entries.put(e.type.toString(), e);
+        entries.putIfAbsent(e.type.toString(), e);
     }
 
     /**

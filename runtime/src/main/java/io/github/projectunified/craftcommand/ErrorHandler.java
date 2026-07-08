@@ -1,16 +1,11 @@
 package io.github.projectunified.craftcommand;
 
 /**
- * Handler for exceptions thrown during command execution.
- *
- * @param <S> the command sender type
+ * Handles exceptions thrown during command execution.
  */
 public interface ErrorHandler<S> {
     /**
-     * Handles an exception thrown during command execution.
-     *
-     * @param sender    the sender who executed the command
-     * @param exception the exception that was thrown
+     * Called when a command throws an exception.
      */
     void handle(S sender, Exception exception);
 }

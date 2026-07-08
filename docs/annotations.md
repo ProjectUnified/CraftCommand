@@ -1,95 +1,76 @@
-# Annotation Reference
+# Annotations
 
-CraftCommand uses annotations to model command execution, parameter validation, and user suggestion handling. Here is a complete reference of the available annotations.
+## `@Command`
 
----
+Defines a command or subcommand.
 
-## Command Annotations
+- **On a class:** Main command entry point.
+- **On a method/nested class:** Subcommand.
 
-### `@Command`
-* **Target:** Type (Class)
-* **Description:** Identifies a class as a main command. The processor will generate a wrapper executor for this class.
-* **Attributes:**
-  * `value` (String): The primary name of the command.
-* **Example:**
-  ```java
-  @Command("teleport")
-  public class TeleportCommand { ... }
-  ```
+| Attribute        | Type       | Default  | Description                      |
+|------------------|------------|----------|----------------------------------|
+| `value`          | `String`   | required | Command name                     |
+| `aliases`        | `String[]` | `{}`     | Alternative names                |
+| `description`    | `String`   | `""`     | Static description               |
+| `descriptionKey` | `String`   | `""`     | i18n message key for description |
 
-### `@Subcommand`
-* **Target:** Method, Nested Class
-* **Description:** Identifies a method or nested static class as a subcommand of the parent command.
-* **Attributes:**
-  * `value` (String): The subcommand name.
-* **Example:**
-  ```java
-  @Subcommand("player")
-  public void toPlayer(Player sender, Player target) { ... }
-  ```
+```java
+@Command("teleport")
+@Command(value = "here", aliases = {"h"})  // on method = subcommand
+```
 
-### `@Default`
-* **Target:** Method
-* **Description:** Designates a method as the default subcommand handler. It is executed if no subcommand matching any `@Subcommand` is specified by the user.
-* **Example:**
-  ```java
-  @Default
-  public void execute(Player sender, double x, double y, double z) { ... }
-  ```
+## `@Default`
 
----
+Dual-purpose: marks default method or optional parameter.
 
-## Parameter Annotations
+- **On methods:** Executes when no subcommand matches. `value()` must be empty.
+- **On parameters:** Marks optional with a default value string.
 
-### `@Optional`
-* **Target:** Parameter
-* **Description:** Marks a command parameter as optional. If the user doesn't provide this argument, the specified default value is used.
-* **Attributes:**
-  * `value` (String): The default value string to parse if missing.
-* **Example:**
-  ```java
-  public void heal(Player sender, @Optional("10") int amount) { ... }
-  ```
+```java
+@Default
+public void execute(Player sender, double x, double y, double z) { ... }
 
-### `@Description`
-* **Target:** Type, Method, Parameter
-* **Description:** Provides a human-readable description for commands, subcommands, or individual parameters. This is used when displaying automatically generated help guides.
-* **Attributes:**
-  * `value` (String): The description string.
-* **Example:**
-  ```java
-  @Description("Heals a player's health points")
-  public void heal(Player sender, @Description("Health points to restore") int amount) { ... }
-  ```
+public void heal(Player sender, @Default("10") int amount) { ... }
+```
 
-### `@Alias`
-* **Target:** Type, Method
-* **Description:** Declares aliases (alternative names) for commands or subcommands.
-* **Attributes:**
-  * `value` (String[]): An array of alias strings.
-* **Example:**
-  ```java
-  @Command("teleport")
-  @Alias({"tp", "tele"})
-  public class TeleportCommand { ... }
-  ```
+## `@Resolve`
 
-### `@Condition`
-* **Target:** Parameter
-* **Description:** Attaches validation conditions or restrictions to a parameter (e.g. min/max bounds for numerical parameters).
-* **Attributes:**
-  * `value` (String): The validation condition expression.
-* **Example:**
-  ```java
-  public void heal(Player sender, @Condition("value > 0") int amount) { ... }
-  ```
+Binds a parameter to a local resolver method.
 
-### `@Suggest`
-* **Target:** Parameter
-* **Description:** Attaches a tab-completion suggestion provider to a command parameter.
-* **Attributes:**
-  * `value` (String): The suggestion provider identifier or inline suggestions.
-* **Example:**
-  ```java
-  public void setSpeed(Player sender, @Suggest("1|2|3|4|5") int speed) { ... }
-  ```
+- **On methods:** Declares it as a resolver for its return type.
+- **On parameters:** Binds to a resolver by name.
+
+```java
+@Resolve
+public Location resolveLocation(Player sender, double x, double y, double z) { ... }
+
+public void tp(Player sender, @Resolve("resolveLocation") Location loc) { ... }
+```
+
+## `@Name`
+
+Overrides parameter name in usage/error messages.
+
+```java
+public void heal(Player sender, @Name("amount") int health) { ... }
+// Usage: <amount>
+```
+
+## `@Greedy`
+
+Parameter consumes all remaining arguments. Must be last.
+
+```java
+public void msg(Player sender, @Greedy String message) { ... }
+```
+
+## `@Suggest`
+
+Binds parameter to a suggestion provider method.
+
+```java
+@Suggest("getModes")
+public void setMode(Player sender, String mode) { ... }
+
+public List<String> getModes(Player sender, String[] args, String current) { ... }
+```

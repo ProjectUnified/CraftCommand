@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Comprehensive tests for CalculatorCommand covering all features:
- * - @Default action, @Subcommand methods, nested classes
- * - @Optional with defaults, @Greedy (String and non-String)
+ * - @Default action, @Command methods, nested classes
+ * - @Default with defaults, @Greedy (String and non-String)
  * - @Name parameter override, @Suggest (field and method)
  * - @Resolve (parameter-level, sender-level), @ValidateWith
  * - @Min/@Max validation, enum parameters
@@ -148,7 +148,7 @@ public class CalculatorCommandTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // @Optional Feature
+    // @Default Feature
     // ═══════════════════════════════════════════════════════════════
 
     @Test

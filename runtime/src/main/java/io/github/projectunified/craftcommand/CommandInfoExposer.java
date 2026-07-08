@@ -3,13 +3,11 @@ package io.github.projectunified.craftcommand;
 import java.util.List;
 
 /**
- * Interface implemented by generated command wrappers to expose their command info list.
+ * Implemented by generated wrappers to expose command metadata.
  */
 public interface CommandInfoExposer {
     /**
-     * Gets the list of command information.
-     *
-     * @return the list of command information
+     * Returns the command/subcommand tree info.
      */
     List<CommandInfo> getCommandInfo();
 }

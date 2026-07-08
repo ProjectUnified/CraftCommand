@@ -4,7 +4,7 @@ import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.TypeName;
-import io.github.projectunified.craftcommand.annotation.Optional;
+import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.ExecutionSource;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -75,9 +75,9 @@ public class PaperExecutionSource implements ExecutionSource {
                     TypeName rpTypeName = TypeName.get(rp.asType());
                     String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
                     resolverArgNames.add(rpVarName);
-                    Optional optionalAnn = rp.getAnnotation(Optional.class);
-                    boolean isOptional = optionalAnn != null;
-                    String defaultValue = isOptional ? optionalAnn.value() : null;
+                    Default defaultAnn = rp.getAnnotation(Default.class);
+                    boolean isOptional = defaultAnn != null;
+                    String defaultValue = (isOptional && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
                     methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
                     if (defaultValue != null && !defaultValue.isEmpty()) {
                         methodSpec.addStatement("$L = $L", rpVarName, processor.getAssignmentValueForType(rpTypeName, defaultValue));
@@ -116,9 +116,9 @@ public class PaperExecutionSource implements ExecutionSource {
                     TypeName rpTypeName = TypeName.get(rp.asType());
                     String rpVarName = varName + "_rp_" + (j - resolverStartIndex);
                     resolverArgNames.add(rpVarName);
-                    Optional optionalAnn = rp.getAnnotation(Optional.class);
-                    boolean isOptional = optionalAnn != null;
-                    String defaultValue = isOptional ? optionalAnn.value() : null;
+                    Default defaultAnn = rp.getAnnotation(Default.class);
+                    boolean isOptional = defaultAnn != null;
+                    String defaultValue = (isOptional && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
                     methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
                     CodeBlock retrievalExpr = processor.getArgumentRetrievalExpression(rpTypeName, rp.getSimpleName().toString());
                     if (isOptional) {

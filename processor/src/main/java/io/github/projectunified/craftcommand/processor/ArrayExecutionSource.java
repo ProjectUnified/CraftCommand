@@ -57,7 +57,6 @@ public class ArrayExecutionSource implements ExecutionSource {
             }
         }
         if (staticRequiredCount > 0) {
-            methodSpec.addComment("Verify that there are at least " + staticRequiredCount + " arguments provided to satisfy required parameters");
             methodSpec.beginControlFlow("if ($L.length < $L)", argsVar, staticRequiredCount)
                     .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
                             CommandException.class,
@@ -87,11 +86,10 @@ public class ArrayExecutionSource implements ExecutionSource {
         } else if (processor.isBuiltInType(pTypeName)) {
             processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
         } else {
-            methodSpec.addComment("Parse parameter '" + p.getName() + "' of type " + pTypeName.toString() + " using manager's resolveParameter");
             methodSpec.addStatement("$T $L", pTypeName, varName);
             String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
-            methodSpec.addStatement("$L = manager.resolveParameter(senderCast, $T.class, $L, argIdxHolder, $S, $L, $L)",
-                    varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
+            methodSpec.addStatement("$L = manager.resolveParameter($L, $T.class, $L, argIdxHolder, $S, $L, $L)",
+                    varName, senderVarName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
                     argsVar, p.getName(), p.isOptional(), defValLiteral);
         }
     }

@@ -19,8 +19,9 @@ public @interface Permission {
     String value();
 
     /**
-     * The custom error message to send when the player does not have permission.
-     * If empty, a default message will be used.
+     * The custom error message when permission is denied.
+     * Prefix with {@code i18n:} for runtime i18n lookup.
+     * e.g. {@code "No permission!"} or {@code "i18n:fail.no-permission"}.
      *
      * @return the error message
      */

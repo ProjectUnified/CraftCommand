@@ -43,7 +43,6 @@ public class CommandParser {
         Messager messager = env.getMessager();
 
         Command commandAnn = typeElement.getAnnotation(Command.class);
-        Subcommand classSubcommandAnn = typeElement.getAnnotation(Subcommand.class);
 
         String commandName;
         List<String> aliases;
@@ -53,9 +52,6 @@ public class CommandParser {
             commandName = commandAnn.value();
             aliases = Arrays.asList(commandAnn.aliases());
             description = commandAnn.description();
-        } else if (classSubcommandAnn != null) {
-            commandName = classSubcommandAnn.value();
-            aliases = Arrays.asList(classSubcommandAnn.aliases());
         } else {
             return null;
         }
@@ -71,14 +67,22 @@ public class CommandParser {
             if (enclosed instanceof ExecutableElement) {
                 ExecutableElement method = (ExecutableElement) enclosed;
                 Default defaultAnn = method.getAnnotation(Default.class);
-                Subcommand subcommandAnn = method.getAnnotation(Subcommand.class);
+                Command methodCommandAnn = method.getAnnotation(Command.class);
 
-                if (defaultAnn != null && subcommandAnn != null) {
-                    messager.printMessage(Diagnostic.Kind.ERROR, "A method cannot be annotated with both @Default and @Subcommand", method);
+                // @Command on method = subcommand method
+                boolean isSubcommandMethod = methodCommandAnn != null;
+
+                if (defaultAnn != null && isSubcommandMethod) {
+                    messager.printMessage(Diagnostic.Kind.ERROR, "A method cannot be annotated with both @Default and @Command", method);
                     continue;
                 }
 
-                if (defaultAnn == null && subcommandAnn == null) {
+                if (defaultAnn != null && !defaultAnn.value().isEmpty()) {
+                    messager.printMessage(Diagnostic.Kind.WARNING,
+                            "@Default(value) on a method is ignored. Use @Default (no value) on methods, or @Default(value) on parameters.", method);
+                }
+
+                if (defaultAnn == null && !isSubcommandMethod) {
                     continue;
                 }
 
@@ -109,15 +113,15 @@ public class CommandParser {
 
                 for (int i = 1; i < parameters.size(); i++) {
                     VariableElement param = parameters.get(i);
-                    Optional optionalAnn = param.getAnnotation(Optional.class);
+                    Default paramDefaultAnn = param.getAnnotation(Default.class);
                     Greedy greedyAnn = param.getAnnotation(Greedy.class);
                     Name nameAnn = param.getAnnotation(Name.class);
                     Suggest suggestAnn = param.getAnnotation(Suggest.class);
 
                     String paramName = nameAnn != null ? nameAnn.value() : param.getSimpleName().toString();
                     TypeMirror paramType = param.asType();
-                    boolean isOptional = optionalAnn != null;
-                    String defaultValue = isOptional ? optionalAnn.value() : null;
+                    boolean isOptional = paramDefaultAnn != null;
+                    String defaultValue = (paramDefaultAnn != null && !paramDefaultAnn.value().isEmpty()) ? paramDefaultAnn.value() : null;
                     boolean isGreedy = greedyAnn != null;
                     String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
 
@@ -141,11 +145,22 @@ public class CommandParser {
                     paramModels.add(new ParameterModel(paramName, paramType, isGreedy, isOptional, defaultValue, suggestProvider, param));
                 }
 
+                // Determine subcommand name, aliases, description from @Command
+                String subName = null;
+                List<String> subAliases = new ArrayList<>();
+                String subDesc = "";
+
+                if (methodCommandAnn != null) {
+                    subName = methodCommandAnn.value();
+                    subAliases = Arrays.asList(methodCommandAnn.aliases());
+                    subDesc = methodCommandAnn.description();
+                }
+
                 MethodModel methodModel = new MethodModel(
                         method.getSimpleName().toString(),
-                        subcommandAnn != null ? subcommandAnn.value() : null,
-                        subcommandAnn != null ? Arrays.asList(subcommandAnn.aliases()) : new ArrayList<>(),
-                        subcommandAnn != null ? subcommandAnn.description() : "",
+                        subName,
+                        subAliases,
+                        subDesc,
                         senderParamModel,
                         paramModels,
                         defaultAnn != null,
@@ -163,7 +178,8 @@ public class CommandParser {
                 }
             } else if (enclosed instanceof TypeElement) {
                 TypeElement innerClass = (TypeElement) enclosed;
-                if (innerClass.getAnnotation(Subcommand.class) != null) {
+                // @Command on nested class = subcommand class
+                if (innerClass.getAnnotation(Command.class) != null) {
                     CommandModel nestedModel = parseClass(innerClass, env);
                     if (nestedModel != null) {
                         nestedSubcommands.add(nestedModel);

@@ -3,7 +3,6 @@ package io.github.projectunified.craftcommand.example.paper;
 import io.github.projectunified.craftcommand.annotation.Command;
 import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Greedy;
-import io.github.projectunified.craftcommand.annotation.Subcommand;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.bukkit.Bukkit;
@@ -18,12 +17,12 @@ public class BroadcastCommand {
         Bukkit.broadcastMessage("[Broadcast] " + message);
     }
 
-    @Subcommand("stack")
+    @Command("stack")
     public void executeStack(CommandSourceStack sender, @Greedy String message) {
         Bukkit.broadcastMessage("[Stack Broadcast] " + message);
     }
 
-    @Subcommand("type")
+    @Command("type")
     public void executeType(CommandSender sender, BroadcastType type, @Greedy String message) {
 
     }

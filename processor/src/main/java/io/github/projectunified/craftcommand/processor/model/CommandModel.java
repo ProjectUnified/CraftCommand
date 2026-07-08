@@ -19,25 +19,12 @@ public class CommandModel {
     private final List<CommandModel> nestedSubcommands;
     private final TypeElement element;
 
-    /**
-     * Constructs a CommandModel.
-     *
-     * @param className         the class name of the command
-     * @param packageName       the package name of the command
-     * @param commandName       the primary name of the command
-     * @param aliases           the command aliases
-     * @param description       the command description
-     * @param defaultMethod     the default action method model, or {@code null}
-     * @param subcommands       the subcommands defined as methods
-     * @param nestedSubcommands the nested subcommand classes
-     * @param element           the underlying TypeElement
-     */
     public CommandModel(ClassName className, String packageName, String commandName, List<String> aliases, String description, MethodModel defaultMethod, List<MethodModel> subcommands, List<CommandModel> nestedSubcommands, TypeElement element) {
         this.className = className;
         this.packageName = packageName;
         this.commandName = commandName;
         this.aliases = aliases;
-        this.description = description;
+        this.description = description != null ? description : "";
         this.defaultMethod = defaultMethod;
         this.subcommands = subcommands;
         this.nestedSubcommands = nestedSubcommands;

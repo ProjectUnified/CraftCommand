@@ -2,10 +2,12 @@ package io.github.projectunified.craftcommand.processor;
 
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.annotation.Command;
-import io.github.projectunified.craftcommand.annotation.Optional;
+import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.exception.CommandException;
+import io.github.projectunified.craftcommand.processor.extension.CommandValidator;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
+import io.github.projectunified.craftcommand.processor.extension.SuggestionProvider;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
@@ -36,6 +38,16 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      * Handlers for method-level execution and extension annotations loaded via SPI.
      */
     private final List<MethodAnnotationHandler<?>> methodHandlers = new ArrayList<>();
+
+    /**
+     * Global suggestion providers loaded via SPI.
+     */
+    private final List<SuggestionProvider> suggestionProviders = new ArrayList<>();
+
+    /**
+     * Command validators loaded via SPI.
+     */
+    private final List<CommandValidator<?>> commandValidators = new ArrayList<>();
     /**
      * Registry of built-in and platform parameter types. Replaces the four
      * scattered {@code if (name.equals("int") ...)} chains. Platforms register
@@ -123,17 +135,45 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         super.init(processingEnv);
         this.resolverLookup = new ResolverLookup(processingEnv);
         loadExtensions();
+        registerTypes(typeSupport);
     }
 
     /**
-     * Loads validation and execution processor extension handlers via SPI.
+     * Loads processor extension handlers via SPI.
      */
     private void loadExtensions() {
         parameterHandlers.clear();
         methodHandlers.clear();
+        suggestionProviders.clear();
+        commandValidators.clear();
         ClassLoader cl = getClass().getClassLoader();
         parameterHandlers.addAll(SpiLoader.loadParameterHandlers(cl));
         methodHandlers.addAll(SpiLoader.loadMethodHandlers(cl));
+        suggestionProviders.addAll(SpiLoader.loadSuggestionProviders(cl));
+        commandValidators.addAll(SpiLoader.loadCommandValidators(cl));
+    }
+
+    /**
+     * Override this method to register platform-specific types into {@link TypeSupport}.
+     * Called during {@link #init} after SPI extensions are loaded.
+     *
+     * <p>Example (Bukkit):
+     * <pre>{@code
+     * @Override
+     * protected void registerTypes(TypeSupport types) {
+     *     types.register(TypeSupport.Entry.builder(playerClass, 1)
+     *         .primitiveDefault("null")
+     *         .literal(d -> CodeBlock.of("null"))
+     *         .platformResolution((spec, p) -> spec.addStatement("$L = getPlayer($L)", p[0], p[1]))
+     *         .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
+     *         .build());
+     * }
+     * }</pre>
+     *
+     * @param types the type support registry to populate
+     */
+    protected void registerTypes(TypeSupport types) {
+        // Default: no-op. Platforms override to register their types.
     }
 
     /**
@@ -144,23 +184,12 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     protected abstract String getWrapperClassSuffix();
 
     /**
-     * Configures the super interfaces/classes that the generated wrapper should implement/extend.
-     *
-     * @param typeSpec the class definition builder
-     */
-    protected abstract void configureSuperType(TypeSpec.Builder typeSpec);
-
-    /**
-     * Returns the platform command interface/superclass that the wrapper implements/extends
-     * (e.g. {@code PaperCommand}, {@code StandaloneCommand}, {@code org.bukkit.command.Command}).
-     * Used as the return type of the generated {@code factory(...)} method.
+     * Returns the platform command interface/superclass that the wrapper implements/extends.
      */
     protected abstract TypeName getCommandInterfaceType();
 
-    // ── Platform-Specific Execution Hooks ──
-
     /**
-     * Returns the platform-specific command sender type name (e.g. Bukkit CommandSender or Object).
+     * Returns the platform-specific command sender type name.
      */
     protected abstract ClassName getSenderTypeName();
 
@@ -169,30 +198,62 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
      */
     protected abstract TypeName getManagerType();
 
-    /**
-     * Generates platform-specific main wrapper entry methods (e.g. onCommand or execute).
-     */
-    protected abstract void buildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement);
+    // ── Template Anchors ──
 
     /**
-     * Configures the constructor for platform-specific statements (e.g., registering command).
+     * Phase 1: Configure the class declaration (superclass, interfaces).
      */
-    protected void configureConstructor(MethodSpec.Builder constructorBuilder, CommandModel model) {
-        // Default: no-op
+    protected void anchorConfigureType(TypeSpec.Builder typeSpec) {
     }
 
-    // ── Platform-Specific Suggestion Hooks ──
+    /**
+     * Phase 2: Add additional fields after instance and manager.
+     */
+    protected void anchorAdditionalFields(TypeSpec.Builder typeSpec, CommandModel model) {
+    }
 
     /**
-     * Hook run prior to execution routing of a subcommand or command method.
+     * Phase 3 (top): Add platform-specific constructor statements at the beginning.
+     * Called before this.instance/this.manager assignments.
      */
+    protected void anchorConstructorTop(MethodSpec.Builder constructorBuilder, CommandModel model) {
+    }
+
+    /**
+     * Phase 3 (bottom): Add platform-specific constructor statements at the end.
+     * Called after nested subcommand instantiation.
+     */
+    protected void anchorConstructorBottom(MethodSpec.Builder constructorBuilder, CommandModel model) {
+    }
+
+    /**
+     * Phase 4: Generate platform-specific entry methods (execute, tabComplete, getCommandNode, etc.).
+     */
+    protected void anchorBuildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
+    }
+
+    /**
+     * Phase 5: Add additional helper methods. Default generates suggestBoolean and sender-cast helpers.
+     */
+    protected void anchorAdditionalHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
+        buildAdditionalHelpers(typeSpec, model);
+    }
+
+    /**
+     * Phase 7: Add extra methods after CommandInfoExposer (Brigadier tree, etc.).
+     */
+    protected void anchorExtraMethods(TypeSpec.Builder typeSpec, CommandModel model) {
+    }
+
+    // ── Execution Hooks ──
+
+    protected ExecutionSource createExecutionSource(String argsVar, boolean hasDynamic, String argIdxVar) {
+        return new ArrayExecutionSource(this, argsVar, hasDynamic, argIdxVar);
+    }
+
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
-        // Default: no-op
     }
 
-    /**
-     * Generates statements to handle cases where an unknown subcommand is typed.
-     */
     protected void generateUnknownSubcommandMessage(MethodSpec.Builder methodSpec, CommandModel model) {
         methodSpec.addStatement("System.out.println($S)", "Unknown subcommand. Available: " + getSubcommandNames(model));
     }
@@ -225,7 +286,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     protected void generateDefaultSenderCastForSuggestion(MethodSpec.Builder methodSpec) {
         TypeName senderType = getSenderTypeName();
         if (senderType.toString().equals("java.lang.Object")) {
-            methodSpec.addStatement("$T senderCast = sender", senderType);
+            // Object sender: no cast needed, skip senderCast entirely
+            return;
         } else {
             methodSpec.addStatement("$T senderCast = ($T) sender", senderType, senderType);
         }
@@ -248,7 +310,12 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                         // Generate Java wrapper class using JavaPoet
                         buildWrapperClass(commandModel, typeElement);
                     } catch (IOException e) {
-                        processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Failed to generate wrapper: " + e.getMessage(), typeElement);
+                        // FilerException (extends IOException) is thrown when another
+                        // processor already generated the same file -- skip silently
+                        if (!e.getClass().getName().contains("FilerException")) {
+                            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                                    "Failed to generate wrapper: " + e.getMessage(), typeElement);
+                        }
                     }
                 }
             }
@@ -257,31 +324,31 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     /**
-     * Generates the wrapper class for the command model using JavaPoet.
-     * Setting up fields, constructor, entry routing methods, sub-executors, and custom resolvers.
+     * Generates the wrapper class using the template flow with anchor injection points.
      */
     protected void buildWrapperClass(CommandModel model, TypeElement typeElement) throws IOException {
         String wrapperClassName = model.getClassName().simpleName() + getWrapperClassSuffix();
         TypeName genericCommandManager = getManagerType();
 
-        // 1. Define class wrapper definition
+        // Phase 1: Class declaration
         TypeSpec.Builder typeSpec = TypeSpec.classBuilder(wrapperClassName)
                 .addJavadoc("Command wrapper class for {@link $T}.\n"
                         + "Generated automatically by the annotation processor.\n"
                         + "Do not modify this class directly.\n", model.getClassName())
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
-        configureSuperType(typeSpec);
+        anchorConfigureType(typeSpec);
         typeSpec.addSuperinterface(ClassName.get("io.github.projectunified.craftcommand", "CommandInfoExposer"));
 
-        // Fields
+        // Phase 2: Fields
         typeSpec.addField(FieldSpec.builder(model.getClassName(), "instance", Modifier.PRIVATE, Modifier.FINAL)
                 .addJavadoc("The underlying command instance.\n")
                 .build());
         typeSpec.addField(FieldSpec.builder(genericCommandManager, "manager", Modifier.PRIVATE, Modifier.FINAL)
                 .addJavadoc("The command manager used to resolve parameters and handle errors.\n")
                 .build());
+        anchorAdditionalFields(typeSpec, model);
 
-        // Constructor Builder
+        // Phase 3: Constructor
         MethodSpec.Builder constructorBuilder = MethodSpec.constructorBuilder()
                 .addJavadoc("Constructs a new command wrapper.\n\n"
                         + "@param instance the command instance\n"
@@ -289,29 +356,26 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 .addModifiers(Modifier.PUBLIC)
                 .addParameter(model.getClassName(), "instance")
                 .addParameter(genericCommandManager, "manager");
-        configureConstructor(constructorBuilder, model);
+        anchorConstructorTop(constructorBuilder, model);
         constructorBuilder.addStatement("this.instance = instance")
                 .addStatement("this.manager = manager");
-
-        // Generate nested subcommands fields and construction statements recursively
         generateFieldsAndConstructorStatements(model, typeSpec, constructorBuilder, "instance");
-
+        anchorConstructorBottom(constructorBuilder, model);
         typeSpec.addMethod(constructorBuilder.build());
 
-        // Platform-specific entry methods (execute/tabComplete or onCommand/onTabComplete)
-        buildEntryMethods(typeSpec, model, typeElement);
+        // Phase 4: Entry methods
+        anchorBuildEntryMethods(typeSpec, model, typeElement);
 
-        // Generate subcommand execution and completion helpers recursively
+        // Phase 5: Shared helpers
         generateSubcommandClassExecutors(typeSpec, model, model);
-
-        // Generate parameter suggestions helpers recursively
         buildParameterSuggestions(typeSpec, model, model);
+        anchorAdditionalHelpers(typeSpec, model);
 
-        // Generate additional shared helper methods (e.g. for boolean suggestions)
-        buildAdditionalHelpers(typeSpec, model);
-
-        // Generate CommandInfoExposer implementation
+        // Phase 6: CommandInfoExposer
         buildCommandInfoExposer(typeSpec, model);
+
+        // Phase 7: Extra methods
+        anchorExtraMethods(typeSpec, model);
 
         JavaFile javaFile = JavaFile.builder(model.getPackageName(), typeSpec.build())
                 .skipJavaLangImports(true)
@@ -461,7 +525,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
         // 3. Route to Default method
         if (model.getDefaultMethod() != null) {
-            onBeforeExecute(methodSpec, model.getDefaultMethod().getElement(), "return");
+            onBeforeExecute(methodSpec, model.getDefaultMethod().getElement(), returnStatement);
             buildMethodExecution(methodSpec, model, model.getDefaultMethod(), argsVar, instanceVar, rootModel);
         } else {
             generateUnknownSubcommandMessage(methodSpec, model);
@@ -523,7 +587,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         List<? extends VariableElement> params = resolverMethod.getParameters();
         int startIndex = firstParamIsSender(resolverMethod) ? 1 : 0;
         for (int i = startIndex; i < params.size(); i++) {
-            if (params.get(i).getAnnotation(Optional.class) == null) {
+            if (params.get(i).getAnnotation(Default.class) == null) {
                 minWidth++;
             }
         }
@@ -555,7 +619,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         } else if (isBuiltInType(typeName)) {
             TypeSupport.Entry e = typeSupport.get(typeName);
             if (e != null && e.parse != null) {
-                resolveParameter(methodSpec, typeName, varName, argStrVar);
+                resolveParameterForType(methodSpec, typeName, varName, argStrVar);
             } else if (e != null && e.platformResolution != null) {
                 resolvePlatformParameter(methodSpec, typeName, varName, argStrVar);
             } else {
@@ -607,7 +671,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     methodSpec.addStatement("$L = $L", varName, getAssignmentValueForType(typeName, defaultValue));
                 } else {
                     methodSpec.addStatement("$T tempDefault = $S", String.class, defaultValue);
-                    resolveParameter(methodSpec, typeName, varName, "tempDefault");
+                    resolveParameterForType(methodSpec, typeName, varName, "tempDefault");
                 }
             }
         } else {
@@ -640,7 +704,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
         String argIdxVar = hasDynamic ? "argIdxHolder[0]" : "argIdx";
 
-        ArrayExecutionSource source = new ArrayExecutionSource(this, argsVar, hasDynamic, argIdxVar);
+        ExecutionSource source = createExecutionSource(argsVar, hasDynamic, argIdxVar);
         buildMethodExecution(methodSpec, classModel, method, instanceVar, rootModel, source);
     }
 
@@ -649,12 +713,21 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         // 1. Resolve and Cast the Sender Parameter (index 0)
         ParameterModel senderParam = method.getSenderParameter();
         TypeName senderParamTypeName = TypeName.get(senderParam.getType());
-        String senderVarName = "senderCast";
+        // Skip redundant assignment when sender param type matches platform sender type
+        String senderVarName = senderParamTypeName.toString().equals(getSenderTypeName().toString()) ? "sender" : "senderCast";
 
         source.generateSenderResolution(methodSpec, classModel, method, rootModel, senderVarName, senderParam, senderParamTypeName);
         runSPIAnnotationHandlers(methodSpec, method, instanceVar, senderVarName, senderParam);
 
-        // 2. Setup execution context / static checks
+        // 2. Run command validators (cooldown, async, etc.) via SPI
+        for (CommandValidator<?> validator : commandValidators) {
+            Annotation ann = method.getElement().getAnnotation(validator.annotationType());
+            if (ann != null) {
+                invokeCommandValidator(validator, ann, method, instanceVar, senderVarName, methodSpec);
+            }
+        }
+
+        // 3. Setup execution context / static checks
         source.generateExecutionSetup(methodSpec, classModel, method, rootModel);
 
         // 3. Resolve and Validate Argument Parameters
@@ -696,7 +769,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             String resolverInstanceExpr = getInstanceVarExpression(resolverModel, rootModel);
             String resolveExpr = generateLocalResolverInvocation(senderResolver, resolverInstanceExpr, "sender", "new String[0]", "sender");
             methodSpec.addStatement("$T $L = ($T) $L", senderParamTypeName, senderVarName, senderParamTypeName, resolveExpr);
-        } else {
+        } else if (!senderVarName.equals("sender")) {
+            // Only generate assignment when we need a separate variable
             if (!isSenderBaseType(senderParamTypeName)) {
                 String castMethodName = "as" + getSimpleName(senderParamTypeName);
                 methodSpec.addStatement("$T $L = $L(sender)", senderParamTypeName, senderVarName, castMethodName);
@@ -704,6 +778,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 methodSpec.addStatement("$T $L = sender", getSenderTypeName(), senderVarName);
             }
         }
+        // When senderVarName == "sender", no assignment needed — use sender directly
     }
 
     private void runSPIAnnotationHandlers(MethodSpec.Builder methodSpec, MethodModel method, String instanceVar, String senderVarName, ParameterModel senderParam) {
@@ -751,9 +826,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             String rpVarName = varName + "_rp_" + resolverArgIdx;
             resolverArgVarNames.add(rpVarName);
 
-            Optional optionalAnn = rp.getAnnotation(Optional.class);
-            boolean isOptional = optionalAnn != null;
-            String defaultValue = isOptional ? optionalAnn.value() : null;
+            Default defaultAnn = rp.getAnnotation(Default.class);
+            boolean isOptional = defaultAnn != null;
+            String defaultValue = (defaultAnn != null && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
 
             methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
             String rpArgStrName = "rpArgStr_" + i + "_" + resolverArgIdx;
@@ -815,7 +890,35 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 methodSpec.addStatement("$T[] $L_raw = $T.copyOfRange($L, $L, $L.length)", String.class, varName, Arrays.class, argsVar, argIdxVar, argsVar);
                 methodSpec.addCode("$T $L = new $L[$L_raw.length];\n", pTypeName, varName, componentType, varName);
                 methodSpec.beginControlFlow("for (int j = 0; j < $L_raw.length; j++)", varName);
-                methodSpec.addStatement("$L[j] = $T.valueOf($L_raw[j])", varName, ClassName.get(packageName, simpleName), varName);
+                if (componentType.equals("int") || componentType.equals("long") || componentType.equals("double") || componentType.equals("float") || componentType.equals("short") || componentType.equals("byte")) {
+                    // Primitive array: use parseXxx to avoid boxing
+                    String parseMethod;
+                    switch (componentType) {
+                        case "int":
+                            parseMethod = "parseInt";
+                            break;
+                        case "long":
+                            parseMethod = "parseLong";
+                            break;
+                        case "double":
+                            parseMethod = "parseDouble";
+                            break;
+                        case "float":
+                            parseMethod = "parseFloat";
+                            break;
+                        case "short":
+                            parseMethod = "parseShort";
+                            break;
+                        case "byte":
+                            parseMethod = "parseByte";
+                            break;
+                        default:
+                            parseMethod = "parseInt";
+                    }
+                    methodSpec.addStatement("$L[j] = $T.$L($L_raw[j])", varName, ClassName.get(packageName, simpleName), parseMethod, varName);
+                } else {
+                    methodSpec.addStatement("$L[j] = $T.valueOf($L_raw[j])", varName, ClassName.get(packageName, simpleName), varName);
+                }
                 methodSpec.endControlFlow();
             } else if (width == 1) {
                 if (p.isGreedy()) {
@@ -826,14 +929,14 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                         // Greedy non-String: join remaining args with spaces, then parse
                         methodSpec.addStatement("$T $L = String.join($S, $T.copyOfRange($L, $L, $L.length))", String.class, "greedy_" + i, " ", Arrays.class, argsVar, argIdxVar, argsVar);
                         methodSpec.addStatement("$T $L", pTypeName, varName);
-                        resolveParameter(methodSpec, pTypeName, varName, "greedy_" + i);
+                        resolveParameterForType(methodSpec, pTypeName, varName, "greedy_" + i);
                     }
                 } else if (pTypeName.toString().equals("java.lang.String")) {
                     methodSpec.addStatement("$T $L = $L[$L++]", pTypeName, varName, argsVar, argIdxVar);
                 } else {
                     methodSpec.addStatement("$T $L", pTypeName, varName);
                     methodSpec.addStatement("String argStr_$L = $L[$L++]", i, argsVar, argIdxVar);
-                    resolveParameter(methodSpec, pTypeName, varName, "argStr_" + i);
+                    resolveParameterForType(methodSpec, pTypeName, varName, "argStr_" + i);
                 }
             } else {
                 methodSpec.addStatement("$T $L", pTypeName, varName);
@@ -854,7 +957,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     if (pTypeName.toString().equals("java.lang.String")) {
                         methodSpec.addStatement("$L = greedy_$L", varName, i);
                     } else {
-                        resolveParameter(methodSpec, pTypeName, varName, "greedy_" + i);
+                        resolveParameterForType(methodSpec, pTypeName, varName, "greedy_" + i);
                     }
                     methodSpec.endControlFlow();
                 } else if (pTypeName.toString().equals("java.lang.String")) {
@@ -866,7 +969,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue());
                     methodSpec.nextControlFlow("else");
                     methodSpec.addStatement("String argStr_$L = $L[$L++]", i, argsVar, argIdxVar);
-                    resolveParameter(methodSpec, pTypeName, varName, "argStr_" + i);
+                    resolveParameterForType(methodSpec, pTypeName, varName, "argStr_" + i);
                     methodSpec.endControlFlow();
                 }
             } else {
@@ -1077,13 +1180,14 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 .addParameter(String.class, "current");
 
         TypeName senderTypeName = TypeName.get(method.getSenderType());
-        if (!isSenderBaseType(senderTypeName)) {
+        String senderCastVar = "sender";
+        // Skip instanceof check and cast when sender param type matches platform sender type
+        if (!senderTypeName.toString().equals(getSenderTypeName().toString())) {
             methodSpec.beginControlFlow("if (!($L instanceof $T))", getSenderExpression("sender"), senderTypeName)
                     .addStatement("return $T.emptyList()", Collections.class)
                     .endControlFlow();
             methodSpec.addStatement("$T senderCast = ($T) $L", senderTypeName, senderTypeName, getSenderExpression("sender"));
-        } else {
-            generateDefaultSenderCastForSuggestion(methodSpec);
+            senderCastVar = "senderCast";
         }
 
         String provider = p.getSuggestProvider();
@@ -1096,11 +1200,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 if (argCount == 0) {
                     methodSpec.addStatement("return $T.filterSuggestions($L.$L(), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
                 } else if (argCount == 1) {
-                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(senderCast), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L($L), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar);
                 } else if (argCount == 2) {
-                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(senderCast, current), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, current), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar);
                 } else if (argCount == 3) {
-                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(senderCast, args, current), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, args, current), current)", ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar);
                 } else {
                     processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Invalid signature for suggest method: " + provider + ". Must accept 0-3 parameters matching (sender, args, current).", suggestMethod);
                     methodSpec.addStatement("return $T.emptyList()", Collections.class);
@@ -1121,11 +1225,23 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     ParameterModel prev = method.getParameters().get(j);
                     tempIdx += getBuiltInWidth(TypeName.get(prev.getType()));
                 }
-                generatePlatformParamSuggestions(methodSpec, pTypeName, "senderCast", "args", "current", tempIdx);
+                generatePlatformParamSuggestions(methodSpec, pTypeName, senderCastVar, "args", "current", tempIdx);
             } else if (isBuiltInType(pTypeName)) {
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
             } else {
-                methodSpec.addStatement("return manager.getResolver($T.class).suggest(($T) sender, args, current)", pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, getSenderTypeName());
+                // Check global suggestion providers via SPI
+                SuggestionProvider globalProvider = findSuggestionProvider(pTypeName);
+                if (globalProvider != null) {
+                    methodSpec.addStatement("return $T.filterSuggestions($L, current)",
+                            ClassName.get("io.github.projectunified.craftcommand", "CommandManager"),
+                            globalProvider.suggest(pTypeName, senderCastVar, "args", "current"));
+                } else {
+                    if (getSenderTypeName().toString().equals("java.lang.Object")) {
+                        methodSpec.addStatement("return manager.getResolver($T.class).suggest(sender, args, current)", pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
+                    } else {
+                        methodSpec.addStatement("return manager.getResolver($T.class).suggest(($T) sender, args, current)", pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, getSenderTypeName());
+                    }
+                }
             }
         }
 
@@ -1135,7 +1251,30 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     // ── Basic Utility Helpers ──
 
     public ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p, CommandModel rootModel) {
-        return resolverLookup.findLocalResolver(classModel, p);
+        ExecutableElement resolver = resolverLookup.findLocalResolver(classModel, p);
+        if (resolver != null) {
+            validateResolverSenderType(resolver, p);
+        }
+        return resolver;
+    }
+
+    /**
+     * Warns if a resolver method's first parameter type doesn't match the platform sender base type.
+     */
+    private void validateResolverSenderType(ExecutableElement resolver, ParameterModel p) {
+        if (resolver.getParameters().isEmpty()) return;
+        javax.lang.model.element.VariableElement firstParam = resolver.getParameters().get(0);
+        TypeName firstParamType = TypeName.get(firstParam.asType());
+        if (!isSenderType(firstParamType)) {
+            processingEnv.getMessager().printMessage(
+                    javax.tools.Diagnostic.Kind.WARNING,
+                    "Resolver method '" + resolver.getSimpleName() + "' first parameter type '"
+                            + firstParamType + "' is not a recognized sender type. "
+                            + "The generated code will pass the platform sender (e.g. CommandSender), "
+                            + "not a specific subtype like Player. Consider using the base sender type.",
+                    resolver
+            );
+        }
     }
 
     protected String generateLocalResolverInvocation(ExecutableElement resolverMethod, String instanceExpr, String senderVar, String argsVar, String currentVar) {
@@ -1176,6 +1315,17 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         handler.handle((A) annotation, method, instanceExpr, senderVar, methodSpec);
     }
 
+    @SuppressWarnings("unchecked")
+    private <A extends Annotation> void invokeCommandValidator(
+            CommandValidator<A> validator,
+            Annotation annotation,
+            MethodModel method,
+            String instanceExpr,
+            String senderVar,
+            MethodSpec.Builder methodSpec) {
+        validator.wrap((A) annotation, method, instanceExpr, senderVar, methodSpec);
+    }
+
     protected ExecutableElement findSuggestMethod(TypeElement typeElement, String name) {
         return resolverLookup.findMethod(typeElement, name);
     }
@@ -1192,20 +1342,24 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return typeSupport.isBuiltIn(typeName);
     }
 
+    /**
+     * Finds a global suggestion provider for the given type via SPI.
+     */
+    protected SuggestionProvider findSuggestionProvider(TypeName typeName) {
+        String typeNameStr = typeName.toString();
+        for (SuggestionProvider provider : suggestionProviders) {
+            if (provider.supportedTypes().contains(typeNameStr)) {
+                return provider;
+            }
+        }
+        return null;
+    }
+
     protected int getBuiltInWidth(TypeName typeName) {
         int w = typeSupport.getWidth(typeName);
         if (w != 1) return w;
         int pw = typeSupport.getPlatformWidth(typeName);
         return pw > 0 ? pw : w;
-    }
-
-    private void resolveParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argStrVar) {
-        TypeSupport.Entry e = typeSupport.get(typeName);
-        if (e != null && e.parse != null) {
-            typeSupport.emitParse(methodSpec, typeName, varName, argStrVar);
-        } else if (e != null && e.platformResolution != null) {
-            typeSupport.emitPlatformResolution(methodSpec, typeName, varName, argStrVar);
-        }
     }
 
     private void resolveMultiParameter(MethodSpec.Builder methodSpec, TypeName typeName, String varName, String argsVar, String argIdxVar, String senderVar, int i) {
@@ -1234,58 +1388,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         typeSupport.emitPlatformSuggestions(methodSpec, typeName, senderCastVar, argsVar, currentVar, String.valueOf(tempIdx));
     }
 
-    /**
-     * Constructs a unique, valid Java helper method name for resolving a given type.
-     * Combines nested simple class names to ensure readability (e.g. TestCommand_TestEnum).
-     *
-     * @param typeName the parameter type name
-     * @return the resolver method name starting with "resolve_"
-     */
-    public String getResolverMethodName(TypeName typeName) {
-        return Naming.resolverMethod(typeName);
-    }
-
-    /**
-     * Recursively retrieves all unique custom parameter types requiring dynamic/global resolvers
-     * across the entire command hierarchy (main class, nested subcommand classes, and methods).
-     *
-     * @param model the command model
-     * @return a set of unique TypeNames for the dynamic resolvers
-     */
-    protected Set<TypeName> getDynamicResolverTypes(CommandModel model) {
-        Set<TypeName> types = new LinkedHashSet<>();
-        collectDynamicResolverTypes(model, types);
-        return types;
-    }
-
-    /**
-     * Recursively traverses subcommands and nested command trees to collect types requiring global resolvers.
-     */
-    private void collectDynamicResolverTypes(CommandModel model, Set<TypeName> types) {
-        if (model.getDefaultMethod() != null) {
-            collectDynamicResolverTypes(model, model.getDefaultMethod(), types);
-        }
-        for (MethodModel sub : model.getSubcommands()) {
-            collectDynamicResolverTypes(model, sub, types);
-        }
-        for (CommandModel child : model.getNestedSubcommands()) {
-            collectDynamicResolverTypes(child, types);
-        }
-    }
-
-    /**
-     * Evaluates parameters of a specific command method and adds any non-built-in types that
-     * do not have a local @Resolve method.
-     */
-    private void collectDynamicResolverTypes(CommandModel classModel, MethodModel method, Set<TypeName> types) {
-        for (ParameterModel p : method.getParameters()) {
-            TypeName pTypeName = TypeName.get(p.getType());
-            if (findLocalResolver(classModel, p, classModel) == null && !isBuiltInType(pTypeName)) {
-                types.add(pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
-            }
-        }
-    }
-
     protected CodeBlock getSenderExpression(String senderVar) {
         return CodeBlock.of("$L", senderVar);
     }
@@ -1311,6 +1413,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
 
         for (TypeName type : getSenderTypesToCast(model)) {
+            // Skip cast helper when sender type IS the target type (e.g. Object sender)
+            if (type.toString().equals(getSenderTypeName().toString())) continue;
             String methodName = "as" + getSimpleName(type);
             typeSpec.addMethod(MethodSpec.methodBuilder(methodName)
                     .addJavadoc("Casts the command sender to {@link $T} after verification.\n\n"
@@ -1354,7 +1458,10 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         ParameterModel senderParam = method.getSenderParameter();
         TypeName typeName = TypeName.get(senderParam.getType());
         if (!isSenderBaseType(typeName)) {
-            types.add(typeName);
+            // Skip if sender is resolved via @Resolve — no cast helper needed
+            if (senderParam.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class) == null) {
+                types.add(typeName);
+            }
         }
     }
 
@@ -1387,27 +1494,66 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     private void buildCommandInfoExposer(TypeSpec.Builder typeSpec, CommandModel model) {
         ClassName commandInfoClass = ClassName.get("io.github.projectunified.craftcommand", "CommandInfo");
-        MethodSpec.Builder methodSpec = MethodSpec.methodBuilder("getCommandInfo")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(ParameterizedTypeName.get(ClassName.get(List.class), commandInfoClass))
-                .addStatement("$T<$T> list = new $T<>()", List.class, commandInfoClass, ArrayList.class);
 
-        generateCommandInfoStatements(methodSpec, model, new ArrayList<>(), commandInfoClass);
+        boolean hasI18n = hasDescriptionKey(model);
 
-        methodSpec.addStatement("return list");
-        typeSpec.addMethod(methodSpec.build());
+        if (hasI18n) {
+            MethodSpec.Builder methodSpec = MethodSpec.methodBuilder("getCommandInfo")
+                    .addAnnotation(Override.class)
+                    .addModifiers(Modifier.PUBLIC)
+                    .returns(ParameterizedTypeName.get(ClassName.get(List.class), commandInfoClass))
+                    .addStatement("$T<$T> list = new $T<>()", List.class, commandInfoClass, ArrayList.class);
+            generateCommandInfoStatements(methodSpec, model, new ArrayList<>(), commandInfoClass);
+            methodSpec.addStatement("return list");
+            typeSpec.addMethod(methodSpec.build());
+        } else {
+            typeSpec.addField(FieldSpec.builder(
+                    ParameterizedTypeName.get(ClassName.get(List.class), commandInfoClass),
+                    "COMMAND_INFO",
+                    Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).build());
+
+            CodeBlock.Builder staticBlock = CodeBlock.builder();
+            staticBlock.addStatement("$T<$T> list = new $T<>()", List.class, commandInfoClass, ArrayList.class);
+            generateCommandInfoStatements(null, model, new ArrayList<>(), commandInfoClass, staticBlock);
+            staticBlock.addStatement("COMMAND_INFO = $T.unmodifiableList(list)", Collections.class);
+            typeSpec.addStaticBlock(staticBlock.build());
+
+            typeSpec.addMethod(MethodSpec.methodBuilder("getCommandInfo")
+                    .addAnnotation(Override.class)
+                    .addModifiers(Modifier.PUBLIC)
+                    .returns(ParameterizedTypeName.get(ClassName.get(List.class), commandInfoClass))
+                    .addStatement("return COMMAND_INFO")
+                    .build());
+        }
+    }
+
+    private boolean hasDescriptionKey(CommandModel model) {
+        if (model.getDescription().startsWith("i18n:")) return true;
+        for (MethodModel sub : model.getSubcommands()) {
+            if (sub.getDescription().startsWith("i18n:")) return true;
+        }
+        for (CommandModel child : model.getNestedSubcommands()) {
+            if (hasDescriptionKey(child)) return true;
+        }
+        return false;
     }
 
     private void generateCommandInfoStatements(MethodSpec.Builder methodSpec, CommandModel model, List<String> parentPath, ClassName commandInfoClass) {
+        generateCommandInfoStatements0(model, parentPath, commandInfoClass, (fmt, args) -> methodSpec.addStatement(fmt, args));
+    }
+
+    private void generateCommandInfoStatements(MethodSpec.Builder ignored, CommandModel model, List<String> parentPath, ClassName commandInfoClass, CodeBlock.Builder staticBlock) {
+        generateCommandInfoStatements0(model, parentPath, commandInfoClass, (fmt, args) -> staticBlock.addStatement(fmt, args));
+    }
+
+    private void generateCommandInfoStatements0(CommandModel model, List<String> parentPath, ClassName commandInfoClass, StatementAdder adder) {
         List<String> currentPath = new ArrayList<>(parentPath);
         currentPath.add(model.getCommandName());
 
         if (model.getDefaultMethod() != null) {
             String usage = getUsage(model.getDefaultMethod());
             String desc = model.getDescription();
-            methodSpec.addStatement("list.add(new $T($L, $S, $S))",
-                    commandInfoClass, buildPathExpression(currentPath), usage, desc);
+            addDescription(adder, commandInfoClass, currentPath, usage, desc);
         }
 
         for (MethodModel sub : model.getSubcommands()) {
@@ -1415,12 +1561,22 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             subPath.add(sub.getSubcommandName());
             String usage = getUsage(sub);
             String desc = sub.getDescription();
-            methodSpec.addStatement("list.add(new $T($L, $S, $S))",
-                    commandInfoClass, buildPathExpression(subPath), usage, desc);
+            addDescription(adder, commandInfoClass, subPath, usage, desc);
         }
 
         for (CommandModel child : model.getNestedSubcommands()) {
-            generateCommandInfoStatements(methodSpec, child, currentPath, commandInfoClass);
+            generateCommandInfoStatements0(child, currentPath, commandInfoClass, adder);
+        }
+    }
+
+    private void addDescription(StatementAdder adder, ClassName commandInfoClass, List<String> path, String usage, String desc) {
+        if (desc.startsWith("i18n:")) {
+            String key = desc.substring(5);
+            adder.add("list.add(new $T($L, $S, manager.formatMessage($S, $S)))",
+                    commandInfoClass, buildPathExpression(path), usage, key, desc);
+        } else {
+            adder.add("list.add(new $T($L, $S, $S))",
+                    commandInfoClass, buildPathExpression(path), usage, desc);
         }
     }
 
@@ -1431,5 +1587,10 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             b.add("$S", path.get(i));
         }
         return b.add(")").build();
+    }
+
+    @FunctionalInterface
+    private interface StatementAdder {
+        void add(String fmt, Object... args);
     }
 }

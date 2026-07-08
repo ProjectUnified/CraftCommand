@@ -155,17 +155,21 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
         } else {
             try {
                 Class<?> commandClass = commandInstance.getClass();
-                Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Executor");
-                Command command = (Command) wrapperClass
-                        .getConstructor(commandClass, CommandManager.class)
-                        .newInstance(commandInstance, this);
+                Command command = (Command) instantiate(commandClass, commandInstance);
                 if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
                     registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
                 }
                 register(command);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 throw new IllegalArgumentException("Failed to register Bukkit command: " + commandInstance.getClass().getName(), e);
             }
         }
+    }
+
+    private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Executor");
+        java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
+                .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
+        return handle.invoke(instance, this);
     }
 }

@@ -44,11 +44,4 @@ public class SenderTypeRegistry {
     public boolean isSenderBaseType(TypeName type) {
         return senderBaseTypes.contains(type.toString());
     }
-
-    /**
-     * @return the first registered base sender type, or null
-     */
-    public String getPrimarySenderBaseType() {
-        return senderBaseTypes.isEmpty() ? null : senderBaseTypes.iterator().next();
-    }
 }

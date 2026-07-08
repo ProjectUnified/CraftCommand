@@ -5,9 +5,9 @@ import io.github.projectunified.craftcommand.exception.CommandException;
 import java.util.*;
 
 /**
- * Base command manager responsible for registering argument resolvers and handling errors.
+ * Base command manager. Handles resolver registration, message formatting, and error handling.
  *
- * @param <S> the type of command sender
+ * @param <S> sender type
  */
 public abstract class CommandManager<S> {
     private final Map<Class<?>, ArgumentResolver<S, ?>> resolvers = new HashMap<>();
@@ -15,52 +15,31 @@ public abstract class CommandManager<S> {
     private final Map<Object, CommandInfoExposer> exposers = new java.util.concurrent.ConcurrentHashMap<>();
     private ErrorHandler<S> errorHandler;
 
-    /**
-     * Constructs a CommandManager with the specified error handler.
-     *
-     * @param errorHandler the error handler
-     */
     public CommandManager(ErrorHandler<S> errorHandler) {
         this.errorHandler = errorHandler;
     }
 
     /**
-     * Filters the list of suggestions by checking if they start with the current input (case-insensitive).
-     *
-     * @param suggestions the raw list of suggestions
-     * @param current     the current user input to filter by
-     * @return the filtered list of suggestions
+     * Filters suggestions by prefix (case-insensitive).
      */
     public static List<String> filterSuggestions(List<String> suggestions, String current) {
-        if (suggestions == null) {
-            return Collections.emptyList();
-        }
+        if (suggestions == null) return Collections.emptyList();
         List<String> result = new ArrayList<>();
         String lower = current.toLowerCase();
         for (String s : suggestions) {
-            if (s.toLowerCase().startsWith(lower)) {
-                result.add(s);
-            }
+            if (s.toLowerCase().startsWith(lower)) result.add(s);
         }
         return result;
     }
 
     /**
-     * Registers a command.
-     * Implementations should implement this with their own platform code.
-     *
-     * @param command the command
+     * Registers a command. Platform-specific.
      */
     public abstract void register(Object command);
 
     /**
-     * Formats a message template for a key with the given arguments.
-     * Subclasses can override this method to translate/customize messages based on the key.
-     *
-     * @param key          the message key (e.g. "missing-argument", "validation.min")
-     * @param defaultValue the default template to use
-     * @param args         the arguments to format the template with
-     * @return the formatted message
+     * Formats a message by key. Override for i18n.
+     * Default: {@code String.format(defaultValue, args)}.
      */
     public String formatMessage(String key, String defaultValue, Object... args) {
         try {
@@ -71,47 +50,23 @@ public abstract class CommandManager<S> {
     }
 
     /**
-     * Registers a custom argument resolver for a specific type.
-     *
-     * @param type     the target class type
-     * @param resolver the resolver instance
-     * @param <T>      the type of parameter
+     * Registers a resolver for a specific type.
      */
     public <T> void registerResolver(Class<T> type, ArgumentResolver<S, T> resolver) {
         resolvers.put(type, resolver);
     }
 
     /**
-     * Registers an argument resolver provider for dynamic type resolution.
-     *
-     * @param provider the resolver provider
+     * Registers a dynamic resolver provider.
      */
     public void registerProvider(ArgumentResolverProvider<S> provider) {
         providers.add(provider);
     }
 
     /**
-     * Resolves a command parameter of the given type using the registered argument resolver,
-     * advancing the supplied argument index holder in place based on the resolver's width.
+     * Resolves a parameter, advancing the index holder. Used by generated wrappers.
      *
-     * <p>This centralizes the per-parameter resolution logic so generated command wrappers
-     * can delegate to the manager instead of duplicating resolver lookup, width tracking,
-     * optional/default handling, and missing-argument reporting.
-     *
-     * @param sender       the command sender as observed by the wrapper. Must be an instance of this
-     *                     manager's sender type {@code S}; the wrapper is responsible for passing
-     *                     the platform-native sender (e.g. {@code CommandSourceStack} for Paper),
-     *                     not whatever sender type the user-facing command method declares.
-     * @param type         the target class type to resolve
-     * @param args         the full command arguments array available to the resolver
-     * @param indexHolder  a single-element array holding the current argument index; updated in place
-     * @param paramName    the parameter name used in missing-argument error messages
-     * @param optional     whether the parameter is optional
-     * @param defaultValue the default value string to use when optional and missing
-     * @param <T>          the target parameter type
-     * @return the resolved parameter value, or {@code null} when optional and missing with no default
-     * @throws Exception        if the registered resolver throws during resolution
-     * @throws CommandException when a required parameter has insufficient arguments
+     * @throws CommandException when a required parameter is missing
      */
     public <T> T resolveParameter(S sender, Class<T> type, String[] args,
                                   int[] indexHolder, String paramName, boolean optional, String defaultValue)
@@ -122,15 +77,10 @@ public abstract class CommandManager<S> {
 
         if (argIdx + width > args.length) {
             if (optional) {
-                if (defaultValue == null) {
-                    return null;
-                }
+                if (defaultValue == null) return null;
                 return resolver.resolve(sender, new String[]{defaultValue}, defaultValue);
             }
-            throw new CommandException(formatMessage(
-                    "missing-argument",
-                    "Missing arguments for parameter: %s",
-                    paramName));
+            throw new CommandException(formatMessage("missing-argument", "Missing arguments for parameter: %s", paramName));
         }
 
         T result;
@@ -147,84 +97,48 @@ public abstract class CommandManager<S> {
     }
 
     /**
-     * Gets the registered argument resolver for the given class type.
-     * Supports exact match, class hierarchy (superclass/interface) match, dynamic providers, and a sender fallback.
-     *
-     * @param type the class type
-     * @param <T>  the parameter type
-     * @return the resolver
+     * Gets the resolver for a type. Checks exact match, hierarchy, providers, then sender fallback.
      */
     @SuppressWarnings("unchecked")
     public <T> ArgumentResolver<S, T> getResolver(Class<T> type) {
-        // 1. Exact match
         ArgumentResolver<S, ?> resolver = resolvers.get(type);
-        if (resolver != null) {
-            return (ArgumentResolver<S, T>) resolver;
-        }
+        if (resolver != null) return (ArgumentResolver<S, T>) resolver;
 
-        // 2. Class hierarchy match (interfaces / superclasses)
         for (Map.Entry<Class<?>, ArgumentResolver<S, ?>> entry : resolvers.entrySet()) {
-            if (entry.getKey().isAssignableFrom(type)) {
-                return (ArgumentResolver<S, T>) entry.getValue();
-            }
+            if (entry.getKey().isAssignableFrom(type)) return (ArgumentResolver<S, T>) entry.getValue();
         }
 
-        // 3. Dynamic providers match
         for (ArgumentResolverProvider<S> provider : providers) {
             ArgumentResolver<S, ?> dynamicResolver = provider.getResolver(type);
-            if (dynamicResolver != null) {
-                return (ArgumentResolver<S, T>) dynamicResolver;
-            }
+            if (dynamicResolver != null) return (ArgumentResolver<S, T>) dynamicResolver;
         }
 
-        // 4. Default fallback for sender-assignable types
         return (sender, args, current) -> {
-            if (type.isInstance(sender)) {
-                return type.cast(sender);
-            }
-            throw new IllegalArgumentException("No argument resolver registered for type: " + type.getName() + " and sender is not an instance of it.");
+            if (type.isInstance(sender)) return type.cast(sender);
+            throw new IllegalArgumentException("No resolver for type: " + type.getName());
         };
     }
 
-    /**
-     * Gets the error handler.
-     *
-     * @return the error handler
-     */
     public ErrorHandler<S> getErrorHandler() {
         return errorHandler;
     }
 
-    /**
-     * Sets the error handler.
-     *
-     * @param errorHandler the error handler to set
-     */
     public void setErrorHandler(ErrorHandler<S> errorHandler) {
         this.errorHandler = errorHandler;
     }
 
     /**
-     * Registers a CommandInfoExposer for a command instance.
-     *
-     * @param commandInstance the command instance
-     * @param exposer         the exposer
+     * Stores command metadata for later retrieval via {@link #getCommandInfo(Object)}.
      */
     public void registerExposer(Object commandInstance, CommandInfoExposer exposer) {
         exposers.put(commandInstance, exposer);
     }
 
     /**
-     * Gets the list of command information for the given command instance.
-     *
-     * @param commandInstance the command instance
-     * @return the list of command information, or an empty list if not registered
+     * Gets command metadata, or empty list if not registered.
      */
     public List<CommandInfo> getCommandInfo(Object commandInstance) {
         CommandInfoExposer exposer = exposers.get(commandInstance);
-        if (exposer == null) {
-            return Collections.emptyList();
-        }
-        return exposer.getCommandInfo();
+        return exposer != null ? exposer.getCommandInfo() : Collections.emptyList();
     }
 }

@@ -1,95 +1,76 @@
-# CraftCommand Architecture
+# Architecture
 
 ## Overview
 
-CraftCommand is an annotation-driven command framework for Java servers. A compile-time annotation processor generates platform-specific command wrappers, eliminating runtime reflection and providing type-safe command definitions.
+Compile-time annotation processor generates platform-specific command wrappers. No runtime reflection for command
+execution.
 
 ## Module Layout
 
 ```
 craftcommand/
-├── annotation/           @Command, @Subcommand, @Default, @Resolve annotations
-├── runtime/              CommandManager interface + CommandFactory<S>
+├── annotations/        @Command, @Default, @Resolve, @Greedy, @Suggest, @Name
+├── runtime/            CommandManager, ArgumentResolver, CommandInfo
 ├── bukkit/
-│   ├── runtime/          BukkitCommandManager (CraftBukkit)
-│   └── processor/        BukkitCommandProcessor → *_Executor.java
+│   ├── runtime/        BukkitCommandManager
+│   └── processor/      BukkitCommandProcessor → *_Executor
 ├── paper/
-│   ├── runtime/          PaperCommandManager (Brigadier)
-│   └── processor/        PaperCommandProcessor → *_Paper.java + *_PaperBasic.java
+│   ├── runtime/        PaperCommandManager
+│   └── processor/      PaperCommandProcessor → *_Paper / *_PaperBasic
 ├── standalone/
-│   ├── runtime/          StandaloneCommandManager (no Minecraft)
-│   └── processor/        StandaloneCommandProcessor → *_Standalone.java
-├── validation/           @Required, @Min, @Max annotations + SPI processor
-├── processor/            BaseCommandProcessor + model + extension SPI
-└── examples/             Example commands for each platform
+│   ├── runtime/        StandaloneCommandManager
+│   └── processor/      StandaloneCommandProcessor → *_Standalone
+├── validation/         @Min, @Max, @ValidateWith + SPI processor
+├── processor/          BaseCommandProcessor, model, extension SPI
+└── docs/               This documentation
 ```
 
-## Annotation Processing Pipeline
+## Processing Flow
 
 ```
 @Command class
-    ↓
-BaseCommandProcessor.process()
-    ↓
-Build CommandModel (tree of CommandModel nodes)
-    ↓
-PlatformProcessor.generateWrapper()
-    ↓
-  ┌───────────────────────────────────────────┐
-  │  Platform-independent (BaseCommandProcessor)  │
-  │  • resolve_* parameter resolvers            │
-  │  • filterSuggestions helper                 │
-  │  • Suggestion routing (nested subcommands)  │
-  │  • factory() static method                  │
-  ├───────────────────────────────────────────┤
-  │  Platform-specific                          │
-  │  • Command class/interface                  │
-  │  • Sender casting                           │
-  │  • Permission checks                        │
-  │  • Suggestion providers                     │
-  │  • Execution source (Paper: Brigadier)      │
-  └───────────────────────────────────────────┘
-    ↓
-JavaFile → *.java in build/generated/sources
+  → CommandParser builds CommandModel tree
+  → BaseCommandProcessor generates wrapper via template anchors
+  → Platform processor fills anchors (type setup, entry methods, helpers)
+  → JavaFile written to build/generated/sources
 ```
+
+## Template Anchors
+
+The base processor defines a 7-phase template. Platform processors override anchors:
+
+| Phase | Anchor                        | Purpose                            |
+|-------|-------------------------------|------------------------------------|
+| 1     | `anchorConfigureType`         | Set superclass/interface           |
+| 2     | `anchorAdditionalFields`      | Extra fields                       |
+| 3     | `anchorConstructorTop/Bottom` | Constructor setup                  |
+| 4     | `anchorBuildEntryMethods`     | execute/tabComplete/getCommandNode |
+| 5     | `anchorAdditionalHelpers`     | Platform helper methods            |
+| 7     | `anchorExtraMethods`          | Brigadier tree, etc.               |
 
 ## Runtime Flow
 
-### Registration
-
 ```
-Manager.register(commandInstance)
-  → Class.forName(wrapperName)          // one reflection per class
-  → CommandFactory wraps MethodHandle   // cached forever
-  → factory.create(manager)             // zero reflection
-  → platform-specific registration      // e.g., Bukkit PluginCommand
+manager.register(new MyCommand())
+  → Class.forName(suffix)
+  → MethodHandle instantiation
+  → Platform registration (CommandMap / LifecycleEvents / HashMap)
 ```
-
-### Execution
-
-```
-Platform dispatches to command
-  → Wrapper.execute(args)
-    → resolve sender (instanceof check)
-    → resolve_* methods parse args
-    → call user method
-    → handle exceptions
-```
-
-## Key Design Decisions
-
-1. **Generate, don't reflect** — wrappers are plain Java, no proxy/reflection overhead
-2. **One reflection per class** — `Class.forName` + `MethodHandle` cached in `CommandFactory`
-3. **Platform processors are internal** — their API can break between versions
-4. **SPI for extensions** — `TypeSupport`, `ParameterAnnotationHandler`, `MethodAnnotationHandler`
-5. **Java 8 target** — no records, no var, no switch expressions
 
 ## Extension Points
 
-| SPI Interface | Module | Purpose |
-|---|---|---|
-| `TypeResolver` | processor/extension | Custom type → argument resolver |
-| `ParameterAnnotationHandler` | processor/extension | Run code for annotated parameters |
-| `MethodAnnotationHandler` | processor/extension | Run code for annotated methods |
-| `CommandManager` | runtime | Platform-specific command registration |
-| `CommandFactory<S>` | runtime | Cached MethodHandle wrapper creation |
+| Interface                    | Module        | Purpose                              |
+|------------------------------|---------------|--------------------------------------|
+| `ParameterAnnotationHandler` | processor SPI | Custom parameter annotations         |
+| `MethodAnnotationHandler`    | processor SPI | Custom method annotations            |
+| `SuggestionProvider`         | processor SPI | Global type suggestions              |
+| `CommandValidator`           | processor SPI | Execution wrapping (cooldown, async) |
+| `ArgumentResolver`           | runtime       | Custom type resolution               |
+| `ArgumentResolverProvider`   | runtime       | Dynamic resolver lookup              |
+
+## Design Principles
+
+1. **Generate, not reflect** — wrappers are plain Java
+2. **MethodHandle instantiation** — no constructor reflection at runtime
+3. **Java 8 target** — no records, no var
+4. **SPI for extensions** — third-party annotations and suggestions

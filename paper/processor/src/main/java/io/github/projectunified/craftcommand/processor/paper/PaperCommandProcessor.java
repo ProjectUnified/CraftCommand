@@ -2,8 +2,8 @@ package io.github.projectunified.craftcommand.processor.paper;
 
 import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
+import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Greedy;
-import io.github.projectunified.craftcommand.annotation.Optional;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
@@ -21,9 +21,6 @@ import javax.lang.model.element.TypeElement;
 import java.util.*;
 import java.util.function.Function;
 
-/**
- * Annotation processor for Paper Brigadier platform.
- */
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
@@ -44,14 +41,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     private final Map<String, Function<String, CodeBlock>> brigadierRetrievals = new HashMap<>();
 
     {
-        // Register sender types
         senderTypeRegistry().registerSenderBaseType("io.papermc.paper.command.brigadier.CommandSourceStack");
         senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
         senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
         senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
         senderTypeRegistry().registerSenderType("org.bukkit.command.CommandSender");
 
-        // Register Brigadier types
         ClassName strArgClass = ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType");
         ClassName intArgClass = ClassName.get("com.mojang.brigadier.arguments", "IntegerArgumentType");
         ClassName longArgClass = ClassName.get("com.mojang.brigadier.arguments", "LongArgumentType");
@@ -62,7 +57,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         ClassName worldClass = ClassName.get("org.bukkit", "World");
         ClassName finePositionClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver");
 
-        // JDK types
         brigadierArgTypes.put("java.lang.String", g -> CodeBlock.of("$T.$L()", strArgClass, g ? "greedyString" : "string"));
         brigadierRetrievals.put("java.lang.String", a -> CodeBlock.of("$T.getString(ctx, $S)", strArgClass, a));
         brigadierArgTypes.put("int", g -> CodeBlock.of("$T.integer()", intArgClass));
@@ -86,24 +80,24 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         brigadierRetrievals.put("boolean", a -> CodeBlock.of("$T.getBool(ctx, $S)", boolArgClass, a));
         brigadierRetrievals.put("java.lang.Boolean", a -> CodeBlock.of("$T.getBool(ctx, $S)", boolArgClass, a));
 
-        // Platform types
         brigadierArgTypes.put("org.bukkit.entity.Player", g -> CodeBlock.of("$L.player()", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.entity.Player", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()", a, playerResolverClass));
         brigadierArgTypes.put("org.bukkit.World", g -> CodeBlock.of("$L.world()", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.World", a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, worldClass));
         brigadierArgTypes.put("org.bukkit.Location", g -> CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.Location", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())", a, finePositionClass));
+    }
 
-        // Register platform types in TypeSupport for base processor
+    @Override
+    protected void registerTypes(TypeSupport types) {
         ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
-        ClassName worldClass2 = ClassName.get("org.bukkit", "World");
+        ClassName worldClass = ClassName.get("org.bukkit", "World");
         ClassName locationClass = ClassName.get("org.bukkit", "Location");
-
-        typeSupport().register(TypeSupport.Entry.builder(playerClass, 1)
+        types.register(TypeSupport.Entry.builder(playerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
-        typeSupport().register(TypeSupport.Entry.builder(worldClass2, 1)
+        types.register(TypeSupport.Entry.builder(worldClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
-        typeSupport().register(TypeSupport.Entry.builder(locationClass, 1)
+        types.register(TypeSupport.Entry.builder(locationClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
     }
 
@@ -113,7 +107,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void configureSuperType(TypeSpec.Builder typeSpec) {
+    protected void anchorConfigureType(TypeSpec.Builder typeSpec) {
         typeSpec.addSuperinterface(ClassName.get("io.github.projectunified.craftcommand.paper", "PaperCommand"));
     }
 
@@ -139,42 +133,56 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void buildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
-        // getDescription()
+    protected void anchorBuildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
         typeSpec.addMethod(MethodSpec.methodBuilder("getDescription")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(String.class)
-                .addStatement("return $S", model.getDescription())
-                .build());
-
-        // getAliases()
+                .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC).returns(String.class)
+                .addStatement("return $S", model.getDescription()).build());
         typeSpec.addMethod(MethodSpec.methodBuilder("getAliases")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
+                .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC)
                 .returns(ParameterizedTypeName.get(Collection.class, String.class))
-                .addStatement("return $L", buildAliasesExpression(model))
-                .build());
+                .addStatement("return $L", buildAliasesExpression(model)).build());
+    }
 
+    @Override
+    protected void anchorExtraMethods(TypeSpec.Builder typeSpec, CommandModel model) {
         // getCommandNode()
         MethodSpec.Builder getCommandNodeSpec = MethodSpec.methodBuilder("getCommandNode")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
+                .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC)
                 .returns(ParameterizedTypeName.get(literalCommandNodeClass, commandSourceStackClass));
-
         getCommandNodeSpec.addStatement("$T builder = $T.literal($S)",
                 ParameterizedTypeName.get(literalArgumentBuilderClass, commandSourceStackClass),
-                commandsClass,
-                model.getCommandName());
-
+                commandsClass, model.getCommandName());
         buildBrigadierTree(getCommandNodeSpec, model, "builder", "instance", model);
-
         getCommandNodeSpec.addStatement("return builder.build()");
         typeSpec.addMethod(getCommandNodeSpec.build());
 
-        // Generate generic suggestions helper
+        // getSuggestions helper
         generateSuggestionsHelper(typeSpec);
     }
+
+    @Override
+    protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
+        Permission permission = element.getAnnotation(Permission.class);
+        if (permission != null) {
+            methodSpec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
+            String msg = permission.message();
+            if (!msg.isEmpty() && msg.startsWith("i18n:")) {
+                String key = msg.substring(5);
+                methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
+                        componentClass, key, msg, permission.value(), errorColorClass);
+            } else if (!msg.isEmpty()) {
+                methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text($S, $T.RED))",
+                        componentClass, msg, errorColorClass);
+            } else {
+                methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
+                        componentClass, "permission", "You do not have permission to execute this command.", permission.value(), errorColorClass);
+            }
+            methodSpec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
+            methodSpec.endControlFlow();
+        }
+    }
+
+    // ── Brigadier tree generation (private helpers) ──
 
     private void generateSuggestionsHelper(TypeSpec.Builder typeSpec) {
         ClassName completableFutureClass = ClassName.get("java.util.concurrent", "CompletableFuture");
@@ -215,37 +223,27 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 .endControlFlow()
                 .endControlFlow()
                 .addStatement("return builder.buildFuture()");
-
         typeSpec.addMethod(mb.build());
     }
 
     private void buildBrigadierTree(MethodSpec.Builder spec, CommandModel model, String builderVar, String instanceExpr, CommandModel rootModel) {
-        // 1. Add nested subcommand classes
         for (CommandModel child : model.getNestedSubcommands()) {
             String childInstanceVar = "this." + getSubcommandFieldName(child);
             String childBuilderVar = "subBuilder_" + sanitizeIdentifier(child.getCommandName());
             spec.addStatement("$T $L = $T.literal($S)",
                     ParameterizedTypeName.get(literalArgumentBuilderClass, commandSourceStackClass),
-                    childBuilderVar,
-                    commandsClass,
-                    child.getCommandName());
+                    childBuilderVar, commandsClass, child.getCommandName());
             buildBrigadierTree(spec, child, childBuilderVar, childInstanceVar, rootModel);
             spec.addStatement("$L.then($L)", builderVar, childBuilderVar);
         }
-
-        // 2. Add subcommand methods
         for (MethodModel sub : model.getSubcommands()) {
             String subBuilderVar = "subBuilder_" + sanitizeIdentifier(sub.getSubcommandName());
             spec.addStatement("$T $L = $T.literal($S)",
                     ParameterizedTypeName.get(literalArgumentBuilderClass, commandSourceStackClass),
-                    subBuilderVar,
-                    commandsClass,
-                    sub.getSubcommandName());
+                    subBuilderVar, commandsClass, sub.getSubcommandName());
             buildMethodParametersTree(spec, subBuilderVar, model, sub, instanceExpr, rootModel);
             spec.addStatement("$L.then($L)", builderVar, subBuilderVar);
         }
-
-        // 3. Add default method
         if (model.getDefaultMethod() != null) {
             buildMethodParametersTree(spec, builderVar, model, model.getDefaultMethod(), instanceExpr, rootModel);
         }
@@ -270,7 +268,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     String rpName = rp.getSimpleName().toString();
                     TypeName rpTypeName = TypeName.get(rp.asType());
                     CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp);
-                    boolean rpOptional = rp.getAnnotation(Optional.class) != null;
+                    boolean rpOptional = rp.getAnnotation(Default.class) != null;
                     nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional));
                 }
             } else {
@@ -287,19 +285,14 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 }
             }
         }
-
         buildNodeChainRecursive(spec, parentBuilderVar, classModel, method, instanceExpr, rootModel, nodes, 0);
     }
 
     private int getParameterWidth(CommandModel classModel, ParameterModel param, CommandModel rootModel) {
         ExecutableElement localRes = findLocalResolver(classModel, param, rootModel);
-        if (localRes != null) {
-            return getLocalResolverMaxWidth(localRes);
-        }
+        if (localRes != null) return getLocalResolverMaxWidth(localRes);
         TypeName typeName = TypeName.get(param.getType());
-        if (isPlatformBuiltInType(typeName)) {
-            return getBuiltInWidth(typeName);
-        }
+        if (isPlatformBuiltInType(typeName)) return getBuiltInWidth(typeName);
         return 1;
     }
 
@@ -309,11 +302,8 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             canExecuteHere = true;
         } else if (index > 0 && nodes.get(index - 1).isLastForParameter) {
             ParameterModel nextParam = nodes.get(index).parameter;
-            if (nextParam.isOptional()) {
-                canExecuteHere = true;
-            }
+            if (nextParam.isOptional()) canExecuteHere = true;
         } else if (index > 0 && nodes.get(index).isResolverParamOptional) {
-            // Allow execution here when the next node is an @Optional resolver parameter
             canExecuteHere = true;
         }
 
@@ -328,10 +318,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             String nextBuilderVar = "argBuilder_" + sanitizeIdentifier(method.getMethodName()) + "_" + sanitizeIdentifier(node.nodeName);
             spec.addStatement("$T $L = $T.argument($S, $L)",
                     ParameterizedTypeName.get(requiredArgumentBuilderClass, commandSourceStackClass, WildcardTypeName.subtypeOf(TypeName.get(Object.class))),
-                    nextBuilderVar,
-                    commandsClass,
-                    node.nodeName,
-                    node.typeExpression);
+                    nextBuilderVar, commandsClass, node.nodeName, node.typeExpression);
 
             ParameterModel p = node.parameter;
             boolean needsSuggestions = p.getSuggestProvider() != null || TypeName.get(p.getType()).toString().equals("boolean") || TypeName.get(p.getType()).toString().equals("java.lang.Boolean");
@@ -341,7 +328,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args, sb.getRemaining())))",
                         nextBuilderVar, helperName);
             }
-
             buildNodeChainRecursive(spec, nextBuilderVar, classModel, method, instanceExpr, rootModel, nodes, index + 1);
             spec.addStatement("$L.then($L)", currentBuilderVar, nextBuilderVar);
         }
@@ -349,26 +335,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     private void generateExecutionBlock(MethodSpec.Builder spec, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int parsedNodeCount) {
         spec.beginControlFlow("try");
-
-        Permission permission = method.getElement().getAnnotation(Permission.class);
-        if (permission != null) {
-            spec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
-            String messageKey = permission.message().isEmpty() ? "permission" : permission.message();
-            String defaultTemplate = permission.message().isEmpty() ? "You do not have permission to execute this command." : permission.message();
-            spec.addStatement("ctx.getSource().getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
-                    componentClass, messageKey, defaultTemplate, permission.value(), errorColorClass);
-            spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
-            spec.endControlFlow();
-        }
-
+        onBeforeExecute(spec, method.getElement(), "return");
         PaperExecutionSource source = new PaperExecutionSource(this, nodes, parsedNodeCount);
-
         buildMethodExecution(spec, classModel, method, instanceExpr, rootModel, source);
-
         spec.nextControlFlow("catch ($T e)", Exception.class)
                 .addStatement("manager.getErrorHandler().handle(ctx.getSource(), e)")
                 .endControlFlow();
-
         spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
     }
 
@@ -381,10 +353,8 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, javax.lang.model.element.VariableElement element) {
         boolean isGreedy = element.getAnnotation(Greedy.class) != null;
-        if (isGreedy) {
-            // Greedy always uses StringArgumentType.greedyString() regardless of target type
+        if (isGreedy)
             return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
-        }
         Function<Boolean, CodeBlock> provider = brigadierArgTypes.get(typeName.toString());
         return provider != null ? provider.apply(false) : CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
     }

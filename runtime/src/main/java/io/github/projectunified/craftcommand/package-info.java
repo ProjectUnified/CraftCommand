@@ -1,7 +1,6 @@
 /**
  * Core runtime for CraftCommand.
  *
- * <p>Provides the base {@link io.github.projectunified.craftcommand.CommandManager}
- * abstraction that all platform runtimes implement.
+ * @see io.github.projectunified.craftcommand.CommandManager
  */
 package io.github.projectunified.craftcommand;

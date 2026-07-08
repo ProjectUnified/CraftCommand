@@ -15,8 +15,8 @@ import java.util.List;
  * <ul>
  *   <li>{@link Command} with name, aliases, description</li>
  *   <li>{@link Default} action method</li>
- *   <li>{@link Subcommand} on methods and nested classes</li>
- *   <li>{@link Optional} parameters with default values</li>
+ *   <li>{@link Command} on methods and nested classes</li>
+ *   <li>{@link Default} parameters with default values</li>
  *   <li>{@link Greedy} parameters (String and non-String types)</li>
  *   <li>{@link Name} parameter name override</li>
  *   <li>{@link Suggest} for tab completion (field and method)</li>
@@ -62,7 +62,7 @@ public class CalculatorCommand {
     /**
      * Local resolver for Point type (multi-arg, width=2).
      */
-    public Point resolvePoint(double x, @Optional("0") double y) {
+    public Point resolvePoint(double x, @Default("0") double y) {
         return new Point(x, y);
     }
 
@@ -98,22 +98,22 @@ public class CalculatorCommand {
 
     // ── Basic Arithmetic Subcommands ──
 
-    @Subcommand(value = "add")
+    @Command(value = "add")
     public void add(Object sender, int num1, int num2) {
         System.out.println("Result: " + (num1 + num2));
     }
 
-    @Subcommand(value = "sub", aliases = {"subtract"})
+    @Command(value = "sub", aliases = {"subtract"})
     public void subtract(Object sender, int num1, int num2) {
         System.out.println("Result: " + (num1 - num2));
     }
 
-    @Subcommand(value = "mul", aliases = {"multiply"})
+    @Command(value = "mul", aliases = {"multiply"})
     public void multiply(Object sender, int num1, int num2) {
         System.out.println("Result: " + (num1 * num2));
     }
 
-    @Subcommand(value = "div", aliases = {"divide"})
+    @Command(value = "div", aliases = {"divide"})
     public void divide(Object sender, int num1, @ValidateWith("validateDivider") int num2) {
         System.out.println("Result: " + ((double) num1 / num2));
     }
@@ -123,7 +123,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates field-based @Suggest for operator selection.
      */
-    @Subcommand(value = "op")
+    @Command(value = "op")
     public void runOp(Object sender, @Suggest("operators") String op, int num1, int num2) {
         switch (op.toLowerCase()) {
             case "add":
@@ -146,26 +146,26 @@ public class CalculatorCommand {
     /**
      * Demonstrates method-based @Suggest with sender, args, current parameters.
      */
-    @Subcommand(value = "mode")
+    @Command(value = "mode")
     public void runMode(Object sender, @Suggest("getModes") String mode) {
         System.out.println("Mode set to: " + mode);
     }
 
-    // ── @Optional Feature Demo ──
+    // ── @Default Feature Demo ──
 
     /**
-     * Demonstrates @Optional with default value on String.
+     * Demonstrates @Default with default value on String.
      */
-    @Subcommand(value = "print")
-    public void print(Object sender, @Optional("Result:") String prefix, @Greedy String text) {
+    @Command(value = "print")
+    public void print(Object sender, @Default("Result:") String prefix, @Greedy String text) {
         System.out.println(prefix + " " + text);
     }
 
     /**
-     * Demonstrates @Optional with default value on int.
+     * Demonstrates @Default with default value on int.
      */
-    @Subcommand(value = "repeat")
-    public void repeat(Object sender, String text, @Optional("1") int count) {
+    @Command(value = "repeat")
+    public void repeat(Object sender, String text, @Default("1") int count) {
         for (int i = 0; i < count; i++) {
             System.out.println(text);
         }
@@ -176,7 +176,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates @Greedy on String (joins remaining args with spaces).
      */
-    @Subcommand(value = "echo")
+    @Command(value = "echo")
     public void echo(Object sender, @Greedy String message) {
         System.out.println(message);
     }
@@ -184,7 +184,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates @Greedy on non-String type (joins remaining args, then parses).
      */
-    @Subcommand(value = "parse")
+    @Command(value = "parse")
     public void parse(Object sender, @Greedy double value) {
         System.out.println("Parsed: " + value);
     }
@@ -192,7 +192,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates @Greedy on array type (creates array from remaining args).
      */
-    @Subcommand(value = "sum")
+    @Command(value = "sum")
     public void sum(Object sender, @Greedy int[] numbers) {
         int total = 0;
         for (int n : numbers) total += n;
@@ -204,7 +204,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates @Name to override parameter name in usage messages.
      */
-    @Subcommand(value = "msg")
+    @Command(value = "msg")
     public void sendMessage(Object sender, String target, @Name("text") @Greedy String message) {
         System.out.println("To " + target + ": " + message);
     }
@@ -214,7 +214,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates parameter-level @Resolve with named method.
      */
-    @Subcommand(value = "point")
+    @Command(value = "point")
     public void runPoint(Object sender, @Resolve("resolvePoint") Point pt) {
         System.out.println("Point: (" + pt.x + ", " + pt.y + ")");
     }
@@ -222,7 +222,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates sender-level @Resolve.
      */
-    @Subcommand("whoami")
+    @Command("whoami")
     public void whoAmI(@Resolve("resolveSender") CustomSender sender) {
         System.out.println("You are: " + sender.getName());
     }
@@ -232,7 +232,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates @ValidateWith with custom validation method.
      */
-    @Subcommand(value = "coord")
+    @Command(value = "coord")
     public void setCoordinate(Object sender,
                               @ValidateWith("validateCoordinate") double x,
                               @ValidateWith("validateCoordinate") double y,
@@ -245,7 +245,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates @Min and @Max validation on numeric types.
      */
-    @Subcommand(value = "level")
+    @Command(value = "level")
     public void setLevel(Object sender,
                          @Min(1) @Max(100) int level,
                          @Min(0) @Max(10) double multiplier) {
@@ -257,7 +257,7 @@ public class CalculatorCommand {
     /**
      * Demonstrates enum parameter resolution (via registerProvider in CLIApp).
      */
-    @Subcommand("enumop")
+    @Command("enumop")
     public void enumOp(Object sender, MathOp op, int num1, int num2) {
         switch (op) {
             case ADD:
@@ -309,28 +309,28 @@ public class CalculatorCommand {
      * Nested subcommand class demonstrating class-level subcommands.
      * Usage: /calc advanced, /calc advanced power 2 8, /calc advanced sqrt 16
      */
-    @Subcommand("advanced")
+    @Command("advanced")
     public class AdvancedCommands {
         @Default
         public void execute(Object sender) {
             System.out.println("Advanced operations: power, sqrt");
         }
 
-        @Subcommand("power")
+        @Command("power")
         public void power(Object sender, double base, double exponent) {
             System.out.println("Result: " + Math.pow(base, exponent));
         }
 
-        @Subcommand("sqrt")
+        @Command("sqrt")
         public void sqrt(Object sender, @Min(0) double number) {
             System.out.println("Result: " + Math.sqrt(number));
         }
 
         /**
-         * Demonstrates nested class with its own @Optional parameters.
+         * Demonstrates nested class with its own @Default parameters.
          */
-        @Subcommand("log")
-        public void logarithm(Object sender, double value, @Optional("10") double base) {
+        @Command("log")
+        public void logarithm(Object sender, double value, @Default("10") double base) {
             System.out.println("Result: " + (Math.log(value) / Math.log(base)));
         }
     }

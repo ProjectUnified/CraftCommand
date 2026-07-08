@@ -38,17 +38,21 @@ public class StandaloneCommandManager extends CommandManager<Object> {
     public void register(Object commandInstance) {
         try {
             Class<?> commandClass = commandInstance.getClass();
-            Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Standalone");
-            StandaloneCommand command = (StandaloneCommand) wrapperClass
-                    .getConstructor(commandClass, CommandManager.class)
-                    .newInstance(commandInstance, this);
+            StandaloneCommand command = (StandaloneCommand) instantiate(commandClass, commandInstance);
             if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
                 registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
             }
             registerCommand(command);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             throw new IllegalArgumentException("Failed to register standalone command: " + commandInstance.getClass().getName(), e);
         }
+    }
+
+    private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Standalone");
+        java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
+                .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
+        return handle.invoke(instance, this);
     }
 
     /**

@@ -13,13 +13,8 @@ import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import java.util.Collections;
 import java.util.List;
 
-/**
- * Annotation processor for Bukkit platforms.
- * Generates custom Bukkit wrapper command executors extending {@code org.bukkit.command.Command}.
- */
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
@@ -29,40 +24,37 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     private final ClassName chatColorClass = ClassName.get("org.bukkit", "ChatColor");
 
     {
-        // Register sender types
         senderTypeRegistry().registerSenderBaseType("java.lang.Object");
         senderTypeRegistry().registerSenderBaseType("org.bukkit.command.CommandSender");
         senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
         senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
         senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
+    }
 
-        // Register platform types
+    @Override
+    protected void registerTypes(TypeSupport types) {
         ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
         ClassName offlinePlayerClass = ClassName.get("org.bukkit", "OfflinePlayer");
         ClassName worldClass = ClassName.get("org.bukkit", "World");
         ClassName locationClass = ClassName.get("org.bukkit", "Location");
 
-        typeSupport().register(TypeSupport.Entry.builder(playerClass, 1)
-                .primitiveDefault("null")
-                .literal(d -> CodeBlock.of("null"))
+        types.register(TypeSupport.Entry.builder(playerClass, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .platformResolution((spec, p) -> spec.addStatement("$L = getPlayer($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
                 .build());
-        typeSupport().register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
-                .primitiveDefault("null")
-                .literal(d -> CodeBlock.of("null"))
+        types.register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .platformResolution((spec, p) -> spec.addStatement("$L = getOfflinePlayer($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
                 .build());
-        typeSupport().register(TypeSupport.Entry.builder(worldClass, 1)
-                .primitiveDefault("null")
-                .literal(d -> CodeBlock.of("null"))
+        types.register(TypeSupport.Entry.builder(worldClass, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .platformResolution((spec, p) -> spec.addStatement("$L = getWorld($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p[2]))
                 .build());
-        typeSupport().register(TypeSupport.Entry.builder(locationClass, 4)
-                .primitiveDefault("null")
-                .literal(d -> CodeBlock.of("null"))
+        types.register(TypeSupport.Entry.builder(locationClass, 4)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L)", p[0], p[1], p[2]))
                 .platformSuggestions((spec, p) -> {
                     String argsVar = p[1];
@@ -71,7 +63,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
                     spec.beginControlFlow("if ($L.length - 1 == $L)", argsVar, tempIdx)
                             .addStatement("return suggestWorlds($L)", currentVar)
                             .endControlFlow()
-                            .addStatement("return $T.emptyList()", Collections.class);
+                            .addStatement("return $T.emptyList()", java.util.Collections.class);
                 })
                 .build());
     }
@@ -82,7 +74,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void configureSuperType(TypeSpec.Builder typeSpec) {
+    protected void anchorConfigureType(TypeSpec.Builder typeSpec) {
         typeSpec.superclass(ClassName.get("org.bukkit.command", "Command"));
     }
 
@@ -103,19 +95,14 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void configureConstructor(MethodSpec.Builder constructorBuilder, CommandModel model) {
+    protected void anchorConstructorTop(MethodSpec.Builder constructorBuilder, CommandModel model) {
         constructorBuilder.addStatement("super($S)", model.getCommandName());
         constructorBuilder.addStatement("this.setDescription($S)", model.getDescription());
         constructorBuilder.addStatement("this.setAliases($L)", buildAliasesExpression(model));
     }
 
-    /**
-     * Generates Bukkit-specific wrapper entry methods.
-     * This overrides org.bukkit.command.Command's execute and tabComplete methods.
-     */
     @Override
-    protected void buildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
-        // execute(CommandSender sender, String label, String[] args)
+    protected void anchorBuildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
         MethodSpec.Builder executeSpec = MethodSpec.methodBuilder("execute")
                 .addJavadoc("Executes the Bukkit command.\n\n"
                         + "@param sender the execution initiator\n"
@@ -128,11 +115,9 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
                 .addParameter(commandSenderClass, "sender")
                 .addParameter(String.class, "label")
                 .addParameter(String[].class, "args");
-
         generateExecuteMethodBody(executeSpec, model, "return true");
         typeSpec.addMethod(executeSpec.build());
 
-        // tabComplete(CommandSender sender, String alias, String[] args)
         MethodSpec.Builder tabSpec = MethodSpec.methodBuilder("tabComplete")
                 .addJavadoc("Provides suggestions for Bukkit tab completion.\n\n"
                         + "@param sender the execution initiator\n"
@@ -146,9 +131,14 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
                 .addParameter(String.class, "alias")
                 .addParameter(String[].class, "args")
                 .addException(IllegalArgumentException.class);
-
         buildSuggestionRouting(tabSpec, model, "args", "instance", model);
         typeSpec.addMethod(tabSpec.build());
+    }
+
+    @Override
+    protected void anchorAdditionalHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
+        super.anchorAdditionalHelpers(typeSpec, model);
+        BukkitHelperMethods.generate(typeSpec, model);
     }
 
     @Override
@@ -158,35 +148,37 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
-        Permission permission = element.getAnnotation(Permission.class);
+        Permission permission = findPermission(element);
         if (permission != null) {
             generatePermissionCheck(methodSpec, permission, returnStatement);
         }
     }
 
-    private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {
-        methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
-
-        String messageKey = permission.message().isEmpty() ? "permission" : permission.message();
-        String defaultTemplate = permission.message().isEmpty()
-                ? "You do not have permission to execute this command."
-                : permission.message();
-
-        if (permission.message().isEmpty()) {
-            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
-                    chatColorClass, messageKey, defaultTemplate, permission.value());
-        } else {
-            methodSpec.addStatement("sender.sendMessage(manager.formatMessage($S, $S, $S))",
-                    messageKey, defaultTemplate, permission.value());
+    private Permission findPermission(javax.lang.model.element.Element element) {
+        Permission perm = element.getAnnotation(Permission.class);
+        if (perm != null) return perm;
+        javax.lang.model.element.Element enclosing = element.getEnclosingElement();
+        while (enclosing != null) {
+            perm = enclosing.getAnnotation(Permission.class);
+            if (perm != null) return perm;
+            enclosing = enclosing.getEnclosingElement();
         }
-
-        methodSpec.addStatement(returnStatement)
-                .endControlFlow();
+        return null;
     }
 
-    @Override
-    protected void buildAdditionalHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
-        super.buildAdditionalHelpers(typeSpec, model);
-        BukkitHelperMethods.generate(typeSpec, model);
+    private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {
+        methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
+        String msg = permission.message();
+        if (!msg.isEmpty() && msg.startsWith("i18n:")) {
+            String key = msg.substring(5);
+            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
+                    chatColorClass, key, msg, permission.value());
+        } else if (!msg.isEmpty()) {
+            methodSpec.addStatement("sender.sendMessage($S)", msg);
+        } else {
+            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
+                    chatColorClass, "permission", "You do not have permission to execute this command.", permission.value());
+        }
+        methodSpec.addStatement(returnStatement).endControlFlow();
     }
 }

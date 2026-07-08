@@ -1,6 +1,7 @@
 package io.github.projectunified.craftcommand.processor.bukkit;
 
 import com.palantir.javapoet.*;
+import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
@@ -24,7 +25,6 @@ public final class BukkitHelperMethods {
     private static final ClassName OFFLINE_PLAYER = ClassName.get("org.bukkit", "OfflinePlayer");
     private static final ClassName WORLD = ClassName.get("org.bukkit", "World");
     private static final ClassName LOCATION = ClassName.get("org.bukkit", "Location");
-    private static final ClassName ILLEGAL_ARG = ClassName.get(IllegalArgumentException.class);
     private static final ClassName ARRAY_LIST = ClassName.get("java.util", "ArrayList");
     private static final ClassName LIST = ClassName.get(List.class);
     private static final ClassName STRING = ClassName.get(String.class);
@@ -85,13 +85,10 @@ public final class BukkitHelperMethods {
 
     private static MethodSpec suggestPlayers() {
         return MethodSpec.methodBuilder("suggestPlayers")
-                .addJavadoc("Suggests online player names matching the current input (case-insensitive).\n\n"
-                        + "@param current the current user input\n"
-                        + "@return a list of matching player names\n")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(ParameterizedTypeName.get(LIST, STRING))
                 .addParameter(STRING, "current")
-                .addStatement("$T list = new $T()", ParameterizedTypeName.get(LIST, STRING), ARRAY_LIST)
+                .addStatement("$T list = new $T<>($T.getOnlinePlayers().size())", LIST, ARRAY_LIST, BUKKIT)
                 .addStatement("String lower = current.toLowerCase()")
                 .beginControlFlow("for ($T onlinePlayer : $T.getOnlinePlayers())", PLAYER, BUKKIT)
                 .beginControlFlow("if (onlinePlayer.getName().toLowerCase().startsWith(lower))")
@@ -104,13 +101,10 @@ public final class BukkitHelperMethods {
 
     private static MethodSpec suggestWorlds() {
         return MethodSpec.methodBuilder("suggestWorlds")
-                .addJavadoc("Suggests world names matching the current input (case-insensitive).\n\n"
-                        + "@param current the current user input\n"
-                        + "@return a list of matching world names\n")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(ParameterizedTypeName.get(LIST, STRING))
                 .addParameter(STRING, "current")
-                .addStatement("$T list = new $T()", ParameterizedTypeName.get(LIST, STRING), ARRAY_LIST)
+                .addStatement("$T list = new $T<>($T.getWorlds().size())", LIST, ARRAY_LIST, BUKKIT)
                 .addStatement("String lower = current.toLowerCase()")
                 .beginControlFlow("for ($T world : $T.getWorlds())", WORLD, BUKKIT)
                 .beginControlFlow("if (world.getName().toLowerCase().startsWith(lower))")
@@ -123,10 +117,6 @@ public final class BukkitHelperMethods {
 
     private static MethodSpec getPlayer() {
         return MethodSpec.methodBuilder("getPlayer")
-                .addJavadoc("Retrieves an online player by name.\n\n"
-                        + "@param name the player name\n"
-                        + "@return the player, or null if name is null\n"
-                        + "@throws IllegalArgumentException if the player is not found\n")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(PLAYER)
                 .addParameter(STRING, "name")
@@ -135,7 +125,7 @@ public final class BukkitHelperMethods {
                 .endControlFlow()
                 .addStatement("$T tempPlayer = $T.getPlayer(name)", PLAYER, BUKKIT)
                 .beginControlFlow("if (tempPlayer == null)")
-                .addStatement("throw new $T($S + name)", ILLEGAL_ARG, "Player not found: ")
+                .addStatement("throw new $T(manager.formatMessage($S, $S, name))", CommandException.class, "player-not-found", "Player not found: %s")
                 .endControlFlow()
                 .addStatement("return tempPlayer")
                 .build();
@@ -143,10 +133,6 @@ public final class BukkitHelperMethods {
 
     private static MethodSpec getOfflinePlayer() {
         return MethodSpec.methodBuilder("getOfflinePlayer")
-                .addJavadoc("Retrieves an offline player by name.\n\n"
-                        + "@param name the player name\n"
-                        + "@return the offline player, or null if name is null\n"
-                        + "@throws IllegalArgumentException if the player has not played before\n")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(OFFLINE_PLAYER)
                 .addParameter(STRING, "name")
@@ -155,7 +141,7 @@ public final class BukkitHelperMethods {
                 .endControlFlow()
                 .addStatement("$T tempOffline = $T.getOfflinePlayer(name)", OFFLINE_PLAYER, BUKKIT)
                 .beginControlFlow("if (!tempOffline.hasPlayedBefore())")
-                .addStatement("throw new $T($S + name)", ILLEGAL_ARG, "Player not found: ")
+                .addStatement("throw new $T(manager.formatMessage($S, $S, name))", CommandException.class, "player-not-found", "Player not found: %s")
                 .endControlFlow()
                 .addStatement("return tempOffline")
                 .build();
@@ -163,10 +149,6 @@ public final class BukkitHelperMethods {
 
     private static MethodSpec getWorld() {
         return MethodSpec.methodBuilder("getWorld")
-                .addJavadoc("Retrieves a world by name.\n\n"
-                        + "@param name the world name\n"
-                        + "@return the world, or null if name is null\n"
-                        + "@throws IllegalArgumentException if the world is not found\n")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(WORLD)
                 .addParameter(STRING, "name")
@@ -175,7 +157,7 @@ public final class BukkitHelperMethods {
                 .endControlFlow()
                 .addStatement("$T tempWorld = $T.getWorld(name)", WORLD, BUKKIT)
                 .beginControlFlow("if (tempWorld == null)")
-                .addStatement("throw new $T($S + name)", ILLEGAL_ARG, "World not found: ")
+                .addStatement("throw new $T(manager.formatMessage($S, $S, name))", CommandException.class, "world-not-found", "World not found: %s")
                 .endControlFlow()
                 .addStatement("return tempWorld")
                 .build();
@@ -183,11 +165,6 @@ public final class BukkitHelperMethods {
 
     private static MethodSpec getLocation() {
         return MethodSpec.methodBuilder("getLocation")
-                .addJavadoc("Retrieves a Location from arguments.\n\n"
-                        + "@param args the command arguments\n"
-                        + "@param startIdx the index of the world argument\n"
-                        + "@return the resolved location\n"
-                        + "@throws IllegalArgumentException if the coordinates or world name are invalid\n")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(LOCATION)
                 .addParameter(String[].class, "args")
@@ -199,7 +176,7 @@ public final class BukkitHelperMethods {
                 .addStatement("double z = $T.parseDouble(args[startIdx + 3])", Double.class)
                 .addStatement("return new $T(locWorld, x, y, z)", LOCATION)
                 .nextControlFlow("catch ($T e)", NUMBER_FORMAT_EX)
-                .addStatement("throw new $T($S)", ILLEGAL_ARG, "Invalid coordinate format; must be numeric values.")
+                .addStatement("throw new $T(manager.formatMessage($S, $S))", CommandException.class, "invalid-coordinate", "Invalid coordinate format; must be numeric values.")
                 .endControlFlow()
                 .build();
     }
