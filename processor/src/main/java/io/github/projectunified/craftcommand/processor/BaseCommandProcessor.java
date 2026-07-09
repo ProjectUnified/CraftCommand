@@ -263,12 +263,23 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     /**
      * Checks if the sender type is supported
      */
-    protected boolean isSenderType(TypeName typeName) {
+    public boolean isSenderType(TypeName typeName) {
         return senderTypeRegistry.isSenderType(typeName);
     }
 
     public boolean isSenderBaseType(TypeName typeName) {
         return senderTypeRegistry.isSenderBaseType(typeName);
+    }
+
+    /**
+     * Checks if a type is any sender tier: command's sender type, base sender type, or platform sender type.
+     * When method is null, skips the command's sender type check.
+     */
+    public boolean isSenderParam(TypeName typeName, MethodModel method) {
+        if (method != null && typeName.toString().equals(TypeName.get(method.getSenderType()).toString())) return true;
+        if (isSenderBaseType(typeName)) return true;
+        if (isSenderType(typeName)) return true;
+        return false;
     }
 
     /**
@@ -624,14 +635,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     // ── Tab Completion Suggestion Routing ──
 
     public boolean firstParamIsSender(ExecutableElement method) {
-        if (method.getParameters().isEmpty()) {
-            return false;
-        }
-        TypeName type = TypeName.get(method.getParameters().get(0).asType());
-        return isSenderType(type);
+        if (method.getParameters().isEmpty()) return false;
+        return isSenderParam(TypeName.get(method.getParameters().get(0).asType()), null);
     }
 
-    private void generateResolveSingleArgument(MethodSpec.Builder methodSpec, TypeMirror type, String varName, String argStrVar, String senderVar, String argsVar) {
+    protected void generateResolveSingleArgument(MethodSpec.Builder methodSpec, TypeMirror type, String varName, String argStrVar, String senderVar, String argsVar) {
         TypeName typeName = TypeName.get(type);
         if (typeName.toString().equals("java.lang.String")) {
             methodSpec.addStatement("$L = $L", varName, argStrVar);
@@ -659,7 +667,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     // ── Parameter Suggestion Helpers Generation ──
 
-    private void generateAssignDefaultValue(MethodSpec.Builder methodSpec, TypeMirror type, String varName, String defaultValue) {
+    protected void generateAssignDefaultValue(MethodSpec.Builder methodSpec, TypeMirror type, String varName, String defaultValue, String senderVarName) {
         TypeName typeName = TypeName.get(type);
         if (isBuiltInType(typeName)) {
             if (defaultValue == null) {
@@ -700,8 +708,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 if (defaultValue == null) {
                     methodSpec.addStatement("$L = null", varName);
                 } else {
-                    methodSpec.addStatement("$L = ($T) manager.getResolver($T.class).resolve(senderCast, new String[]{$S}, $S)",
-                            varName, typeName, typeName, defaultValue, defaultValue);
+                    methodSpec.addStatement("$L = ($T) manager.getResolver($T.class).resolve($L, new String[]{$S}, $S)",
+                            varName, typeName, typeName, senderVarName, defaultValue, defaultValue);
                 }
             }
         }
@@ -827,7 +835,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
     }
 
-    protected void buildLocalResolverParameter(MethodSpec.Builder methodSpec, CommandModel classModel, ParameterModel p, TypeName pTypeName, String varName, ExecutableElement localResolver, CommandModel rootModel, String senderVarName, String argsVar, String argIdxVar, boolean hasDynamic, int i) {
+    protected void buildLocalResolverParameter(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, ParameterModel p, TypeName pTypeName, String varName, ExecutableElement localResolver, CommandModel rootModel, String senderVarName, String argsVar, String argIdxVar, boolean hasDynamic, int i) {
         // Statically compile-time resolved parameter width
         int minWidth_i = getLocalResolverMinWidth(localResolver);
         int maxWidth_i = getLocalResolverMaxWidth(localResolver);
@@ -854,22 +862,26 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             String rpVarName = varName + "_rp_" + resolverArgIdx;
             resolverArgVarNames.add(rpVarName);
 
-            Default defaultAnn = rp.getAnnotation(Default.class);
-            boolean isOptional = defaultAnn != null;
-            String defaultValue = (defaultAnn != null && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
-
-            methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
-            String rpArgStrName = "rpArgStr_" + i + "_" + resolverArgIdx;
-            if (isOptional) {
-                methodSpec.beginControlFlow("if (actualWidth_$L > $L)", i, resolverArgIdx)
-                        .addStatement("String $L = $L[$L + $L]", rpArgStrName, argsVar, argIdxVar, resolverArgIdx);
-                generateResolveSingleArgument(methodSpec, rp.asType(), rpVarName, rpArgStrName, senderVarName, argsVar);
-                methodSpec.nextControlFlow("else");
-                generateAssignDefaultValue(methodSpec, rp.asType(), rpVarName, defaultValue);
-                methodSpec.endControlFlow();
+            if (isSenderParam(rpTypeName, method)) {
+                methodSpec.addStatement("$T $L = $L", rpTypeName, rpVarName,
+                        getResolverSenderExpression(localResolver, method.getSenderParameter().getName(), senderVarName, TypeName.get(method.getSenderType())));
             } else {
-                methodSpec.addStatement("String $L = $L[$L + $L]", rpArgStrName, argsVar, argIdxVar, resolverArgIdx);
-                generateResolveSingleArgument(methodSpec, rp.asType(), rpVarName, rpArgStrName, senderVarName, argsVar);
+                methodSpec.addStatement("$T $L", rpTypeName, rpVarName);
+                Default defaultAnn = rp.getAnnotation(Default.class);
+                boolean isOptional = defaultAnn != null;
+                String defaultValue = (defaultAnn != null && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
+                String rpArgStrName = "rpArgStr_" + i + "_" + resolverArgIdx;
+                if (isOptional) {
+                    methodSpec.beginControlFlow("if (actualWidth_$L > $L)", i, resolverArgIdx)
+                            .addStatement("String $L = $L[$L + $L]", rpArgStrName, argsVar, argIdxVar, resolverArgIdx);
+                    generateResolveSingleArgument(methodSpec, rp.asType(), rpVarName, rpArgStrName, senderVarName, argsVar);
+                    methodSpec.nextControlFlow("else");
+                    generateAssignDefaultValue(methodSpec, rp.asType(), rpVarName, defaultValue, senderVarName);
+                    methodSpec.endControlFlow();
+                } else {
+                    methodSpec.addStatement("String $L = $L[$L + $L]", rpArgStrName, argsVar, argIdxVar, resolverArgIdx);
+                    generateResolveSingleArgument(methodSpec, rp.asType(), rpVarName, rpArgStrName, senderVarName, argsVar);
+                }
             }
             resolverArgIdx++;
         }
@@ -888,7 +900,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
         CodeBlock.Builder resolveCallBuilder = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
         if (firstParamIsSender(localResolver)) {
-            resolveCallBuilder.add("$L", senderVarName);
+            resolveCallBuilder.add("$L", getResolverSenderExpression(localResolver, method.getSenderParameter().getName(), senderVarName, TypeName.get(method.getSenderType())));
             if (!resolverArgVarNames.isEmpty()) {
                 resolveCallBuilder.add(", ");
             }
@@ -986,7 +998,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     String defVal = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
                     methodSpec.addStatement("$T $L", pTypeName, varName);
                     methodSpec.beginControlFlow("if ($L >= $L.length)", argIdxVar, argsVar);
-                    generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue());
+                    generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue(), senderVarName);
                     methodSpec.nextControlFlow("else");
                     methodSpec.addStatement("$T greedy_$L = String.join($S, $T.copyOfRange($L, $L, $L.length))", String.class, i, " ", Arrays.class, argsVar, argIdxVar, argsVar);
                     if (pTypeName.toString().equals("java.lang.String")) {
@@ -1001,7 +1013,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 } else {
                     methodSpec.addStatement("$T $L", pTypeName, varName);
                     methodSpec.beginControlFlow("if ($L >= $L.length)", argIdxVar, argsVar);
-                    generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue());
+                    generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue(), senderVarName);
                     methodSpec.nextControlFlow("else");
                     methodSpec.addStatement("String argStr_$L = $L[$L++]", i, argsVar, argIdxVar);
                     resolveParameterForType(methodSpec, pTypeName, varName, "argStr_" + i);
@@ -1009,7 +1021,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 }
             } else {
                 methodSpec.beginControlFlow("if ($L + $L > $L.length)", argIdxVar, width, argsVar);
-                generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue());
+                generateAssignDefaultValue(methodSpec, p.getType(), varName, p.getDefaultValue(), senderVarName);
                 methodSpec.nextControlFlow("else");
                 resolveMultiParameter(methodSpec, pTypeName, varName, argsVar, argIdxVar, senderVarName, i);
                 methodSpec.addStatement("$L += $L", argIdxVar, width);
@@ -1216,13 +1228,21 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
         TypeName senderTypeName = TypeName.get(method.getSenderType());
         String senderCastVar = "sender";
-        // Skip instanceof check and cast when sender param type matches platform sender type
         if (!senderTypeName.toString().equals(getSenderTypeName().toString())) {
-            methodSpec.beginControlFlow("if (!($L instanceof $T))", getSenderExpression("sender"), senderTypeName)
-                    .addStatement("return $T.emptyList()", Collections.class)
-                    .endControlFlow();
-            methodSpec.addStatement("$T senderCast = ($T) $L", senderTypeName, senderTypeName, getSenderExpression("sender"));
-            senderCastVar = "senderCast";
+            if (isSenderType(senderTypeName)) {
+                // Sender type obtainable from base type via getter (e.g. Player from CommandSourceStack)
+                // Use the existing cast helper (e.g. asPlayer)
+                String castMethodName = "as" + getSimpleName(senderTypeName);
+                methodSpec.addStatement("$T senderCast = $L($L)", senderTypeName, castMethodName, CodeBlock.of("sender"));
+                senderCastVar = "senderCast";
+            } else {
+                // Custom sender type: use instanceof check
+                methodSpec.beginControlFlow("if (!($L instanceof $T))", getSenderExpression("sender"), senderTypeName)
+                        .addStatement("return $T.emptyList()", Collections.class)
+                        .endControlFlow();
+                methodSpec.addStatement("$T senderCast = ($T) $L", senderTypeName, senderTypeName, getSenderExpression("sender"));
+                senderCastVar = "senderCast";
+            }
         }
 
         String provider = p.getSuggestProvider();
@@ -1327,6 +1347,40 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         throw new IllegalArgumentException("Invalid parameter count for resolver method " + methodName);
     }
 
+    /**
+     * Generates the common local resolver invocation code: null-check resolver instance,
+     * build method call with pre-resolved parameter variables, and assign the result.
+     *
+     * @param methodSpec          the target method builder
+     * @param localResolver       the resolver method element
+     * @param classModel          the command class model
+     * @param rootModel           the root command model
+     * @param pTypeName           the target parameter type
+     * @param varName             the variable name to assign the result to
+     * @param senderVarName       the sender variable name
+     * @param resolverArgVarNames pre-resolved resolver parameter variable names
+     */
+    public void generateResolverInvocation(MethodSpec.Builder methodSpec, ExecutableElement localResolver, CommandModel classModel, CommandModel rootModel, TypeName pTypeName, String varName, String senderVarName, List<String> resolverArgVarNames, boolean includeSender) {
+        String resolverInstanceExpr = getResolverInstanceExpr(localResolver, classModel, rootModel);
+        if (resolverInstanceExpr == null) {
+            methodSpec.addStatement("$T $L = $L", pTypeName, varName, pTypeName.isPrimitive() ? "false" : "null");
+            return;
+        }
+        CodeBlock.Builder resolveCall = CodeBlock.builder().add("$L.$L(", resolverInstanceExpr, localResolver.getSimpleName());
+        if (includeSender) {
+            resolveCall.add("$L", senderVarName);
+            if (!resolverArgVarNames.isEmpty()) {
+                resolveCall.add(", ");
+            }
+        }
+        for (int j = 0; j < resolverArgVarNames.size(); j++) {
+            if (j > 0) resolveCall.add(", ");
+            resolveCall.add("$L", resolverArgVarNames.get(j));
+        }
+        resolveCall.add(")");
+        methodSpec.addStatement("$T $L = ($T) $L", pTypeName, varName, pTypeName, resolveCall.build());
+    }
+
     @SuppressWarnings("unchecked")
     private <A extends Annotation> void invokeParameterHandler(
             ParameterAnnotationHandler<A> handler,
@@ -1423,8 +1477,26 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         typeSupport.emitPlatformSuggestions(methodSpec, typeName, senderCastVar, argsVar, currentVar, String.valueOf(tempIdx));
     }
 
+    /**
+     * Returns the sender expression for instanceof checks and general usage.
+     * Paper: sender.getSender() (extracts CommandSender from CommandSourceStack).
+     * Base: sender (already the correct type).
+     */
     protected CodeBlock getSenderExpression(String senderVar) {
         return CodeBlock.of("$L", senderVar);
+    }
+
+    /**
+     * Returns the sender expression to pass to a resolver method.
+     * Command's sender type → castSenderVar, base type → rawSourceExpr, platform sender → cast helper, else → castSenderVar.
+     */
+    public String getResolverSenderExpression(ExecutableElement localResolver, String rawSourceExpr, String castSenderVar, TypeName commandSenderType) {
+        if (localResolver.getParameters().isEmpty()) return castSenderVar;
+        TypeName firstParamType = TypeName.get(localResolver.getParameters().get(0).asType());
+        if (firstParamType.toString().equals(commandSenderType.toString())) return castSenderVar;
+        if (isSenderBaseType(firstParamType)) return rawSourceExpr;
+        if (isSenderType(firstParamType)) return "as" + getSimpleName(firstParamType) + "(" + rawSourceExpr + ")";
+        return castSenderVar;
     }
 
     /**
@@ -1493,9 +1565,22 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         ParameterModel senderParam = method.getSenderParameter();
         TypeName typeName = TypeName.get(senderParam.getType());
         if (!isSenderBaseType(typeName)) {
-            // Skip if sender is resolved via @Resolve — no cast helper needed
             if (senderParam.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class) == null) {
                 types.add(typeName);
+            }
+        }
+        // Also collect sender types from @Resolve resolver methods' first parameters
+        for (ParameterModel p : method.getParameters()) {
+            if (p == method.getSenderParameter()) continue;
+            io.github.projectunified.craftcommand.annotation.Resolve resolveAnn = p.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class);
+            if (resolveAnn != null) {
+                ExecutableElement resolver = resolverLookup.findMethod((javax.lang.model.element.TypeElement) method.getElement().getEnclosingElement(), resolveAnn.value());
+                if (resolver != null && !resolver.getParameters().isEmpty()) {
+                    TypeName firstParamType = TypeName.get(resolver.getParameters().get(0).asType());
+                    if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
+                        types.add(firstParamType);
+                    }
+                }
             }
         }
     }

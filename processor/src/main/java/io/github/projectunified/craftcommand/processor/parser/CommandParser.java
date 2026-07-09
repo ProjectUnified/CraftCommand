@@ -130,6 +130,7 @@ public class CommandParser {
                     }
                     if (isGreedy && i != parameters.size() - 1) {
                         messager.printMessage(Diagnostic.Kind.ERROR, "The @Greedy parameter must be the last parameter in the method", param);
+                        continue;
                     }
 
                     if (isOptional) {

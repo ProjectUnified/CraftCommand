@@ -1,6 +1,5 @@
 package io.github.projectunified.craftcommand.processor;
 
-import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.TypeName;
 import io.github.projectunified.craftcommand.exception.CommandException;
@@ -79,18 +78,18 @@ public class ArrayExecutionSource implements ExecutionSource {
         TypeName pTypeName = TypeName.get(p.getType());
 
         if (localResolver != null) {
-            processor.buildLocalResolverParameter(methodSpec, classModel, p, pTypeName, varName, localResolver, rootModel, senderVarName, argsVar, argIdxVar, hasDynamic, paramIndex);
+            processor.buildLocalResolverParameter(methodSpec, classModel, method, p, pTypeName, varName, localResolver, rootModel, senderVarName, argsVar, argIdxVar, hasDynamic, paramIndex);
         } else if (p.isGreedy() && pTypeName.toString().endsWith("[]")) {
-            // Greedy array type: handled directly by buildBuiltInParameter
             processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
         } else if (processor.isBuiltInType(pTypeName)) {
             processor.buildBuiltInParameter(methodSpec, p, pTypeName, varName, argsVar, argIdxVar, senderVarName, hasDynamic, paramIndex);
         } else {
+            // Non-built-in type: only reached when hasDynamic=true, so argIdxHolder is always declared
             methodSpec.addStatement("$T $L", pTypeName, varName);
-            String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
-            methodSpec.addStatement("$L = manager.resolveParameter($L, $T.class, $L, argIdxHolder, $S, $L, $L)",
-                    varName, senderVarName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
-                    argsVar, p.getName(), p.isOptional(), defValLiteral);
+            String defValLiteral = p.getDefaultValue() == null ? "null" : com.palantir.javapoet.CodeBlock.of("$S", p.getDefaultValue()).toString();
+            methodSpec.addStatement("$L = manager.resolveParameter(sender, $T.class, $L, $L, $S, $L, $L)",
+                    varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
+                    argsVar, "argIdxHolder", p.getName(), p.isOptional(), defValLiteral);
         }
     }
 }

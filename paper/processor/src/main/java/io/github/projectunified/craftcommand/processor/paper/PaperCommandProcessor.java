@@ -6,6 +6,7 @@ import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Greedy;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.Naming;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
@@ -162,7 +163,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
-        Permission permission = element.getAnnotation(Permission.class);
+        Permission permission = findPermission(element);
         if (permission != null) {
             methodSpec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
             String msg = permission.message();
@@ -179,6 +180,43 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             }
             methodSpec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
             methodSpec.endControlFlow();
+        }
+    }
+
+    private Permission findPermission(javax.lang.model.element.Element element) {
+        Permission perm = element.getAnnotation(Permission.class);
+        if (perm != null) return perm;
+        javax.lang.model.element.Element enclosing = element.getEnclosingElement();
+        while (enclosing != null) {
+            perm = enclosing.getAnnotation(Permission.class);
+            if (perm != null) return perm;
+            enclosing = enclosing.getEnclosingElement();
+        }
+        return null;
+    }
+
+    @Override
+    protected void generateSubcommandClassExecutors(TypeSpec.Builder typeSpec, CommandModel model, CommandModel rootModel) {
+        // In Paper (Brigadier), the execute_* routing methods are dead code —
+        // the Brigadier tree handles all routing and permission checks.
+        // Only generate the suggest_* helpers needed by the Brigadier suggestions.
+        for (CommandModel child : model.getNestedSubcommands()) {
+            String suggestHelperMethodName = Naming.suggestHelper(child.getClassName());
+            MethodSpec.Builder suggestMethodSpec = MethodSpec.methodBuilder(suggestHelperMethodName)
+                    .addJavadoc("Retrieves suggestions for the nested subcommand class {@link $T}.\n\n"
+                            + "@param sender the command sender\n"
+                            + "@param args the command arguments\n"
+                            + "@return a list of suggestions\n", child.getClassName())
+                    .addModifiers(Modifier.PRIVATE)
+                    .returns(ParameterizedTypeName.get(List.class, String.class))
+                    .addParameter(getSenderTypeName(), "sender")
+                    .addParameter(String[].class, "args");
+
+            String childInstanceVar = "this." + getSubcommandFieldName(child);
+            buildSuggestionRouting(suggestMethodSpec, child, "args", childInstanceVar, rootModel);
+            typeSpec.addMethod(suggestMethodSpec.build());
+
+            generateSubcommandClassExecutors(typeSpec, child, rootModel);
         }
     }
 
@@ -265,8 +303,11 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 int resolverWidth = resolverParams.size() - resolverStartIndex;
                 for (int i = 0; i < resolverWidth; i++) {
                     javax.lang.model.element.VariableElement rp = resolverParams.get(resolverStartIndex + i);
-                    String rpName = rp.getSimpleName().toString();
                     TypeName rpTypeName = TypeName.get(rp.asType());
+                    if (isSenderParam(rpTypeName, method)) {
+                        continue;
+                    }
+                    String rpName = rp.getSimpleName().toString();
                     CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp);
                     boolean rpOptional = rp.getAnnotation(Default.class) != null;
                     nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional));

@@ -17,14 +17,8 @@ public class SenderTypeRegistry {
     private final Set<String> senderBaseTypes = new HashSet<>();
 
     /**
-     * Register a sender type (e.g., Player, CommandSender, CommandSourceStack).
-     */
-    public void registerSenderType(String typeName) {
-        senderTypes.add(typeName);
-    }
-
-    /**
-     * Register a sender base type (the platform's raw sender type).
+     * Register the platform's base sender type (e.g. CommandSourceStack, CommandSender).
+     * This is the type that the platform natively provides.
      */
     public void registerSenderBaseType(String typeName) {
         senderBaseTypes.add(typeName);
@@ -32,10 +26,11 @@ public class SenderTypeRegistry {
     }
 
     /**
-     * @return true if the type is a valid sender type for this platform
+     * Register a sender type that can be obtained from the base type
+     * (e.g. Player, CommandSender — extracted via getSender() and cast).
      */
-    public boolean isSenderType(TypeName type) {
-        return senderTypes.contains(type.toString());
+    public void registerSenderType(String typeName) {
+        senderTypes.add(typeName);
     }
 
     /**
@@ -43,5 +38,12 @@ public class SenderTypeRegistry {
      */
     public boolean isSenderBaseType(TypeName type) {
         return senderBaseTypes.contains(type.toString());
+    }
+
+    /**
+     * @return true if the type is any recognized sender type (base or obtainable from it)
+     */
+    public boolean isSenderType(TypeName type) {
+        return senderTypes.contains(type.toString());
     }
 }
