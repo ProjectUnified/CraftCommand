@@ -5,6 +5,7 @@ import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.TypeName;
 import io.github.projectunified.craftcommand.annotation.Default;
+import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.ExecutionSource;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -34,7 +35,7 @@ public class PaperExecutionSource implements ExecutionSource {
     public void generateSenderResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
         if (processor.isSenderBaseType(senderParamTypeName)) {
             methodSpec.addStatement("$T $L = ctx.getSource()", processor.commandSourceStackClass, senderVarName);
-        } else if (senderParam.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class) != null) {
+        } else if (senderParam.getElement().getAnnotation(Resolve.class) != null) {
             ExecutableElement localResolver = processor.findLocalResolver(classModel, senderParam, rootModel);
             if (localResolver != null) {
                 List<String> argNames = resolveResolverParams(methodSpec, localResolver, senderVarName, 0);
@@ -56,9 +57,16 @@ public class PaperExecutionSource implements ExecutionSource {
     public void generateParameterResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, ParameterModel pm, String varName, String senderVarName, int paramIndex) {
         TypeName pmTypeName = TypeName.get(pm.getType());
 
+        // Check if param has @Resolve — use unified recursive approach
+        Resolve resolveAnn = pm.getElement().getAnnotation(Resolve.class);
+        if (resolveAnn != null && classModel.getResolverMethod(resolveAnn.value()) != null) {
+            generateResolverResolution(methodSpec, classModel, method, rootModel, classModel.getResolverMethod(resolveAnn.value()), varName, senderVarName);
+            return;
+        }
+
         List<PaperCommandProcessor.NodeInfo> parsedSegments = new ArrayList<>();
         for (int i = 0; i < parsedNodeCount; i++) {
-            if (nodes.get(i).parameter == pm) {
+            if (nodes.get(i).nodeName.equals(pm.getName())) {
                 parsedSegments.add(nodes.get(i));
             }
         }
@@ -106,6 +114,35 @@ public class PaperExecutionSource implements ExecutionSource {
                         "ctx.getSource()", strVar, strVar);
             }
         }
+    }
+
+    /**
+     * Unified resolver param resolution for Paper: resolves each non-sender param using the same code path,
+     * then invokes the resolver method. Supports @Default, @Greedy, @Name, @Suggest, @Resolve (nested).
+     */
+    private void generateResolverResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName) {
+        ExecutableElement resolverElement = resolverModel.getElement();
+        TypeName returnType = TypeName.get(resolverModel.getElement().getReturnType());
+
+        // Determine if we should include sender
+        boolean includeSender = false;
+        if (!resolverModel.getParameters().isEmpty()) {
+            includeSender = processor.isSenderParam(TypeName.get(resolverModel.getParameters().get(0).getType()), method);
+        }
+
+        // Resolve each non-sender resolver param (recursive — same code path)
+        List<String> argNames = new ArrayList<>();
+        for (int i = 0; i < resolverModel.getParameters().size(); i++) {
+            ParameterModel rp = resolverModel.getParameters().get(i);
+            if (processor.isSenderParam(TypeName.get(rp.getType()), method)) continue;
+            String rpVarName = varName + "_rp_" + i;
+            argNames.add(rpVarName);
+            generateParameterResolution(methodSpec, classModel, method, rootModel, rp, rpVarName, senderVarName, i);
+        }
+
+        // Invoke resolver method
+        String resolverSenderExpr = processor.getResolverSenderExpression(resolverElement, "ctx.getSource()", senderVarName, TypeName.get(method.getSenderType()));
+        processor.generateResolverInvocation(methodSpec, resolverElement, classModel, rootModel, returnType, varName, resolverSenderExpr, argNames, includeSender);
     }
 
     private List<String> resolveResolverParamsWithDefaults(MethodSpec.Builder methodSpec, ExecutableElement localResolver, String varName, int paramIndex) {

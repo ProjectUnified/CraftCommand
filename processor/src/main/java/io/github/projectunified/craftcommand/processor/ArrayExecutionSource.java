@@ -2,12 +2,15 @@ package io.github.projectunified.craftcommand.processor;
 
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.TypeName;
+import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
 import javax.lang.model.element.ExecutableElement;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Array-based implementation of {@link ExecutionSource} for Bukkit/Standalone command execution.
@@ -74,6 +77,13 @@ public class ArrayExecutionSource implements ExecutionSource {
 
     @Override
     public void generateParameterResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, ParameterModel p, String varName, String senderVarName, int paramIndex) {
+        // Check if param has @Resolve — use unified recursive approach
+        Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
+        if (resolveAnn != null && classModel.getResolverMethod(resolveAnn.value()) != null) {
+            generateResolverResolution(methodSpec, classModel, method, rootModel, classModel.getResolverMethod(resolveAnn.value()), varName, senderVarName);
+            return;
+        }
+
         ExecutableElement localResolver = processor.findLocalResolver(classModel, p, rootModel);
         TypeName pTypeName = TypeName.get(p.getType());
 
@@ -91,5 +101,34 @@ public class ArrayExecutionSource implements ExecutionSource {
                     varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
                     argsVar, "argIdxHolder", p.getName(), p.isOptional(), defValLiteral);
         }
+    }
+
+    /**
+     * Unified resolver param resolution: resolves each non-sender param using the same code path,
+     * then invokes the resolver method. Supports @Default, @Greedy, @Name, @Suggest, @Resolve (nested).
+     */
+    private void generateResolverResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName) {
+        ExecutableElement resolverElement = resolverModel.getElement();
+        TypeName returnType = TypeName.get(resolverModel.getElement().getReturnType());
+
+        // Determine if we should include sender
+        boolean includeSender = false;
+        if (!resolverModel.getParameters().isEmpty()) {
+            includeSender = processor.isSenderParam(TypeName.get(resolverModel.getParameters().get(0).getType()), method);
+        }
+
+        // Resolve each non-sender resolver param (recursive — same code path)
+        List<String> argNames = new ArrayList<>();
+        for (int i = 0; i < resolverModel.getParameters().size(); i++) {
+            ParameterModel rp = resolverModel.getParameters().get(i);
+            if (processor.isSenderParam(TypeName.get(rp.getType()), method)) continue;
+            String rpVarName = varName + "_rp_" + i;
+            argNames.add(rpVarName);
+            generateParameterResolution(methodSpec, classModel, method, rootModel, rp, rpVarName, senderVarName, i);
+        }
+
+        // Invoke resolver method
+        String resolverSenderExpr = processor.getResolverSenderExpression(resolverElement, method.getSenderParameter().getName(), senderVarName, TypeName.get(method.getSenderType()));
+        processor.generateResolverInvocation(methodSpec, resolverElement, classModel, rootModel, returnType, varName, resolverSenderExpr, argNames, includeSender);
     }
 }

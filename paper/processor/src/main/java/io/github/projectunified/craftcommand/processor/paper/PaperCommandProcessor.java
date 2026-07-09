@@ -4,6 +4,7 @@ import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Greedy;
+import io.github.projectunified.craftcommand.annotation.Suggest;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.Naming;
@@ -310,18 +311,20 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     String rpName = rp.getSimpleName().toString();
                     CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp);
                     boolean rpOptional = rp.getAnnotation(Default.class) != null;
-                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional));
+                    Suggest suggestAnn = rp.getAnnotation(Suggest.class);
+                    String rpSuggestProvider = suggestAnn != null ? suggestAnn.value() : null;
+                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional, rpSuggestProvider));
                 }
             } else {
                 int width = getParameterWidth(classModel, p, rootModel);
                 CodeBlock typeBlock = getArgumentTypeExpression(classModel, p, rootModel);
                 if (width <= 1) {
-                    nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false));
+                    nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false, p.getSuggestProvider()));
                 } else {
                     for (int i = 0; i < width; i++) {
                         nodes.add(new NodeInfo(p.getName() + "_" + i,
                                 CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType")),
-                                p, i, i == width - 1, false));
+                                p, i, i == width - 1, false, p.getSuggestProvider()));
                     }
                 }
             }
@@ -362,12 +365,43 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     nextBuilderVar, commandsClass, node.nodeName, node.typeExpression);
 
             ParameterModel p = node.parameter;
-            boolean needsSuggestions = p.getSuggestProvider() != null || TypeName.get(p.getType()).toString().equals("boolean") || TypeName.get(p.getType()).toString().equals("java.lang.Boolean");
+            boolean needsSuggestions = node.suggestProvider != null || p.getSuggestProvider() != null || TypeName.get(p.getType()).toString().equals("boolean") || TypeName.get(p.getType()).toString().equals("java.lang.Boolean");
             if (needsSuggestions && node.isLastForParameter) {
-                int paramIndex = method.getParameters().indexOf(p);
-                String helperName = getParameterSuggestionMethodName(classModel, method, paramIndex);
-                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args, sb.getRemaining())))",
-                        nextBuilderVar, helperName);
+                String suggestProvider = node.suggestProvider != null ? node.suggestProvider : p.getSuggestProvider();
+                if (suggestProvider != null) {
+                    // Custom suggest provider — check if it's a field or method
+                    TypeElement typeElement = classModel.getElement();
+                    if (isField(typeElement, suggestProvider)) {
+                        // Field: use filterSuggestions wrapped in getSuggestions
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $T.filterSuggestions($L.$L, sb.getRemaining())))",
+                                nextBuilderVar, ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, suggestProvider);
+                    } else {
+                        // Method: invoke on command instance — get correct sender expression
+                        String suggestSenderExpr = "ctx.getSource()";
+                        ExecutableElement suggestMethod = findSuggestMethod(typeElement, suggestProvider);
+                        if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
+                            TypeName firstParamType = TypeName.get(suggestMethod.getParameters().get(0).asType());
+                            if (isSenderType(firstParamType) && !firstParamType.toString().equals(getSenderTypeName().toString())) {
+                                suggestSenderExpr = "as" + getSimpleName(firstParamType) + "(ctx.getSource())";
+                            }
+                        }
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args, sb.getRemaining())))",
+                                nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                    }
+                } else {
+                    // Boolean or platform built-in — use standard suggestion helper
+                    io.github.projectunified.craftcommand.annotation.Resolve resolveAnn = p.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class);
+                    if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
+                        String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveAnn.value(), node.resolverArgIndex);
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args, sb.getRemaining())))",
+                                nextBuilderVar, helperName);
+                    } else {
+                        int paramIndex = method.getParameters().indexOf(p);
+                        String helperName = getParameterSuggestionMethodName(classModel, method, paramIndex);
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args, sb.getRemaining())))",
+                                nextBuilderVar, helperName);
+                    }
+                }
             }
             buildNodeChainRecursive(spec, nextBuilderVar, classModel, method, instanceExpr, rootModel, nodes, index + 1);
             spec.addStatement("$L.then($L)", currentBuilderVar, nextBuilderVar);
@@ -416,14 +450,16 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         final int resolverArgIndex;
         final boolean isLastForParameter;
         final boolean isResolverParamOptional;
+        final String suggestProvider;
 
-        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional) {
+        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider) {
             this.nodeName = nodeName;
             this.typeExpression = typeExpression;
             this.parameter = parameter;
             this.resolverArgIndex = resolverArgIndex;
             this.isLastForParameter = isLastForParameter;
             this.isResolverParamOptional = isResolverParamOptional;
+            this.suggestProvider = suggestProvider;
         }
     }
 }

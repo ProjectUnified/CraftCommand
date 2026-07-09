@@ -159,6 +159,26 @@ public class TeleportCommand {
         }
     }
 
+    public CustomSender resolveCustomSender(CommandSender sender) {
+        return new CustomSender(sender);
+    }
+
+    public final List<String> demoSuggests = Arrays.asList("test", "string");
+
+    public CustomString resolveCustomString(Player stack, @Suggest("demoSuggests") @Greedy String current) {
+        return new CustomString(current);
+    }
+
+    @Command("custom")
+    public void executeCustom(@Resolve("resolveCustomSender") CustomSender sender, @Resolve("resolveCustomString") CustomString string) {
+
+    }
+
+    public enum BroadcastType {
+        MESSAGE,
+        ACTION_BAR
+    }
+
     // Use Case: Nested subcommand class (inner class)
     @Command("admin")
     @Permission("example.tp.admin")
@@ -171,6 +191,22 @@ public class TeleportCommand {
         @Command("spawn")
         public void setSpawn(Player sender, String worldName) {
             sender.sendMessage("Spawn for world " + worldName + " has been set.");
+        }
+    }
+
+    public class CustomSender {
+        private final CommandSender commandSender;
+
+        public CustomSender(CommandSender commandSender) {
+            this.commandSender = commandSender;
+        }
+    }
+
+    public class CustomString {
+        private final String s;
+
+        public CustomString(String s) {
+            this.s = s;
         }
     }
 }

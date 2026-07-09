@@ -16,7 +16,9 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Parser utility to convert compile-time annotated class elements into structured command models.
@@ -189,6 +191,90 @@ public class CommandParser {
             }
         }
 
-        return new CommandModel(className, packageName, commandName, aliases, description, defaultMethod, subcommands, nestedSubcommands, typeElement);
+        // Parse resolver methods from @Resolve annotations
+        Map<String, MethodModel> resolverMethods = new HashMap<>();
+        parseResolverMethods(typeElement, subcommands, defaultMethod, resolverMethods, env);
+
+        return new CommandModel(className, packageName, commandName, aliases, description, defaultMethod, subcommands, nestedSubcommands, typeElement, resolverMethods);
+    }
+
+    /**
+     * Parses resolver methods referenced by @Resolve annotations on method params.
+     * Only parses methods that are actually referenced (simpler approach).
+     */
+    private static void parseResolverMethods(TypeElement typeElement, List<MethodModel> allMethods, MethodModel defaultMethod, Map<String, MethodModel> resolverMethods, ProcessingEnvironment env) {
+        Messager messager = env.getMessager();
+
+        // Collect all @Resolve names from all method params
+        List<String> resolveNames = new ArrayList<>();
+        if (defaultMethod != null) {
+            for (ParameterModel p : defaultMethod.getParameters()) {
+                Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
+                if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
+                    resolveNames.add(resolveAnn.value());
+                }
+            }
+        }
+        for (MethodModel m : allMethods) {
+            for (ParameterModel p : m.getParameters()) {
+                Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
+                if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
+                    resolveNames.add(resolveAnn.value());
+                }
+            }
+        }
+
+        // For each referenced resolver name, find and parse the method
+        for (String resolveName : resolveNames) {
+            if (resolverMethods.containsKey(resolveName)) continue;
+            ExecutableElement resolverMethod = findMethodByName(typeElement, resolveName);
+            if (resolverMethod == null) {
+                messager.printMessage(Diagnostic.Kind.ERROR, "Resolver method '" + resolveName + "' not found in " + typeElement.getSimpleName(), typeElement);
+                continue;
+            }
+            MethodModel resolverModel = parseResolverMethod(resolverMethod, messager);
+            resolverMethods.put(resolveName, resolverModel);
+        }
+    }
+
+    private static ExecutableElement findMethodByName(TypeElement typeElement, String name) {
+        // Search current class and parent classes
+        TypeElement current = typeElement;
+        while (current != null) {
+            for (Element enclosed : current.getEnclosedElements()) {
+                if (enclosed instanceof ExecutableElement && enclosed.getSimpleName().toString().equals(name)) {
+                    return (ExecutableElement) enclosed;
+                }
+            }
+            javax.lang.model.element.Element enclosing = current.getEnclosingElement();
+            current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
+        }
+        return null;
+    }
+
+    private static MethodModel parseResolverMethod(ExecutableElement method, Messager messager) {
+        List<? extends VariableElement> parameters = method.getParameters();
+
+        // All params are regular params (sender-type params are skipped during resolution via isSenderParam)
+        ParameterModel senderParam = null;
+        List<ParameterModel> paramModels = new ArrayList<>();
+
+        for (VariableElement param : parameters) {
+            Default paramDefaultAnn = param.getAnnotation(Default.class);
+            Greedy greedyAnn = param.getAnnotation(Greedy.class);
+            Name nameAnn = param.getAnnotation(Name.class);
+            Suggest suggestAnn = param.getAnnotation(Suggest.class);
+
+            String paramName = nameAnn != null ? nameAnn.value() : param.getSimpleName().toString();
+            TypeMirror paramType = param.asType();
+            boolean isOptional = paramDefaultAnn != null;
+            String defaultValue = (paramDefaultAnn != null && !paramDefaultAnn.value().isEmpty()) ? paramDefaultAnn.value() : null;
+            boolean isGreedy = greedyAnn != null;
+            String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
+
+            paramModels.add(new ParameterModel(paramName, paramType, isGreedy, isOptional, defaultValue, suggestProvider, param));
+        }
+
+        return new MethodModel(method.getSimpleName().toString(), null, null, null, senderParam, paramModels, false, method);
     }
 }

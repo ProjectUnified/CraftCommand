@@ -18,6 +18,13 @@
         <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>minecraft</id>
+            <url>https://libraries.minecraft.net</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <dependency>
             <groupId>io.github.projectunified</groupId>
@@ -35,14 +42,37 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>io.github.projectunified</groupId>
             <artifactId>craftcommand-validation-annotations</artifactId>
             <scope>provided</scope>
+        </dependency>
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.mockbukkit.mockbukkit</groupId>
+            <artifactId>mockbukkit-v1.21</artifactId>
+            <version>4.110.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.11.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -65,6 +95,20 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <release>21</release>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>default-testRuntime</id>
+                        <configuration>
+                            <release>21</release>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

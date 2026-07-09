@@ -3,7 +3,9 @@ package io.github.projectunified.craftcommand.processor.model;
 import com.palantir.javapoet.ClassName;
 
 import javax.lang.model.element.TypeElement;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Model representing a parsed command or subcommand class.
@@ -18,8 +20,9 @@ public class CommandModel {
     private final List<MethodModel> subcommands;
     private final List<CommandModel> nestedSubcommands;
     private final TypeElement element;
+    private final Map<String, MethodModel> resolverMethods;
 
-    public CommandModel(ClassName className, String packageName, String commandName, List<String> aliases, String description, MethodModel defaultMethod, List<MethodModel> subcommands, List<CommandModel> nestedSubcommands, TypeElement element) {
+    public CommandModel(ClassName className, String packageName, String commandName, List<String> aliases, String description, MethodModel defaultMethod, List<MethodModel> subcommands, List<CommandModel> nestedSubcommands, TypeElement element, Map<String, MethodModel> resolverMethods) {
         this.className = className;
         this.packageName = packageName;
         this.commandName = commandName;
@@ -29,6 +32,7 @@ public class CommandModel {
         this.subcommands = subcommands;
         this.nestedSubcommands = nestedSubcommands;
         this.element = element;
+        this.resolverMethods = resolverMethods != null ? resolverMethods : Collections.emptyMap();
     }
 
     /**
@@ -110,5 +114,24 @@ public class CommandModel {
      */
     public TypeElement getElement() {
         return element;
+    }
+
+    /**
+     * Gets the resolver method models (from @Resolve annotations).
+     *
+     * @return map of resolver method name to MethodModel
+     */
+    public Map<String, MethodModel> getResolverMethods() {
+        return resolverMethods;
+    }
+
+    /**
+     * Gets a resolver method by name.
+     *
+     * @param name the resolver method name
+     * @return the MethodModel, or null if not found
+     */
+    public MethodModel getResolverMethod(String name) {
+        return resolverMethods.get(name);
     }
 }

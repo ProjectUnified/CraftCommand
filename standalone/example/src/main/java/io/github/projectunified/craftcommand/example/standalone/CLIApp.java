@@ -19,6 +19,10 @@ public class CLIApp {
         });
 
         manager.register(new CalculatorCommand());
+        manager.register(new ValidationCommand());
+        manager.register(new SuggestCommand());
+        manager.register(new ResolveCommand());
+        manager.register(new EdgeCaseCommand());
 
         System.out.println("=== Standalone CraftCommand CLI Calculator ===");
         System.out.println("Available commands: calc (or c)");
