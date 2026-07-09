@@ -31,6 +31,9 @@ public class BukkitResolveCommand {
 
     public static class CustomSender {
         public final String name;
-        public CustomSender(String name) { this.name = name; }
+
+        public CustomSender(String name) {
+            this.name = name;
+        }
     }
 }

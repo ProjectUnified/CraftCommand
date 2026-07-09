@@ -6,6 +6,7 @@ import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Greedy;
 import io.github.projectunified.craftcommand.annotation.Suggest;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
+import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
 import io.github.projectunified.craftcommand.processor.Naming;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
@@ -198,25 +199,10 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void generateSubcommandClassExecutors(TypeSpec.Builder typeSpec, CommandModel model, CommandModel rootModel) {
-        // In Paper (Brigadier), the execute_* routing methods are dead code —
-        // the Brigadier tree handles all routing and permission checks.
-        // Only generate the suggest_* helpers needed by the Brigadier suggestions.
+        // In Paper (Brigadier), both execute_* and suggest_* routing methods are dead code —
+        // the Brigadier tree handles all routing and suggestion attachment directly.
+        // Only recurse into nested subcommands for their own nested classes.
         for (CommandModel child : model.getNestedSubcommands()) {
-            String suggestHelperMethodName = Naming.suggestHelper(child.getClassName());
-            MethodSpec.Builder suggestMethodSpec = MethodSpec.methodBuilder(suggestHelperMethodName)
-                    .addJavadoc("Retrieves suggestions for the nested subcommand class {@link $T}.\n\n"
-                            + "@param sender the command sender\n"
-                            + "@param args the command arguments\n"
-                            + "@return a list of suggestions\n", child.getClassName())
-                    .addModifiers(Modifier.PRIVATE)
-                    .returns(ParameterizedTypeName.get(List.class, String.class))
-                    .addParameter(getSenderTypeName(), "sender")
-                    .addParameter(String[].class, "args");
-
-            String childInstanceVar = "this." + getSubcommandFieldName(child);
-            buildSuggestionRouting(suggestMethodSpec, child, "args", childInstanceVar, rootModel);
-            typeSpec.addMethod(suggestMethodSpec.build());
-
             generateSubcommandClassExecutors(typeSpec, child, rootModel);
         }
     }
@@ -313,7 +299,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     boolean rpOptional = rp.getAnnotation(Default.class) != null;
                     Suggest suggestAnn = rp.getAnnotation(Suggest.class);
                     String rpSuggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional, rpSuggestProvider));
+                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional, rpSuggestProvider, rpTypeName));
                 }
             } else {
                 int width = getParameterWidth(classModel, p, rootModel);
@@ -366,6 +352,15 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
             ParameterModel p = node.parameter;
             boolean needsSuggestions = node.suggestProvider != null || p.getSuggestProvider() != null || TypeName.get(p.getType()).toString().equals("boolean") || TypeName.get(p.getType()).toString().equals("java.lang.Boolean");
+            // Also check resolver param type for platform built-in suggestions (e.g. World)
+            if (!needsSuggestions && node.resolverParamType != null) {
+                TypeName rpType = node.resolverParamType;
+                if (rpType.toString().equals("boolean") || rpType.toString().equals("java.lang.Boolean")) {
+                    needsSuggestions = true;
+                } else if (isPlatformBuiltInType(rpType)) {
+                    needsSuggestions = true;
+                }
+            }
             if (needsSuggestions && node.isLastForParameter) {
                 String suggestProvider = node.suggestProvider != null ? node.suggestProvider : p.getSuggestProvider();
                 if (suggestProvider != null) {
@@ -379,14 +374,29 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                         // Method: invoke on command instance — get correct sender expression
                         String suggestSenderExpr = "ctx.getSource()";
                         ExecutableElement suggestMethod = findSuggestMethod(typeElement, suggestProvider);
+                        boolean needsCast = false;
                         if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
                             TypeName firstParamType = TypeName.get(suggestMethod.getParameters().get(0).asType());
                             if (isSenderType(firstParamType) && !firstParamType.toString().equals(getSenderTypeName().toString())) {
                                 suggestSenderExpr = "as" + getSimpleName(firstParamType) + "(ctx.getSource())";
+                                needsCast = true;
                             }
                         }
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args, sb.getRemaining())))",
-                                nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                        if (needsCast) {
+                            // Wrap in try-catch to handle non-player senders gracefully during tab completion
+                            ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
+                            spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar);
+                            spec.beginControlFlow("try");
+                            spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args, sb.getRemaining()))",
+                                    instanceExpr, suggestProvider, suggestSenderExpr);
+                            spec.nextControlFlow("catch ($T e)", CommandException.class);
+                            spec.addStatement("return $T.empty()", suggestionsClass);
+                            spec.endControlFlow();
+                            spec.endControlFlow(")");
+                        } else {
+                            spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args, sb.getRemaining())))",
+                                    nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                        }
                     }
                 } else {
                     // Boolean or platform built-in — use standard suggestion helper
@@ -451,8 +461,13 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         final boolean isLastForParameter;
         final boolean isResolverParamOptional;
         final String suggestProvider;
+        final TypeName resolverParamType;
 
         NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider) {
+            this(nodeName, typeExpression, parameter, resolverArgIndex, isLastForParameter, isResolverParamOptional, suggestProvider, null);
+        }
+
+        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider, TypeName resolverParamType) {
             this.nodeName = nodeName;
             this.typeExpression = typeExpression;
             this.parameter = parameter;
@@ -460,6 +475,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             this.isLastForParameter = isLastForParameter;
             this.isResolverParamOptional = isResolverParamOptional;
             this.suggestProvider = suggestProvider;
+            this.resolverParamType = resolverParamType;
         }
     }
 }

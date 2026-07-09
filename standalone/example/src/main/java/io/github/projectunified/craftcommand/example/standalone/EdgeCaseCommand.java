@@ -1,6 +1,9 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
-import io.github.projectunified.craftcommand.annotation.*;
+import io.github.projectunified.craftcommand.annotation.Command;
+import io.github.projectunified.craftcommand.annotation.Default;
+import io.github.projectunified.craftcommand.annotation.Greedy;
+import io.github.projectunified.craftcommand.annotation.Name;
 
 import java.util.Arrays;
 import java.util.List;
@@ -17,32 +20,32 @@ public class EdgeCaseCommand {
 
     @Command("greedyempty")
     public void greedyEmpty(Object sender, @Greedy String text) {
-        System.out.println("greedyempty='" + text + "'");
+        ((TestSender) sender).sendMessage("greedyempty='" + text + "'");
     }
 
     @Command("greedydef")
     public void greedyDefault(Object sender, @Greedy @Default("fallback") String text) {
-        System.out.println("greedydef='" + text + "'");
+        ((TestSender) sender).sendMessage("greedydef='" + text + "'");
     }
 
     @Command("enum")
     public void enumParam(Object sender, Color color) {
-        System.out.println("enum=" + color);
+        ((TestSender) sender).sendMessage("enum=" + color);
     }
 
     @Command("desc")
     public void descriptionCheck(Object sender) {
-        System.out.println("desc");
+        ((TestSender) sender).sendMessage("desc");
     }
 
     @Command("defname")
     public void defaultName(Object sender, @Default("hello") @Name("greeting") String text) {
-        System.out.println("defname=" + text);
+        ((TestSender) sender).sendMessage("defname=" + text);
     }
 
     @Command(value = "multi", aliases = {"m", "multiple"})
     public void multiAlias(Object sender, String value) {
-        System.out.println("multi=" + value);
+        ((TestSender) sender).sendMessage("multi=" + value);
     }
 
     public enum Color {

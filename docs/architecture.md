@@ -12,15 +12,18 @@ craftcommand/
 ├── annotations/        @Command, @Default, @Resolve, @Greedy, @Suggest, @Name
 ├── runtime/            CommandManager, ArgumentResolver, CommandInfo
 ├── bukkit/
+│   ├── annotations/    @Permission
 │   ├── runtime/        BukkitCommandManager
 │   └── processor/      BukkitCommandProcessor → *_Executor
 ├── paper/
 │   ├── runtime/        PaperCommandManager
-│   └── processor/      PaperCommandProcessor → *_Paper / *_PaperBasic
+│   └── processor/      PaperCommandProcessor → *_Paper
 ├── standalone/
 │   ├── runtime/        StandaloneCommandManager
 │   └── processor/      StandaloneCommandProcessor → *_Standalone
-├── validation/         @Min, @Max, @ValidateWith + SPI processor
+├── validation/
+│   ├── annotations/    @Min, @Max, @ValidateWith
+│   └── processor/      MinHandler, MaxHandler, ValidateWithHandler (SPI)
 ├── processor/          BaseCommandProcessor, model, extension SPI
 └── docs/               This documentation
 ```

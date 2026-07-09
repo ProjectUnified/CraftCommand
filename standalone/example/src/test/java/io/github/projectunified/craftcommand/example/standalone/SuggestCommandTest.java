@@ -4,8 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static io.github.projectunified.craftcommand.example.standalone.TestHelpers.assertSuggestionsContain;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class SuggestCommandTest extends AbstractStandaloneCommandTest {
 
@@ -21,52 +21,59 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testSuggestField() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"field", ""});
+        List<String> suggestions = tabComplete("field", "");
         assertSuggestionsContain(suggestions, "red", "green", "blue");
     }
 
     @Test
     public void testSuggestMethod() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"method", ""});
+        List<String> suggestions = tabComplete("method", "");
         assertSuggestionsContain(suggestions, "circle", "square", "triangle");
     }
 
     @Test
     public void testGreedySuggest() {
-        assertTrue(cmd.execute("sender", new String[]{"greedysug", "red green"}));
+        assertTrue(execute("greedysug", "red green"));
+        assertEquals(List.of("greedysug=red green"), sender.getMessages());
     }
 
     @Test
     public void testNameSuggest() {
-        assertTrue(cmd.execute("sender", new String[]{"namesug", "blue"}));
+        assertTrue(execute("namesug", "blue"));
+        assertEquals(List.of("namesug=blue"), sender.getMessages());
     }
 
     @Test
     public void testDefaultSuggest() {
-        assertTrue(cmd.execute("sender", new String[]{"defaultsug"}));
-        assertTrue(cmd.execute("sender", new String[]{"defaultsug", "green"}));
+        assertTrue(execute("defaultsug"));
+        assertEquals(List.of("defaultsug=red"), sender.getMessages());
+        sender.getMessages().clear();
+        assertTrue(execute("defaultsug", "green"));
+        assertEquals(List.of("defaultsug=green"), sender.getMessages());
     }
 
     @Test
     public void testResolveSuggest() {
-        assertTrue(cmd.execute("sender", new String[]{"resolvesug", "myColor"}));
+        assertTrue(execute("resolvesug", "myColor"));
+        assertEquals(List.of("resolvesug=myColor"), sender.getMessages());
     }
 
     @Test
     public void testGreedyNameSuggest() {
-        assertTrue(cmd.execute("sender", new String[]{"greedyname", "red green blue"}));
+        assertTrue(execute("greedyname", "red green blue"));
+        assertEquals(List.of("greedyname=red green blue"), sender.getMessages());
     }
 
     @Test
     public void testSuggestFieldTabComplete() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"field", "r"});
+        List<String> suggestions = tabComplete("field", "r");
         assertTrue(suggestions.contains("red"));
         assertFalse(suggestions.contains("green"));
     }
 
     @Test
     public void testSuggestMethodTabComplete() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"method", "s"});
+        List<String> suggestions = tabComplete("method", "s");
         assertTrue(suggestions.contains("square"));
         assertFalse(suggestions.contains("circle"));
     }

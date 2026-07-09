@@ -21,7 +21,7 @@ Phase 3: anchorConstructorTop/Bottom()  → constructor
 Phase 4: anchorBuildEntryMethods()      → execute/tabComplete
 Phase 5: anchorAdditionalHelpers()      → platform helpers
 Phase 6: buildCommandInfoExposer()      → shared
-Phase 7: anchorExtraMethods()           → Brigadier tree
+Phase 7: anchorExtraMethods()           → Brigadier tree (Paper only)
 ```
 
 ## ExecutionSource
@@ -45,3 +45,13 @@ Platform-specific parameter resolution:
 
 All validation errors throw `CommandException`. The `CommandManager.formatMessage()` method handles i18n. Override it
 for translation support.
+
+## Generated Wrappers
+
+Each `@Command` class produces a single wrapper:
+
+| Platform | Suffix        | Extends/Implements         |
+|----------|---------------|----------------------------|
+| Bukkit   | `_Executor`   | `Command`, `CommandInfoExposer` |
+| Paper    | `_Paper`      | `PaperCommand`, `CommandInfoExposer` |
+| Standalone | `_Standalone` | `StandaloneCommand`, `CommandInfoExposer` |

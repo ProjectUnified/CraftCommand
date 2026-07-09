@@ -3,8 +3,6 @@ package io.github.projectunified.craftcommand.example.paper;
 import io.github.projectunified.craftcommand.paper.PaperCommandManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Locale;
-
 public class ExamplePlugin extends JavaPlugin {
     private PaperCommandManager commandManager;
 
@@ -12,11 +10,11 @@ public class ExamplePlugin extends JavaPlugin {
     public void onEnable() {
         this.commandManager = new PaperCommandManager(this);
 
-        commandManager.registerResolver(BroadcastCommand.BroadcastType.class, (sender, args, current) -> BroadcastCommand.BroadcastType.valueOf(current.toUpperCase(Locale.ROOT)));
-
-        // Register the command
-        commandManager.register(new TeleportCommand(commandManager));
-        commandManager.register(new BroadcastCommand());
+        commandManager.register(new PaperSuggestCommand());
+        commandManager.register(new PaperResolveCommand());
+        commandManager.register(new PaperSenderTypeCommand());
+        commandManager.register(new PaperPermissionCommand());
+        commandManager.register(new PaperSenderCommand());
 
         getLogger().info("ExamplePlugin enabled and Paper commands registered!");
     }

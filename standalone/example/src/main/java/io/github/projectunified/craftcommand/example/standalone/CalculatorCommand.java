@@ -39,6 +39,11 @@ public class CalculatorCommand {
     public final List<String> operators = Arrays.asList("add", "subtract", "multiply", "divide");
 
     /**
+     * Field-based suggestion provider for mode names.
+     */
+    public final List<String> modes = Arrays.asList("basic", "scientific", "programmer");
+
+    /**
      * Method-based suggestion provider with sender, args, and current input.
      *
      * @param sender  the command sender
@@ -57,7 +62,7 @@ public class CalculatorCommand {
      * Local resolver for CustomSender type.
      */
     public CustomSender resolveSender(Object sender) {
-        return new CustomSender(sender.toString());
+        return new CustomSender(sender.toString(), sender);
     }
 
     /**
@@ -65,6 +70,26 @@ public class CalculatorCommand {
      */
     public Point resolvePoint(double x, @Default("0") double y) {
         return new Point(x, y);
+    }
+
+    public Point resolvePointWithSender(Object sender, double x, double y) {
+        return new Point(x, y);
+    }
+
+    public Point resolvePointNamed(@Name("ax") double x, @Name("ay") double y) {
+        return new Point(x, y);
+    }
+
+    public Point resolvePointSuggest(@Suggest("modes") String mode, double x) {
+        return new Point(x, mode.hashCode() % 100);
+    }
+
+    public int resolveClamped(@Min(0) @Max(100) int value) {
+        return value;
+    }
+
+    public String resolveGreedy(@Greedy String text) {
+        return text;
     }
 
     // ── Custom Validators ──
@@ -94,29 +119,29 @@ public class CalculatorCommand {
      */
     @Default
     public void execute(Object sender, int num1, int num2) {
-        System.out.println("Result: " + (num1 + num2));
+        ((TestSender) sender).sendMessage("Result: " + (num1 + num2));
     }
 
     // ── Basic Arithmetic Subcommands ──
 
     @Command(value = "add")
     public void add(Object sender, int num1, int num2) {
-        System.out.println("Result: " + (num1 + num2));
+        ((TestSender) sender).sendMessage("Result: " + (num1 + num2));
     }
 
     @Command(value = "sub", aliases = {"subtract"})
     public void subtract(Object sender, int num1, int num2) {
-        System.out.println("Result: " + (num1 - num2));
+        ((TestSender) sender).sendMessage("Result: " + (num1 - num2));
     }
 
     @Command(value = "mul", aliases = {"multiply"})
     public void multiply(Object sender, int num1, int num2) {
-        System.out.println("Result: " + (num1 * num2));
+        ((TestSender) sender).sendMessage("Result: " + (num1 * num2));
     }
 
     @Command(value = "div", aliases = {"divide"})
     public void divide(Object sender, int num1, @ValidateWith("validateDivider") int num2) {
-        System.out.println("Result: " + ((double) num1 / num2));
+        ((TestSender) sender).sendMessage("Result: " + ((double) num1 / num2));
     }
 
     // ── @Suggest Feature Demo ──
@@ -149,7 +174,7 @@ public class CalculatorCommand {
      */
     @Command(value = "mode")
     public void runMode(Object sender, @Suggest("getModes") String mode) {
-        System.out.println("Mode set to: " + mode);
+        ((TestSender) sender).sendMessage("Mode set to: " + mode);
     }
 
     // ── @Default Feature Demo ──
@@ -158,8 +183,8 @@ public class CalculatorCommand {
      * Demonstrates @Default with default value on String.
      */
     @Command(value = "print")
-    public void print(Object sender, @Default("Result:") String prefix, @Greedy String text) {
-        System.out.println(prefix + " " + text);
+    public void print(Object sender, @Greedy String text) {
+        ((TestSender) sender).sendMessage(text);
     }
 
     /**
@@ -168,7 +193,7 @@ public class CalculatorCommand {
     @Command(value = "repeat")
     public void repeat(Object sender, String text, @Default("1") int count) {
         for (int i = 0; i < count; i++) {
-            System.out.println(text);
+            ((TestSender) sender).sendMessage(text);
         }
     }
 
@@ -179,7 +204,7 @@ public class CalculatorCommand {
      */
     @Command(value = "echo")
     public void echo(Object sender, @Greedy String message) {
-        System.out.println(message);
+        ((TestSender) sender).sendMessage(message);
     }
 
     /**
@@ -187,7 +212,7 @@ public class CalculatorCommand {
      */
     @Command(value = "parse")
     public void parse(Object sender, @Greedy double value) {
-        System.out.println("Parsed: " + value);
+        ((TestSender) sender).sendMessage("Parsed: " + value);
     }
 
     /**
@@ -197,7 +222,7 @@ public class CalculatorCommand {
     public void sum(Object sender, @Greedy int[] numbers) {
         int total = 0;
         for (int n : numbers) total += n;
-        System.out.println("Sum: " + total);
+        ((TestSender) sender).sendMessage("Sum: " + total);
     }
 
     // ── @Name Feature Demo ──
@@ -207,7 +232,7 @@ public class CalculatorCommand {
      */
     @Command(value = "msg")
     public void sendMessage(Object sender, String target, @Name("text") @Greedy String message) {
-        System.out.println("To " + target + ": " + message);
+        ((TestSender) sender).sendMessage("To " + target + ": " + message);
     }
 
     // ── @Resolve Feature Demo ──
@@ -217,7 +242,7 @@ public class CalculatorCommand {
      */
     @Command(value = "point")
     public void runPoint(Object sender, @Resolve("resolvePoint") Point pt) {
-        System.out.println("Point: (" + pt.x + ", " + pt.y + ")");
+        ((TestSender) sender).sendMessage("Point: (" + pt.x + ", " + pt.y + ")");
     }
 
     /**
@@ -225,7 +250,7 @@ public class CalculatorCommand {
      */
     @Command("whoami")
     public void whoAmI(@Resolve("resolveSender") CustomSender sender) {
-        System.out.println("You are: " + sender.getName());
+        sender.sendMessage("You are: " + sender.getName());
     }
 
     // ── @ValidateWith Feature Demo ──
@@ -238,7 +263,7 @@ public class CalculatorCommand {
                               @ValidateWith("validateCoordinate") double x,
                               @ValidateWith("validateCoordinate") double y,
                               @ValidateWith("validateCoordinate") double z) {
-        System.out.println("Location set to: (" + x + ", " + y + ", " + z + ")");
+        ((TestSender) sender).sendMessage("Location set to: (" + x + ", " + y + ", " + z + ")");
     }
 
     // ── @Min / @Max Feature Demo ──
@@ -250,7 +275,7 @@ public class CalculatorCommand {
     public void setLevel(Object sender,
                          @Min(1) @Max(100) int level,
                          @Min(0) @Max(10) double multiplier) {
-        System.out.println("Level " + level + " with multiplier " + multiplier);
+        ((TestSender) sender).sendMessage("Level " + level + " with multiplier " + multiplier);
     }
 
     // ── Enum Parameter Demo ──
@@ -276,6 +301,60 @@ public class CalculatorCommand {
         }
     }
 
+    // ── Multi-Param Combination Demos ──
+
+    @Command("resolveAndSuggest")
+    public void resolveAndSuggest(Object sender, @Resolve("resolvePoint") Point pt, @Suggest("modes") String mode) {
+        ((TestSender) sender).sendMessage("resolveAndSuggest=" + pt.x + "," + pt.y + "," + mode);
+    }
+
+    @Command("resolveAndDefault")
+    public void resolveAndDefault(Object sender, @Resolve("resolvePoint") Point pt, @Default("normal") String mode) {
+        ((TestSender) sender).sendMessage("resolveAndDefault=" + pt.x + "," + pt.y + "," + mode);
+    }
+
+    @Command("resolveAndValidate")
+    public void resolveAndValidate(Object sender, @Resolve("resolvePoint") Point pt, @Min(0) @Max(100) @Default("50") int level) {
+        ((TestSender) sender).sendMessage("resolveAndValidate=" + pt.x + "," + pt.y + "," + level);
+    }
+
+    @Command("suggestAndDefault")
+    public void suggestAndDefault(Object sender, @Suggest("modes") String mode, @Default("50") int count) {
+        ((TestSender) sender).sendMessage("suggestAndDefault=" + mode + "," + count);
+    }
+
+    @Command("defaultAndGreedy")
+    public void defaultAndGreedy(Object sender, @Default("hello") String greeting, @Greedy String text) {
+        ((TestSender) sender).sendMessage("defaultAndGreedy=" + greeting + "," + text);
+    }
+
+    // ── Resolver Combination Demos ──
+
+    @Command("sameSender")
+    public void sameSender(Object sender, @Resolve("resolvePointWithSender") Point pt) {
+        ((TestSender) sender).sendMessage("sameSender=" + pt.x + "," + pt.y);
+    }
+
+    @Command("namedResolver")
+    public void namedResolver(Object sender, @Resolve("resolvePointNamed") Point pt) {
+        ((TestSender) sender).sendMessage("namedResolver=" + pt.x + "," + pt.y);
+    }
+
+    @Command("suggestResolver")
+    public void suggestResolver(Object sender, @Resolve("resolvePointSuggest") Point pt) {
+        ((TestSender) sender).sendMessage("suggestResolver=" + pt.x + "," + pt.y);
+    }
+
+    @Command("clamped")
+    public void clamped(Object sender, @Resolve("resolveClamped") int value) {
+        ((TestSender) sender).sendMessage("clamped=" + value);
+    }
+
+    @Command("greedyResolve")
+    public void greedyResolve(Object sender, @Resolve("resolveGreedy") String text) {
+        ((TestSender) sender).sendMessage("greedyResolve=" + text);
+    }
+
     // ── Nested Subcommand Class ──
 
     public enum MathOp {
@@ -286,13 +365,31 @@ public class CalculatorCommand {
 
     public static class CustomSender {
         private final String name;
+        private final Object delegate;
+        private final java.util.List<String> messages = new java.util.ArrayList<>();
 
         public CustomSender(String name) {
+            this(name, null);
+        }
+
+        public CustomSender(String name, Object delegate) {
             this.name = name;
+            this.delegate = delegate;
         }
 
         public String getName() {
             return name;
+        }
+
+        public void sendMessage(String msg) {
+            messages.add(msg);
+            if (delegate instanceof TestSender) {
+                ((TestSender) delegate).sendMessage(msg);
+            }
+        }
+
+        public java.util.List<String> getMessages() {
+            return messages;
         }
     }
 
@@ -314,17 +411,17 @@ public class CalculatorCommand {
     public class AdvancedCommands {
         @Default
         public void execute(Object sender) {
-            System.out.println("Advanced operations: power, sqrt");
+            ((TestSender) sender).sendMessage("Advanced operations: power, sqrt");
         }
 
         @Command("power")
         public void power(Object sender, double base, double exponent) {
-            System.out.println("Result: " + Math.pow(base, exponent));
+            ((TestSender) sender).sendMessage("Result: " + Math.pow(base, exponent));
         }
 
         @Command("sqrt")
         public void sqrt(Object sender, @Min(0) double number) {
-            System.out.println("Result: " + Math.sqrt(number));
+            ((TestSender) sender).sendMessage("Result: " + Math.sqrt(number));
         }
 
         /**
@@ -332,7 +429,7 @@ public class CalculatorCommand {
          */
         @Command("log")
         public void logarithm(Object sender, double value, @Default("10") double base) {
-            System.out.println("Result: " + (Math.log(value) / Math.log(base)));
+            ((TestSender) sender).sendMessage("Result: " + (Math.log(value) / Math.log(base)));
         }
     }
 
@@ -349,12 +446,12 @@ public class CalculatorCommand {
     public class ResolveCommands {
         @Default
         public void execute(Object sender, @Resolve("resolvePoint") Point pt) {
-            System.out.println("Resolved point: (" + pt.x + ", " + pt.y + ")");
+            ((TestSender) sender).sendMessage("Resolved point: (" + pt.x + ", " + pt.y + ")");
         }
 
         @Command("display")
         public void display(Object sender, @Resolve("resolvePoint") Point pt) {
-            System.out.println("Displaying point: (" + pt.x + ", " + pt.y + ")");
+            ((TestSender) sender).sendMessage("Displaying point: (" + pt.x + ", " + pt.y + ")");
         }
     }
 }

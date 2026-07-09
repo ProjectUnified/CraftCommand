@@ -15,7 +15,6 @@ import java.util.List;
 public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     private final JavaPlugin plugin;
     private final List<PaperCommand> registered = new ArrayList<>();
-    private final List<PaperBasicCommand> registeredBasic = new ArrayList<>();
 
     /**
      * Constructs a PaperCommandManager with a custom error handler.
@@ -53,14 +52,6 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                         command.getAliases()
                 );
             }
-            for (PaperBasicCommand command : registeredBasic) {
-                event.registrar().register(
-                        command.getName(),
-                        command.getDescription(),
-                        command.getAliases(),
-                        command
-                );
-            }
         });
     }
 
@@ -73,21 +64,10 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
         this.registered.add(command);
     }
 
-    /**
-     * Registers a PaperBasicCommand wrapper.
-     *
-     * @param command the command wrapper
-     */
-    public void register(PaperBasicCommand command) {
-        this.registeredBasic.add(command);
-    }
-
     @Override
     public void register(Object commandInstance) {
         if (commandInstance instanceof PaperCommand) {
             register((PaperCommand) commandInstance);
-        } else if (commandInstance instanceof PaperBasicCommand) {
-            register((PaperBasicCommand) commandInstance);
         } else {
             try {
                 Object wrapper = instantiate(commandInstance.getClass(), commandInstance);
@@ -97,13 +77,8 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                         registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) wrapper);
                     }
                     register((PaperCommand) wrapper);
-                } else if (wrapper instanceof PaperBasicCommand) {
-                    if (wrapper instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
-                        registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) wrapper);
-                    }
-                    register((PaperBasicCommand) wrapper);
                 } else {
-                    throw new IllegalArgumentException("Wrapper is neither PaperCommand nor PaperBasicCommand: " + wrapper.getClass());
+                    throw new IllegalArgumentException("Wrapper is not PaperCommand: " + wrapper.getClass());
                 }
             } catch (Throwable e) {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);
@@ -112,17 +87,9 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     }
 
     private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
-        // Try _Paper first, then _PaperBasic
-        for (String suffix : new String[]{"_Paper", "_PaperBasic"}) {
-            try {
-                Class<?> wrapperClass = Class.forName(commandClass.getName() + suffix);
-                java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
-                        .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
-                return handle.invoke(instance, this);
-            } catch (ClassNotFoundException ignored) {
-            }
-        }
-        throw new ClassNotFoundException("No generated wrapper for " + commandClass.getName()
-                + " (tried _Paper and _PaperBasic). Is the class annotated with @Command and the processor configured?");
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Paper");
+        java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
+                .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
+        return handle.invoke(instance, this);
     }
 }

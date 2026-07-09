@@ -10,8 +10,10 @@ public class ExamplePlugin extends JavaPlugin {
     public void onEnable() {
         this.commandManager = new BukkitCommandManager(this);
 
-        // Register the command
-        commandManager.register(new TeleportCommand(commandManager));
+        commandManager.register(new BukkitSuggestCommand());
+        commandManager.register(new BukkitResolveCommand());
+        commandManager.register(new SenderTypeCommand());
+        commandManager.register(new PermissionCommand());
         commandManager.syncCommand();
 
         getLogger().info("ExamplePlugin enabled and commands registered!");

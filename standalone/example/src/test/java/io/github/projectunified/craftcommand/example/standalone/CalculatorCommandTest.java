@@ -4,8 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static io.github.projectunified.craftcommand.example.standalone.TestHelpers.assertSuggestionsContain;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
     private CalculatorCommand instance;
@@ -52,7 +52,9 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testDefaultAction() {
-        assertTrue(cmd.execute("sender", new String[]{"5", "10"}));
+        assertTrue(execute("5", "10"));
+        assertEquals("Result: 15", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -61,30 +63,44 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testAdd() {
-        assertTrue(cmd.execute("sender", new String[]{"add", "5", "10"}));
+        assertTrue(execute("add", "5", "10"));
+        assertEquals("Result: 15", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testSubtract() {
-        assertTrue(cmd.execute("sender", new String[]{"sub", "100", "50"}));
-        assertTrue(cmd.execute("sender", new String[]{"subtract", "100", "50"}));
+        assertTrue(execute("sub", "100", "50"));
+        assertEquals("Result: 50", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("subtract", "100", "50"));
+        assertEquals("Result: 50", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testMultiply() {
-        assertTrue(cmd.execute("sender", new String[]{"mul", "6", "7"}));
-        assertTrue(cmd.execute("sender", new String[]{"multiply", "6", "7"}));
+        assertTrue(execute("mul", "6", "7"));
+        assertEquals("Result: 42", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("multiply", "6", "7"));
+        assertEquals("Result: 42", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testDivide() {
-        assertTrue(cmd.execute("sender", new String[]{"div", "10", "2"}));
-        assertTrue(cmd.execute("sender", new String[]{"divide", "10", "2"}));
+        assertTrue(execute("div", "10", "2"));
+        assertEquals("Result: 5.0", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("divide", "10", "2"));
+        assertEquals("Result: 5.0", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testDivideByZero() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"div", "10", "0"}));
+        assertThrows(RuntimeException.class, () -> execute("div", "10", "0"));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -93,30 +109,36 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testFieldSuggest() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"op", ""});
+        List<String> suggestions = tabComplete("op", "");
         assertSuggestionsContain(suggestions, "add", "subtract", "multiply", "divide");
     }
 
     @Test
     public void testMethodSuggest() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"mode", ""});
+        List<String> suggestions = tabComplete("mode", "");
         assertSuggestionsContain(suggestions, "basic", "scientific", "programmer");
     }
 
     @Test
     public void testRunOp() {
-        assertTrue(cmd.execute("sender", new String[]{"op", "add", "5", "10"}));
-        assertTrue(cmd.execute("sender", new String[]{"op", "multiply", "3", "4"}));
+        assertTrue(execute("op", "add", "5", "10"));
+        assertEquals("Result: 15", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("op", "multiply", "3", "4"));
+        assertEquals("Result: 12", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testRunOpInvalidOperator() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"op", "invalid", "5", "10"}));
+        assertThrows(RuntimeException.class, () -> execute("op", "invalid", "5", "10"));
     }
 
     @Test
     public void testRunMode() {
-        assertTrue(cmd.execute("sender", new String[]{"mode", "scientific"}));
+        assertTrue(execute("mode", "scientific"));
+        assertEquals("Mode set to: scientific", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -125,14 +147,22 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testOptionalWithDefault() {
-        assertTrue(cmd.execute("sender", new String[]{"print", "Custom:", "Hello"}));
-        assertTrue(cmd.execute("sender", new String[]{"print", "Hello World"}));
+        assertTrue(execute("print", "Hello World"));
+        assertEquals("Hello World", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("print", "Custom:", "Hello"));
+        assertEquals("Custom: Hello", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testOptionalIntWithDefault() {
-        assertTrue(cmd.execute("sender", new String[]{"repeat", "test", "3"}));
-        assertTrue(cmd.execute("sender", new String[]{"repeat", "test"}));
+        assertTrue(execute("repeat", "test", "3"));
+        assertEquals(List.of("test", "test", "test"), sender.getMessages());
+        sender.getMessages().clear();
+        assertTrue(execute("repeat", "test"));
+        assertEquals(List.of("test"), sender.getMessages());
+        sender.getMessages().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -141,24 +171,34 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testGreedyString() {
-        assertTrue(cmd.execute("sender", new String[]{"echo", "Hello", "World", "Foo"}));
+        assertTrue(execute("echo", "Hello", "World", "Foo"));
+        assertEquals("Hello World Foo", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testGreedyNonString() {
-        assertTrue(cmd.execute("sender", new String[]{"parse", "3.14"}));
-        assertTrue(cmd.execute("sender", new String[]{"parse", "2.5e10"}));
+        assertTrue(execute("parse", "3.14"));
+        assertEquals("Parsed: 3.14", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("parse", "2.5e10"));
+        assertEquals("Parsed: 2.5E10", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testGreedyArray() {
-        assertTrue(cmd.execute("sender", new String[]{"sum", "1", "2", "3"}));
-        assertTrue(cmd.execute("sender", new String[]{"sum", "10"}));
+        assertTrue(execute("sum", "1", "2", "3"));
+        assertEquals("Sum: 6", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("sum", "10"));
+        assertEquals("Sum: 10", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testGreedyNonStringInvalid() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"parse", "not_a_number"}));
+        assertThrows(RuntimeException.class, () -> execute("parse", "not_a_number"));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -167,7 +207,9 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testNameOverride() {
-        assertTrue(cmd.execute("sender", new String[]{"msg", "Player", "Hello World"}));
+        assertTrue(execute("msg", "Player", "Hello World"));
+        assertEquals("To Player: Hello World", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -176,19 +218,32 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testParameterResolve() {
-        assertTrue(cmd.execute("sender", new String[]{"point", "10.5", "20.5"}));
-        assertTrue(cmd.execute("sender", new String[]{"point", "10.5"}));
+        assertTrue(execute("point", "10.5", "20.5"));
+        assertEquals("Point: (10.5, 20.5)", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("point", "10.5"));
+        assertEquals("Point: (10.5, 0.0)", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testSenderResolve() {
-        assertTrue(cmd.execute("mySender", new String[]{"whoami"}));
+        // whoami uses @Resolve("resolveSender") CustomSender — resolver wraps TestSender as delegate
+        // CustomSender.sendMessage forwards to TestSender.sendMessage
+        assertTrue(execute("whoami"));
+        assertEquals("You are: test", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testSenderResolveDifferentValues() {
-        assertTrue(cmd.execute("Alice", new String[]{"whoami"}));
-        assertTrue(cmd.execute("Bob", new String[]{"whoami"}));
+        // Different sender names produce different CustomSender instances
+        TestSender alice = new TestSender("Alice");
+        TestSender bob = new TestSender("Bob");
+        assertTrue(cmd.execute(alice, new String[]{"whoami"}));
+        assertEquals("You are: Alice", alice.getMessages().get(0));
+        assertTrue(cmd.execute(bob, new String[]{"whoami"}));
+        assertEquals("You are: Bob", bob.getMessages().get(0));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -197,12 +252,14 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testValidateCoordinate() {
-        assertTrue(cmd.execute("sender", new String[]{"coord", "100", "200", "300"}));
+        assertTrue(execute("coord", "100", "200", "300"));
+        assertEquals("Location set to: (100.0, 200.0, 300.0)", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testValidateCoordinateOutOfBounds() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"coord", "2000", "200", "300"}));
+        assertThrows(RuntimeException.class, () -> execute("coord", "2000", "200", "300"));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -211,17 +268,19 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testLevelValid() {
-        assertTrue(cmd.execute("sender", new String[]{"level", "50", "5.0"}));
+        assertTrue(execute("level", "50", "5.0"));
+        assertEquals("Level 50 with multiplier 5.0", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testLevelBelowMin() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"level", "0", "5.0"}));
+        assertThrows(RuntimeException.class, () -> execute("level", "0", "5.0"));
     }
 
     @Test
     public void testLevelAboveMax() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"level", "101", "5.0"}));
+        assertThrows(RuntimeException.class, () -> execute("level", "101", "5.0"));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -230,13 +289,17 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testEnumOp() {
-        assertTrue(cmd.execute("sender", new String[]{"enumop", "ADD", "5", "10"}));
-        assertTrue(cmd.execute("sender", new String[]{"enumop", "MULTIPLY", "6", "7"}));
+        assertTrue(execute("enumop", "ADD", "5", "10"));
+        assertEquals("Result: 15", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("enumop", "MULTIPLY", "6", "7"));
+        assertEquals("Result: 42", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testEnumOpInvalid() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"enumop", "INVALID", "5", "10"}));
+        assertThrows(RuntimeException.class, () -> execute("enumop", "INVALID", "5", "10"));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -245,28 +308,38 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testAdvancedDefault() {
-        assertTrue(cmd.execute("sender", new String[]{"advanced"}));
+        assertTrue(execute("advanced"));
+        assertEquals("Advanced operations: power, sqrt", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testAdvancedPower() {
-        assertTrue(cmd.execute("sender", new String[]{"advanced", "power", "2", "10"}));
+        assertTrue(execute("advanced", "power", "2", "10"));
+        assertEquals("Result: " + Math.pow(2, 10), sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testAdvancedSqrt() {
-        assertTrue(cmd.execute("sender", new String[]{"advanced", "sqrt", "16"}));
+        assertTrue(execute("advanced", "sqrt", "16"));
+        assertEquals("Result: 4.0", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testAdvancedSqrtNegative() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"advanced", "sqrt", "-1"}));
+        assertThrows(RuntimeException.class, () -> execute("advanced", "sqrt", "-1"));
     }
 
     @Test
     public void testAdvancedLog() {
-        assertTrue(cmd.execute("sender", new String[]{"advanced", "log", "100", "10"}));
-        assertTrue(cmd.execute("sender", new String[]{"advanced", "log", "100"}));
+        assertTrue(execute("advanced", "log", "100", "10"));
+        assertEquals("Result: 2.0", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("advanced", "log", "100"));
+        assertEquals("Result: " + (Math.log(100) / Math.log(10)), sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -275,22 +348,30 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testInnerClassResolveOuterDefault() {
-        assertTrue(cmd.execute("sender", new String[]{"resolve", "10", "20"}));
+        assertTrue(execute("resolve", "10", "20"));
+        assertEquals("Resolved point: (10.0, 20.0)", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testInnerClassResolveOuterWithOptional() {
-        assertTrue(cmd.execute("sender", new String[]{"resolve", "5"}));
+        assertTrue(execute("resolve", "5"));
+        assertEquals("Resolved point: (5.0, 0.0)", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testInnerClassResolveOuterSubcommand() {
-        assertTrue(cmd.execute("sender", new String[]{"resolve", "display", "3", "4"}));
+        assertTrue(execute("resolve", "display", "3", "4"));
+        assertEquals("Displaying point: (3.0, 4.0)", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     @Test
     public void testInnerClassResolveOuterSubcommandWithOptional() {
-        assertTrue(cmd.execute("sender", new String[]{"resolve", "display", "7"}));
+        assertTrue(execute("resolve", "display", "7"));
+        assertEquals("Displaying point: (7.0, 0.0)", sender.getMessages().get(0));
+        sender.getMessages().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -299,7 +380,7 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testTabCompletionSubcommands() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{""});
+        List<String> suggestions = tabComplete("");
         assertSuggestionsContain(suggestions, "add", "sub", "mul", "div", "op", "mode", "print",
                 "repeat", "echo", "sum", "msg", "point", "whoami", "coord", "level", "enumop",
                 "advanced", "resolve");
@@ -307,19 +388,19 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testTabCompletionAdvanced() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"advanced", ""});
+        List<String> suggestions = tabComplete("advanced", "");
         assertSuggestionsContain(suggestions, "power", "sqrt", "log");
     }
 
     @Test
     public void testTabCompletionOp() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"op", ""});
+        List<String> suggestions = tabComplete("op", "");
         assertSuggestionsContain(suggestions, "add", "subtract", "multiply", "divide");
     }
 
     @Test
     public void testTabCompletionMode() {
-        List<String> suggestions = cmd.tabComplete("sender", new String[]{"mode", ""});
+        List<String> suggestions = tabComplete("mode", "");
         assertSuggestionsContain(suggestions, "basic", "scientific", "programmer");
     }
 
@@ -329,16 +410,16 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testMissingArguments() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"add", "5"}));
+        assertThrows(RuntimeException.class, () -> execute("add", "5"));
     }
 
     @Test
     public void testInvalidNumberFormat() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"add", "abc", "10"}));
+        assertThrows(RuntimeException.class, () -> execute("add", "abc", "10"));
     }
 
     @Test
     public void testUnknownSubcommand() {
-        assertThrows(RuntimeException.class, () -> cmd.execute("sender", new String[]{"nonexistent", "5", "10"}));
+        assertThrows(RuntimeException.class, () -> execute("nonexistent", "5", "10"));
     }
 }

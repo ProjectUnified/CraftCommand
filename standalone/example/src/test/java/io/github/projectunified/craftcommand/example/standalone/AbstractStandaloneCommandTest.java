@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 public abstract class AbstractStandaloneCommandTest {
     protected StandaloneCommandManager manager;
     protected StandaloneCommand cmd;
+    protected TestSender sender;
 
     @BeforeEach
     public void setUp() {
@@ -14,6 +15,7 @@ public abstract class AbstractStandaloneCommandTest {
         registerEnumProvider(manager);
         registerCommand();
         cmd = manager.getCommand(getCommandName());
+        sender = new TestSender("test");
     }
 
     protected void registerEnumProvider(StandaloneCommandManager manager) {
@@ -28,4 +30,12 @@ public abstract class AbstractStandaloneCommandTest {
     protected abstract void registerCommand();
 
     protected abstract String getCommandName();
+
+    protected boolean execute(String... args) {
+        return cmd.execute(sender, args);
+    }
+
+    protected java.util.List<String> tabComplete(String... args) {
+        return cmd.tabComplete(sender, args);
+    }
 }

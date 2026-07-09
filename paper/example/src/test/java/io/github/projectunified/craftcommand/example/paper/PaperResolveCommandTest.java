@@ -3,7 +3,7 @@ package io.github.projectunified.craftcommand.example.paper;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class PaperResolveCommandTest extends AbstractPaperCommandTest {
 

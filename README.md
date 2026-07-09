@@ -82,7 +82,6 @@ cmd.execute("sender", new String[]{"add", "5", "10"}); // Result: 15.0
 |-------------------|-----------------------------------|--------------------------------------|
 | Bukkit/Spigot     | `craftcommand-bukkit-runtime`     | `craftcommand-bukkit-processor`      |
 | Paper (Brigadier) | `craftcommand-paper-runtime`      | `craftcommand-paper-processor`       |
-| Paper (Basic)     | `craftcommand-paper-runtime`      | `craftcommand-paper-processor-basic` |
 | Standalone        | `craftcommand-standalone-runtime` | `craftcommand-standalone-processor`  |
 
 ## Documentation

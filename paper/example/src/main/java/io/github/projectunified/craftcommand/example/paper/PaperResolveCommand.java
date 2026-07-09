@@ -4,7 +4,6 @@ import io.github.projectunified.craftcommand.annotation.Command;
 import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
-import org.bukkit.command.CommandSender;
 
 /**
  * Covers @Resolve with different sender type variants.
@@ -33,6 +32,9 @@ public class PaperResolveCommand {
 
     public static class CustomSender {
         public final String name;
-        public CustomSender(String name) { this.name = name; }
+
+        public CustomSender(String name) {
+            this.name = name;
+        }
     }
 }

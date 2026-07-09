@@ -40,7 +40,6 @@
     <modules>
         <module>runtime</module>
         <module>processor</module>
-        <module>processor-basic</module>
         <module>example</module>
     </modules>
 </project>

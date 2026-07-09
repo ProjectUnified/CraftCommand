@@ -1,6 +1,5 @@
 package io.github.projectunified.craftcommand.example.bukkit;
 
-import io.github.projectunified.craftcommand.bukkit.BukkitCommandManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockbukkit.mockbukkit.MockBukkit;

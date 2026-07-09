@@ -1,6 +1,8 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
-import io.github.projectunified.craftcommand.annotation.*;
+import io.github.projectunified.craftcommand.annotation.Command;
+import io.github.projectunified.craftcommand.annotation.Default;
+import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
 
 /**
@@ -39,42 +41,50 @@ public class ResolveCommand {
 
     @Command("named")
     public void namedResolve(Object sender, @Resolve("resolvePoint") Point pt) {
-        System.out.println("named=" + pt.x + "," + pt.y);
+        ((TestSender) sender).sendMessage("named=" + pt.x + "," + pt.y);
     }
 
     @Command("sender")
     public void senderResolve(@Resolve("resolveSender") CustomSender sender) {
-        System.out.println("sender=" + sender.name);
+        // CustomSender wraps the original sender; we can't access TestSender messages here
+        // This tests that @Resolve on the sender parameter works correctly
     }
 
     @Command("def")
     public void resolveDefault(Object sender, @Resolve("resolvePointDefault") Point pt) {
-        System.out.println("def=" + pt.x + "," + pt.y);
+        ((TestSender) sender).sendMessage("def=" + pt.x + "," + pt.y);
     }
 
     @Command("min")
     public void resolveMin(Object sender, @Resolve("resolvePoint") Point pt) {
-        System.out.println("min=" + pt.x + "," + pt.y);
+        ((TestSender) sender).sendMessage("min=" + pt.x + "," + pt.y);
     }
 
     @Command("vw")
     public void resolveVw(Object sender, @ValidateWith("validatePoint") @Resolve("resolveWithValidator") Point pt) {
-        System.out.println("vw=" + pt.x + "," + pt.y);
+        ((TestSender) sender).sendMessage("vw=" + pt.x + "," + pt.y);
     }
 
     @Command("implicit")
     public void implicitResolve(Object sender, @Resolve Point pt) {
-        System.out.println("implicit=" + pt.x + "," + pt.y);
+        ((TestSender) sender).sendMessage("implicit=" + pt.x + "," + pt.y);
     }
 
     public static class CustomSender {
         public final String name;
-        public CustomSender(String name) { this.name = name; }
+
+        public CustomSender(String name) {
+            this.name = name;
+        }
     }
 
     public static class Point {
         public final double x;
         public final double y;
-        public Point(double x, double y) { this.x = x; this.y = y; }
+
+        public Point(double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
     }
 }

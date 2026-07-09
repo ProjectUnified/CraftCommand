@@ -53,18 +53,10 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
                 .platformResolution((spec, p) -> spec.addStatement("$L = getWorld($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p[2]))
                 .build());
-        types.register(TypeSupport.Entry.builder(locationClass, 4)
+        types.register(TypeSupport.Entry.builder(locationClass, 3)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
-                .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L)", p[0], p[1], p[2]))
-                .platformSuggestions((spec, p) -> {
-                    String argsVar = p[1];
-                    String currentVar = p[2];
-                    String tempIdx = p[3];
-                    spec.beginControlFlow("if ($L.length - 1 == $L)", argsVar, tempIdx)
-                            .addStatement("return suggestWorlds($L)", currentVar)
-                            .endControlFlow()
-                            .addStatement("return $T.emptyList()", java.util.Collections.class);
-                })
+                .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L, $L)", p[0], p[1], p[2], p[3]))
+                .platformSuggestions((spec, p) -> spec.addStatement("return $T.emptyList()", java.util.Collections.class))
                 .build());
     }
 

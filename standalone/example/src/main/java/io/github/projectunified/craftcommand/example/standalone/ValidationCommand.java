@@ -1,6 +1,7 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
-import io.github.projectunified.craftcommand.annotation.*;
+import io.github.projectunified.craftcommand.annotation.Command;
+import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.validation.annotation.Max;
 import io.github.projectunified.craftcommand.validation.annotation.Min;
 import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
@@ -27,56 +28,56 @@ public class ValidationCommand {
 
     @Command("min")
     public void minOnly(Object sender, @Min(0) int value) {
-        System.out.println("min=" + value);
+        ((TestSender) sender).sendMessage("min=" + value);
     }
 
     @Command("max")
     public void maxOnly(Object sender, @Max(100) int value) {
-        System.out.println("max=" + value);
+        ((TestSender) sender).sendMessage("max=" + value);
     }
 
     @Command("minmax")
     public void minMax(Object sender, @Min(0) @Max(100) int value) {
-        System.out.println("minmax=" + value);
+        ((TestSender) sender).sendMessage("minmax=" + value);
     }
 
     @Command("minmsg")
     public void minCustomMessage(Object sender,
                                  @Min(value = 0, message = "%1$s must be >= %2$s") int value) {
-        System.out.println("minmsg=" + value);
+        ((TestSender) sender).sendMessage("minmsg=" + value);
     }
 
     @Command("maxmsg")
     public void maxCustomMessage(Object sender,
                                  @Max(value = 100, message = "%1$s must be <= %2$s") int value) {
-        System.out.println("maxmsg=" + value);
+        ((TestSender) sender).sendMessage("maxmsg=" + value);
     }
 
     @Command("vwmsg")
     public void vwCustomMessage(Object sender,
                                 @ValidateWith(value = "validatePositive", message = "%2$s") int value) {
-        System.out.println("vwmsg=" + value);
+        ((TestSender) sender).sendMessage("vwmsg=" + value);
     }
 
     @Command("minvw")
     public void minVwStack(Object sender,
                            @Min(0) @ValidateWith("validatePositive") int value) {
-        System.out.println("minvw=" + value);
+        ((TestSender) sender).sendMessage("minvw=" + value);
     }
 
     @Command("defmin")
     public void defaultMin(Object sender, @Min(0) @Default("50") int value) {
-        System.out.println("defmin=" + value);
+        ((TestSender) sender).sendMessage("defmin=" + value);
     }
 
     @Command("defmax")
     public void defaultMax(Object sender, @Max(100) @Default("50") int value) {
-        System.out.println("defmax=" + value);
+        ((TestSender) sender).sendMessage("defmax=" + value);
     }
 
     @Command("defvw")
     public void defaultVw(Object sender,
                           @ValidateWith("validateRange") @Default("25") int value) {
-        System.out.println("defvw=" + value);
+        ((TestSender) sender).sendMessage("defvw=" + value);
     }
 }

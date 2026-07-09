@@ -15,7 +15,7 @@ import java.util.List;
  * {@code getLocation}, {@code suggestPlayers}, {@code suggestWorlds}.
  *
  * <p>Previously these ~150 lines were copy-pasted identically between
- * {@link BukkitCommandProcessor} and {@code PaperBasicCommandProcessor}. Now both
+ * {@link BukkitCommandProcessor}. Now both
  * delegate here.
  */
 public final class BukkitHelperMethods {
@@ -164,17 +164,18 @@ public final class BukkitHelperMethods {
     }
 
     private static MethodSpec getLocation() {
+        ClassName senderClass = ClassName.get("org.bukkit.command", "CommandSender");
         return MethodSpec.methodBuilder("getLocation")
                 .addModifiers(Modifier.PRIVATE)
                 .returns(LOCATION)
                 .addParameter(String[].class, "args")
                 .addParameter(int.class, "startIdx")
-                .addStatement("$T locWorld = getWorld(args[startIdx])", WORLD)
+                .addParameter(senderClass, "sender")
                 .beginControlFlow("try")
-                .addStatement("double x = $T.parseDouble(args[startIdx + 1])", Double.class)
-                .addStatement("double y = $T.parseDouble(args[startIdx + 2])", Double.class)
-                .addStatement("double z = $T.parseDouble(args[startIdx + 3])", Double.class)
-                .addStatement("return new $T(locWorld, x, y, z)", LOCATION)
+                .addStatement("double x = $T.parseDouble(args[startIdx])", Double.class)
+                .addStatement("double y = $T.parseDouble(args[startIdx + 1])", Double.class)
+                .addStatement("double z = $T.parseDouble(args[startIdx + 2])", Double.class)
+                .addStatement("return new $T(sender instanceof $T ? (($T) sender).getWorld() : null, x, y, z)", LOCATION, PLAYER, PLAYER)
                 .nextControlFlow("catch ($T e)", NUMBER_FORMAT_EX)
                 .addStatement("throw new $T(manager.formatMessage($S, $S))", CommandException.class, "invalid-coordinate", "Invalid coordinate format; must be numeric values.")
                 .endControlFlow()

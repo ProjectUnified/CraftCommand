@@ -7,7 +7,8 @@ import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BukkitSuggestCommandTest extends AbstractBukkitCommandTest {
 

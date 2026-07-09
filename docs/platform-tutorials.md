@@ -5,24 +5,26 @@
 ### Command Class
 
 ```java
-@Command("teleport")
-@Command(value = "here", aliases = {"h"})
-public class TeleportCommand {
+@Command("hello")
+@Permission("hello.use")
+public class HelloCommand {
 
     @Default
-    public void execute(Player sender, double x, double y, double z) {
-        sender.teleport(new Location(sender.getWorld(), x, y, z));
+    public void execute(CommandSender sender) {
+        sender.sendMessage("Hello, World!");
     }
 
-    @Command("here")
-    public void teleportHere(Player sender, Player target) {
-        sender.teleport(target.getLocation());
+    @Command("player")
+    public void helloPlayer(Player sender, Player target) {
+        target.sendMessage(sender.getName() + " says hello!");
+        sender.sendMessage("Greeted " + target.getName());
     }
 
-    @Command(value = "world")
-    public void toWorld(Player sender, World world,
-                        @Default("0") double x, @Default("64") double y) {
-        sender.teleport(new Location(world, x, y, 0));
+    @Command("greedy")
+    public void greetAll(CommandSender sender, @Greedy String message) {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.sendMessage(message);
+        }
     }
 }
 ```
@@ -36,7 +38,7 @@ public class MyPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         manager = new BukkitCommandManager(this);
-        manager.register(new TeleportCommand());
+        manager.register(new HelloCommand());
         manager.syncCommand();
     }
 
@@ -53,16 +55,18 @@ public class MyPlugin extends JavaPlugin {
 
 ```java
 @Command("broadcast")
+@Permission("broadcast.use")
 public class BroadcastCommand {
 
     @Default
-    public void execute(CommandSender sender, @Greedy String message) {
+    public void execute(CommandSourceStack sender, @Greedy String message) {
+        sender.getSender().sendMessage("Broadcasting: " + message);
         Bukkit.broadcastMessage(message);
     }
 
     @Command("stack")
     public void executeStack(CommandSourceStack sender, @Greedy String message) {
-        sender.getSender().sendMessage(message);
+        sender.getSender().sendMessage("Stack broadcast: " + message);
     }
 }
 ```
@@ -89,14 +93,14 @@ public class MyPlugin extends JavaPlugin {
 @Command("calc")
 public class CalculatorCommand {
 
+    @Default
+    public void execute(Object sender) {
+        System.out.println("Use /calc add <a> <b>");
+    }
+
     @Command("add")
     public void add(Object sender, double a, double b) {
         System.out.println("Result: " + (a + b));
-    }
-
-    @Command("sub")
-    public void sub(Object sender, double a, double b) {
-        System.out.println("Result: " + (a - b));
     }
 
     @Command("advanced")
@@ -117,4 +121,62 @@ manager.register(new CalculatorCommand());
 
 StandaloneCommand cmd = manager.getCommand("calc");
 cmd.execute("Console", new String[]{"add", "5", "10"});
+```
+
+## Feature Examples
+
+### Annotations on Parameters
+
+```java
+// @Default + @Min + @Max + @ValidateWith
+public void setLevel(Player sender, @Min(0) @Max(100) @ValidateWith("validateEven") @Default("50") int level) { ... }
+
+// @Greedy + @Name + @Suggest
+public void chat(Player sender, @Name("text") @Greedy @Suggest("colors") @Default("red") String message) { ... }
+
+// @Resolve with different sender types
+public void resolveWithBase(CommandSender sender, @Resolve("resolveCustom") CustomType ct) { ... }
+public void resolveWithPlayer(Player sender, @Resolve("resolvePoint") Point pt) { ... }
+```
+
+### Resolver Methods
+
+```java
+// No sender param
+public Point resolvePoint(double x, double y) {
+    return new Point(x, y);
+}
+
+// Same sender type
+public Point resolvePointWithSender(Player sender, double x, double y) {
+    return new Point(x + sender.getLocation().getX(), y);
+}
+
+// Base sender type
+public CustomSender resolveCustom(CommandSender sender) {
+    return new CustomSender(sender);
+}
+
+// With @Default on resolver params
+public Point resolvePointDefault(double x, @Default("0") double y) {
+    return new Point(x, y);
+}
+```
+
+### Nested Subcommand Classes
+
+```java
+@Command("admin")
+@Permission("admin.use")
+public class AdminCommands {
+    @Default
+    public void execute(Player sender) {
+        sender.sendMessage("Admin panel");
+    }
+
+    @Command("spawn")
+    public void spawn(Player sender, String worldName) {
+        sender.sendMessage("Spawn set for " + worldName);
+    }
+}
 ```
