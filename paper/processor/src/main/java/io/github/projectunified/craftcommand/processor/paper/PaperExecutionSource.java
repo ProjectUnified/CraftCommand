@@ -87,7 +87,7 @@ public class PaperExecutionSource implements ExecutionSource {
         // Check if param has @Resolve — use unified recursive approach
         Resolve resolveAnn = pm.getElement().getAnnotation(Resolve.class);
         if (resolveAnn != null && classModel.getResolverMethod(resolveAnn.value()) != null) {
-            generateResolverResolution(methodSpec, classModel, method, rootModel, classModel.getResolverMethod(resolveAnn.value()), varName, senderVarName);
+            generateResolverResolution(methodSpec, classModel, method, rootModel, classModel.getResolverMethod(resolveAnn.value()), varName, senderVarName, pm);
             return;
         }
 
@@ -107,8 +107,12 @@ public class PaperExecutionSource implements ExecutionSource {
                 boolean includeSender = processor.isSenderParam(TypeName.get(localResolver.getParameters().get(0).asType()), method);
                 processor.generateResolverInvocation(methodSpec, localResolver, classModel, rootModel, pmTypeName, varName, resolverSenderExpr, argNames, includeSender);
             } else if (processor.isBuiltInType(pmTypeName)) {
-                String defVal = pmTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(pm.getType()) : "null";
-                methodSpec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
+                if (pm.isOptional() && pm.getDefaultValue() != null) {
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, processor.getAssignmentValueForType(pmTypeName, pm.getDefaultValue()));
+                } else {
+                    String defVal = pmTypeName.isPrimitive() ? processor.getDefaultPrimitiveValue(pm.getType()) : "null";
+                    methodSpec.addStatement("$T $L = $L", pmTypeName, varName, defVal);
+                }
             } else {
                 String strVar = varName + "_str";
                 methodSpec.addStatement("String $L = $T.getString(ctx, $S)", strVar,
@@ -148,7 +152,7 @@ public class PaperExecutionSource implements ExecutionSource {
      * then invokes the resolver method. Supports @Default, @Greedy, @Name, @Suggest, @Resolve (nested),
      * and validation annotations like @Min, @Max, @ValidateWith.
      */
-    private void generateResolverResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName) {
+    private void generateResolverResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName, ParameterModel parentParam) {
         ExecutableElement resolverElement = resolverModel.getElement();
         TypeName returnType = TypeName.get(resolverModel.getElement().getReturnType());
 
@@ -165,7 +169,21 @@ public class PaperExecutionSource implements ExecutionSource {
             if (processor.isSenderParam(TypeName.get(rp.getType()), method)) continue;
             String rpVarName = varName + "_rp_" + i;
             argNames.add(rpVarName);
-            generateParameterResolution(methodSpec, classModel, method, rootModel, rp, rpVarName, senderVarName, i);
+
+            ParameterModel rpToResolve = rp;
+            if (!rp.isOptional() && parentParam != null && parentParam.isOptional()) {
+                rpToResolve = new ParameterModel(
+                        rp.getName(),
+                        rp.getType(),
+                        rp.isGreedy(),
+                        true,
+                        parentParam.getDefaultValue(),
+                        rp.getSuggestProvider(),
+                        rp.getElement()
+                );
+            }
+
+            generateParameterResolution(methodSpec, classModel, method, rootModel, rpToResolve, rpVarName, senderVarName, i);
             // Run validation handlers (e.g., @Min, @Max, @ValidateWith) on resolver params
             processor.runParameterAnnotationHandlers(rp.getElement(), rpVarName, processor.getInstanceVarExpression(classModel, rootModel), senderVarName, methodSpec);
         }

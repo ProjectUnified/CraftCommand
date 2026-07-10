@@ -127,6 +127,15 @@ public final class ResolverLookup {
 
     /**
      * Validates that a method has a valid suggest method signature.
+     *
+     * <p>Valid signatures:
+     * <ul>
+     *   <li>{@code Collection<String> m(SenderType sender)}</li>
+     *   <li>{@code Collection<String> m(String[] current)}</li>
+     *   <li>{@code Collection<String> m(String[] current, String[] context)}</li>
+     *   <li>{@code Collection<String> m(SenderType sender, String[] current)}</li>
+     *   <li>{@code Collection<String> m(SenderType sender, String[] current, String[] context)}</li>
+     * </ul>
      */
     private boolean isValidSuggestMethod(ExecutableElement method) {
         // Check return type is Collection<String> or subtype
@@ -138,43 +147,47 @@ public final class ResolverLookup {
         List<? extends javax.lang.model.element.VariableElement> params = method.getParameters();
         int paramCount = params.size();
 
-        // Valid param counts: 1, 2, 3, or 4
-        if (paramCount < 1 || paramCount > 4) {
+        // Valid param counts: 1, 2, or 3
+        if (paramCount < 1 || paramCount > 3) {
             return false;
         }
 
-        // Check parameter types
-        int idx = 0;
-
-        // For 3+ params, check if first param is sender type (not String, not String[])
-        if (paramCount >= 3) {
+        // Check parameter types based on count
+        if (paramCount == 1) {
+            // Either m(SenderType sender) or m(String[] current)
             TypeMirror firstParamType = params.get(0).asType();
-            if (!isStringOrStringArray(firstParamType)) {
-                idx = 1; // Skip sender param
-            } else {
-                // First param is String or String[], so no sender
-                idx = 0;
-            }
+            // Accept if it's String[] (current) or any other type (sender)
+            return isStringArray(firstParamType) || !isStringOrStringArray(firstParamType);
         }
 
-        // Current param: must be String[]
-        if (idx >= params.size()) return false;
-        TypeMirror currentType = params.get(idx).asType();
-        if (!isStringArray(currentType)) {
+        if (paramCount == 2) {
+            // Either m(String[] current, String[] context) or m(SenderType sender, String[] current)
+            TypeMirror firstParamType = params.get(0).asType();
+            TypeMirror secondParamType = params.get(1).asType();
+
+            if (isStringArray(firstParamType)) {
+                // m(String[] current, String[] context)
+                return isStringArray(secondParamType);
+            } else if (!isStringOrStringArray(firstParamType)) {
+                // m(SenderType sender, String[] current)
+                return isStringArray(secondParamType);
+            }
             return false;
         }
-        idx++;
 
-        // Optional context param: must be String[]
-        if (idx < params.size()) {
-            TypeMirror contextType = params.get(idx).asType();
-            if (!isStringArray(contextType)) {
-                return false;
+        if (paramCount == 3) {
+            // m(SenderType sender, String[] current, String[] context)
+            TypeMirror firstParamType = params.get(0).asType();
+            TypeMirror secondParamType = params.get(1).asType();
+            TypeMirror thirdParamType = params.get(2).asType();
+
+            if (!isStringOrStringArray(firstParamType) && isStringArray(secondParamType) && isStringArray(thirdParamType)) {
+                return true;
             }
-            idx++;
+            return false;
         }
 
-        return idx == params.size();
+        return false;
     }
 
     private boolean isCollectionOfStrings(TypeMirror type) {

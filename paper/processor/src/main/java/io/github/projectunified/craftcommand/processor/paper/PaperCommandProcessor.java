@@ -4,6 +4,7 @@ import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.annotation.Default;
 import io.github.projectunified.craftcommand.annotation.Greedy;
+import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.annotation.Suggest;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.exception.CommandException;
@@ -20,6 +21,7 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
 import java.util.*;
 import java.util.function.Function;
 
@@ -114,11 +116,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected TypeName getCommandInterfaceType() {
-        return ClassName.get("io.github.projectunified.craftcommand.paper", "PaperCommand");
-    }
-
-    @Override
     protected ClassName getSenderTypeName() {
         return commandSourceStackClass;
     }
@@ -204,6 +201,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         for (CommandModel child : model.getNestedSubcommands()) {
             generateSubcommandClassExecutors(typeSpec, child, rootModel);
         }
+    }
+
+    @Override
+    protected void buildParameterSuggestions(TypeSpec.Builder typeSpec, CommandModel model, CommandModel rootModel) {
+        // In Paper (Brigadier), suggest helpers are dead code — the Brigadier tree handles
+        // suggestions directly via .suggests() calls. Skip generating suggest helpers.
     }
 
     // ── Brigadier tree generation (private helpers) ──
@@ -302,7 +305,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional, rpSuggestProvider, rpTypeName));
                 }
             } else {
-                int width = getParameterWidth(classModel, p, rootModel);
+                int width = getParameterWidth(classModel, p, rootModel, method);
                 CodeBlock typeBlock = getArgumentTypeExpression(classModel, p, rootModel);
                 if (width <= 1) {
                     nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false, p.getSuggestProvider()));
@@ -318,9 +321,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         buildNodeChainRecursive(spec, parentBuilderVar, classModel, method, instanceExpr, rootModel, nodes, 0);
     }
 
-    private int getParameterWidth(CommandModel classModel, ParameterModel param, CommandModel rootModel) {
+    private int getParameterWidth(CommandModel classModel, ParameterModel param, CommandModel rootModel, MethodModel method) {
         ExecutableElement localRes = findLocalResolver(classModel, param, rootModel);
-        if (localRes != null) return getLocalResolverMaxWidth(localRes);
+        if (localRes != null) return getLocalResolverMaxWidth(localRes, method);
         TypeName typeName = TypeName.get(param.getType());
         if (isPlatformBuiltInType(typeName)) return getBuiltInWidth(typeName);
         return 1;
@@ -330,6 +333,10 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         boolean canExecuteHere = false;
         if (index == nodes.size()) {
             canExecuteHere = true;
+        } else if (index == 0) {
+            if (nodes.get(0).parameter.isOptional() || nodes.get(0).isResolverParamOptional) {
+                canExecuteHere = true;
+            }
         } else if (index > 0 && nodes.get(index - 1).isLastForParameter) {
             ParameterModel nextParam = nodes.get(index).parameter;
             if (nextParam.isOptional()) canExecuteHere = true;
@@ -376,10 +383,27 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                         ExecutableElement suggestMethod = findSuggestMethod(typeElement, suggestProvider);
                         boolean needsCast = false;
                         if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                            TypeName firstParamType = TypeName.get(suggestMethod.getParameters().get(0).asType());
-                            if (isSenderType(firstParamType) && !firstParamType.toString().equals(getSenderTypeName().toString())) {
-                                suggestSenderExpr = "as" + getSimpleName(firstParamType) + "(ctx.getSource())";
-                                needsCast = true;
+                            javax.lang.model.element.VariableElement firstParam = suggestMethod.getParameters().get(0);
+                            TypeName firstParamType = TypeName.get(firstParam.asType());
+                            if (!firstParamType.toString().equals(getSenderTypeName().toString())) {
+                                // Check if first param has @Resolve annotation - it's a custom sender
+                                Resolve resolveAnn = firstParam.getAnnotation(Resolve.class);
+                                if (resolveAnn != null) {
+                                    if (!resolveAnn.value().isEmpty()) {
+                                        // Local resolver method
+                                        ExecutableElement resolver = resolverLookup.findMethod(typeElement, resolveAnn.value());
+                                        if (resolver != null) {
+                                            String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
+                                            suggestSenderExpr = String.format("%s.%s(ctx.getSource())", resolverInstanceExpr, resolver.getSimpleName().toString());
+                                        }
+                                    } else {
+                                        // Global sender resolver
+                                        suggestSenderExpr = String.format("(%s) manager.resolveSender(%s.class, ctx.getSource())", firstParamType, firstParamType);
+                                    }
+                                } else if (isSenderType(firstParamType)) {
+                                    suggestSenderExpr = "as" + getSimpleName(firstParamType) + "(ctx.getSource())";
+                                    needsCast = true;
+                                }
                             }
                         }
                         int argCount = suggestMethod != null ? suggestMethod.getParameters().size() : 0;
@@ -389,8 +413,16 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar);
                             spec.beginControlFlow("try");
                             if (argCount == 1) {
-                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L(args))",
-                                        instanceExpr, suggestProvider);
+                                TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
+                                if (isSenderParam(TypeName.get(firstParamType), method)) {
+                                    // m(SenderType sender)
+                                    spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L))",
+                                            instanceExpr, suggestProvider, suggestSenderExpr);
+                                } else {
+                                    // m(String[] current)
+                                    spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L(args))",
+                                            instanceExpr, suggestProvider);
+                                }
                             } else if (argCount == 2) {
                                 spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args))",
                                         instanceExpr, suggestProvider, suggestSenderExpr);
@@ -404,8 +436,16 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             spec.endControlFlow(")");
                         } else {
                             if (argCount == 1) {
-                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L(args)))",
-                                        nextBuilderVar, instanceExpr, suggestProvider);
+                                TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
+                                if (isSenderParam(TypeName.get(firstParamType), method)) {
+                                    // m(SenderType sender)
+                                    spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L)))",
+                                            nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                                } else {
+                                    // m(String[] current)
+                                    spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L(args)))",
+                                            nextBuilderVar, instanceExpr, suggestProvider);
+                                }
                             } else if (argCount == 2) {
                                 spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args)))",
                                         nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);

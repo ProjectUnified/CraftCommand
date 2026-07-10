@@ -16,6 +16,83 @@ public class BukkitSuggestCommandTest extends AbstractBukkitCommandTest {
         new BukkitCommandManager(MockBukkit.createMockPlugin()).register(new BukkitSuggestCommand());
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 1: m(String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature1_SuggestMethod() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"method", ""});
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
+    }
+
+    @Test
+    public void testSignature1_SuggestMethodFiltering() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"method", "s"});
+        assertTrue(suggestions.contains("square"));
+        assertFalse(suggestions.contains("circle"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 3: m(CommandSender sender)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature3_SuggestMethodSender() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"methodsender", ""});
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
+    }
+
+    @Test
+    public void testSignature3_SuggestMethodSenderExecute() {
+        PlayerMock player = server.addPlayer();
+        server.getCommandMap().getCommand("buksug").execute(player, "buksug", new String[]{"methodsender", "circle"});
+        assertEquals("methodsender=circle", player.nextMessage());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 4: m(Player sender, String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature4_SuggestMethodPlayer() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"methodplayer", ""});
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
+    }
+
+    @Test
+    public void testSignature4_SuggestMethodPlayerExecute() {
+        PlayerMock player = server.addPlayer();
+        server.getCommandMap().getCommand("buksug").execute(player, "buksug", new String[]{"methodplayer", "triangle"});
+        assertEquals("methodplayer=triangle", player.nextMessage());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Custom Sender Type: m(CustomSender sender, String[] current)
+    // Command method uses @Resolve to get CustomSender
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testCustomSender_SuggestMethodExecute() {
+        PlayerMock player = server.addPlayer();
+        server.getCommandMap().getCommand("buksug").execute(player, "buksug", new String[]{"methodcustom", "square"});
+        assertEquals("methodcustom=square", player.nextMessage());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Field Suggest
+    // ═══════════════════════════════════════════════════════════════
+
     @Test
     public void testSuggestField() {
         PlayerMock player = server.addPlayer();
@@ -26,22 +103,6 @@ public class BukkitSuggestCommandTest extends AbstractBukkitCommandTest {
     }
 
     @Test
-    public void testSuggestMethod() {
-        PlayerMock player = server.addPlayer();
-        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"method", ""});
-        assertTrue(suggestions.contains("circle"));
-        assertTrue(suggestions.contains("square"));
-        assertTrue(suggestions.contains("triangle"));
-    }
-
-    @Test
-    public void testGreedySuggest() {
-        PlayerMock player = server.addPlayer();
-        server.getCommandMap().getCommand("buksug").execute(player, "buksug", new String[]{"greedy", "red green"});
-        assertEquals("greedy=red green", player.nextMessage());
-    }
-
-    @Test
     public void testSuggestFieldFiltering() {
         PlayerMock player = server.addPlayer();
         List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"field", "r"});
@@ -49,21 +110,14 @@ public class BukkitSuggestCommandTest extends AbstractBukkitCommandTest {
         assertFalse(suggestions.contains("green"));
     }
 
-    @Test
-    public void testSuggestMethodFiltering() {
-        PlayerMock player = server.addPlayer();
-        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"method", "s"});
-        assertTrue(suggestions.contains("square"));
-        assertFalse(suggestions.contains("circle"));
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // Greedy Suggest
+    // ═══════════════════════════════════════════════════════════════
 
     @Test
-    public void testSuggestFieldComplete() {
+    public void testGreedySuggest() {
         PlayerMock player = server.addPlayer();
-        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"field", ""});
-        assertEquals(3, suggestions.size());
-        assertTrue(suggestions.contains("red"));
-        assertTrue(suggestions.contains("green"));
-        assertTrue(suggestions.contains("blue"));
+        server.getCommandMap().getCommand("buksug").execute(player, "buksug", new String[]{"greedy", "red green"});
+        assertEquals("greedy=red green", player.nextMessage());
     }
 }

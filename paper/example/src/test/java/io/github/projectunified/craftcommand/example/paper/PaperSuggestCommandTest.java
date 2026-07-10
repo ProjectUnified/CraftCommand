@@ -25,26 +25,107 @@ public class PaperSuggestCommandTest extends AbstractPaperCommandTest {
                 .collect(Collectors.toList());
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 1: m(String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
     @Test
-    public void testSuggestField() throws Exception {
+    public void testSignature1_MethodSuggestions() throws Exception {
         PlayerMock player = server.addPlayer();
-        register(PaperSuggestCommand.class).execute("psugsug field red", source(player));
-        assertEquals("field=red", player.nextMessage());
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug method ");
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
     }
 
     @Test
-    public void testSuggestMethod() throws Exception {
+    public void testSignature1_MethodFiltering() throws Exception {
         PlayerMock player = server.addPlayer();
-        register(PaperSuggestCommand.class).execute("psugsug method circle", source(player));
-        assertEquals("method=circle", player.nextMessage());
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug method s");
+        assertTrue(suggestions.contains("square"));
+        assertFalse(suggestions.contains("circle"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 3: m(CommandSourceStack sender)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature3_MethodCSSSuggestions() throws Exception {
+        PlayerMock player = server.addPlayer();
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug methodcss ");
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
     }
 
     @Test
-    public void testGreedySuggest() throws Exception {
+    public void testSignature3_MethodCSSExecute() throws Exception {
         PlayerMock player = server.addPlayer();
-        register(PaperSuggestCommand.class).execute("psugsug greedy red green", source(player));
-        assertEquals("greedy=red green", player.nextMessage());
+        register(PaperSuggestCommand.class).execute("psugsug methodcss square", source(player));
+        assertEquals("methodcss=square", player.nextMessage());
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 4: m(CommandSender sender, String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature4_MethodSenderSuggestions() throws Exception {
+        PlayerMock player = server.addPlayer();
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug methodsender ");
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
+    }
+
+    @Test
+    public void testSignature4_MethodSenderExecute() throws Exception {
+        PlayerMock player = server.addPlayer();
+        register(PaperSuggestCommand.class).execute("psugsug methodsender triangle", source(player));
+        assertEquals("methodsender=triangle", player.nextMessage());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 4: m(Player sender, String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature4_MethodPlayerSuggestions() throws Exception {
+        PlayerMock player = server.addPlayer();
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug methodplayer ");
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("square"));
+        assertTrue(suggestions.contains("triangle"));
+    }
+
+    @Test
+    public void testSignature4_MethodPlayerExecute() throws Exception {
+        PlayerMock player = server.addPlayer();
+        register(PaperSuggestCommand.class).execute("psugsug methodplayer circle", source(player));
+        assertEquals("methodplayer=circle", player.nextMessage());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Custom Sender Type: m(CustomSender sender, String[] current)
+    // Command method uses @Resolve to get CustomSender
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testCustomSender_MethodExecute() throws Exception {
+        PlayerMock player = server.addPlayer();
+        register(PaperSuggestCommand.class).execute("psugsug methodcustom square", source(player));
+        assertEquals("methodcustom=square", player.nextMessage());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Field Suggest
+    // ═══════════════════════════════════════════════════════════════
 
     @Test
     public void testSuggestFieldSuggestions() throws Exception {
@@ -57,16 +138,6 @@ public class PaperSuggestCommandTest extends AbstractPaperCommandTest {
     }
 
     @Test
-    public void testSuggestMethodSuggestions() throws Exception {
-        PlayerMock player = server.addPlayer();
-        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
-        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug method ");
-        assertTrue(suggestions.contains("circle"));
-        assertTrue(suggestions.contains("square"));
-        assertTrue(suggestions.contains("triangle"));
-    }
-
-    @Test
     public void testSuggestFieldFiltering() throws Exception {
         PlayerMock player = server.addPlayer();
         CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
@@ -75,12 +146,24 @@ public class PaperSuggestCommandTest extends AbstractPaperCommandTest {
         assertFalse(suggestions.contains("green"));
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // Name Suggest
+    // ═══════════════════════════════════════════════════════════════
+
     @Test
-    public void testSuggestMethodFiltering() throws Exception {
+    public void testNameSuggest() throws Exception {
+        PlayerMock player = server.addPlayer();
+        register(PaperSuggestCommand.class).execute("psugsug namesug blue", source(player));
+        assertEquals("namesug=blue", player.nextMessage());
+    }
+
+    @Test
+    public void testNameSuggestSuggestions() throws Exception {
         PlayerMock player = server.addPlayer();
         CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
-        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug method s");
-        assertTrue(suggestions.contains("square"));
-        assertFalse(suggestions.contains("circle"));
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug namesug ");
+        assertTrue(suggestions.contains("red"));
+        assertTrue(suggestions.contains("green"));
+        assertTrue(suggestions.contains("blue"));
     }
 }

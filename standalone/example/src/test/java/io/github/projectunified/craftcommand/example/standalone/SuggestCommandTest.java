@@ -19,6 +19,125 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
         return "suggest";
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 1: m(String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature1_SuggestMethod() {
+        List<String> suggestions = tabComplete("method", "");
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSignature1_SuggestMethodFiltering() {
+        List<String> suggestions = tabComplete("method", "s");
+        assertTrue(suggestions.contains("square"));
+        assertFalse(suggestions.contains("circle"));
+    }
+
+    @Test
+    public void testSignature1_SuggestMethodExecute() {
+        assertTrue(execute("method", "circle"));
+        assertEquals("shape=circle", sender.getMessages().get(0));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 2: m(String[] current, String[] context)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature2_SuggestMethodContext() {
+        List<String> suggestions = tabComplete("methodcontext", "");
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSignature2_SuggestMethodContextFiltering() {
+        List<String> suggestions = tabComplete("methodcontext", "c");
+        assertTrue(suggestions.contains("circle"));
+        assertFalse(suggestions.contains("square"));
+    }
+
+    @Test
+    public void testSignature2_SuggestMethodContextExecute() {
+        assertTrue(execute("methodcontext", "square"));
+        assertEquals("shapecontext=square", sender.getMessages().get(0));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 3: m(SenderType sender)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature3_SuggestMethodSender() {
+        List<String> suggestions = tabComplete("methodsender", "");
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSignature3_SuggestMethodSenderFiltering() {
+        List<String> suggestions = tabComplete("methodsender", "t");
+        assertTrue(suggestions.contains("triangle"));
+        assertFalse(suggestions.contains("circle"));
+    }
+
+    @Test
+    public void testSignature3_SuggestMethodSenderExecute() {
+        assertTrue(execute("methodsender", "triangle"));
+        assertEquals("shapesender=triangle", sender.getMessages().get(0));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 4: m(SenderType sender, String[] current)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature4_SuggestMethodSenderCurrent() {
+        List<String> suggestions = tabComplete("methodsendercurrent", "");
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSignature4_SuggestMethodSenderCurrentFiltering() {
+        List<String> suggestions = tabComplete("methodsendercurrent", "c");
+        assertTrue(suggestions.contains("circle"));
+        assertFalse(suggestions.contains("square"));
+    }
+
+    @Test
+    public void testSignature4_SuggestMethodSenderCurrentExecute() {
+        assertTrue(execute("methodsendercurrent", "circle"));
+        assertEquals("shapesendercurrent=circle", sender.getMessages().get(0));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Signature 5: m(SenderType sender, String[] current, String[] context)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature5_SuggestMethodFull() {
+        List<String> suggestions = tabComplete("methodfull", "");
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSignature5_SuggestMethodFullFiltering() {
+        List<String> suggestions = tabComplete("methodfull", "s");
+        assertTrue(suggestions.contains("square"));
+        assertFalse(suggestions.contains("triangle"));
+    }
+
+    @Test
+    public void testSignature5_SuggestMethodFullExecute() {
+        assertTrue(execute("methodfull", "square"));
+        assertEquals("shapefull=square", sender.getMessages().get(0));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Field Suggest
+    // ═══════════════════════════════════════════════════════════════
+
     @Test
     public void testSuggestField() {
         List<String> suggestions = tabComplete("field", "");
@@ -26,10 +145,27 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
     }
 
     @Test
-    public void testSuggestMethod() {
-        List<String> suggestions = tabComplete("method", "");
-        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    public void testSuggestFieldFiltering() {
+        List<String> suggestions = tabComplete("field", "r");
+        assertTrue(suggestions.contains("red"));
+        assertFalse(suggestions.contains("green"));
     }
+
+    @Test
+    public void testSuggestFieldEmptyInput() {
+        List<String> suggestions = tabComplete("field", "");
+        assertEquals(3, suggestions.size());
+    }
+
+    @Test
+    public void testSuggestFieldNoMatch() {
+        List<String> suggestions = tabComplete("field", "xyz");
+        assertTrue(suggestions.isEmpty());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Other Suggest Features
+    // ═══════════════════════════════════════════════════════════════
 
     @Test
     public void testGreedySuggest() {
@@ -64,49 +200,15 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
         assertEquals(List.of("greedyname=red green blue"), sender.getMessages());
     }
 
-    @Test
-    public void testSuggestFieldTabComplete() {
-        List<String> suggestions = tabComplete("field", "r");
-        assertTrue(suggestions.contains("red"));
-        assertFalse(suggestions.contains("green"));
-    }
-
-    @Test
-    public void testSuggestMethodTabComplete() {
-        List<String> suggestions = tabComplete("method", "s");
-        assertTrue(suggestions.contains("square"));
-        assertFalse(suggestions.contains("circle"));
-    }
-
-    @Test
-    public void testSuggestFieldEmptyInput() {
-        List<String> suggestions = tabComplete("field", "");
-        assertEquals(3, suggestions.size());
-        assertSuggestionsContain(suggestions, "red", "green", "blue");
-    }
-
-    @Test
-    public void testSuggestMethodEmptyInput() {
-        List<String> suggestions = tabComplete("method", "");
-        assertEquals(3, suggestions.size());
-        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
-    }
-
-    @Test
-    public void testSuggestFieldNoMatch() {
-        List<String> suggestions = tabComplete("field", "xyz");
-        assertTrue(suggestions.isEmpty());
-    }
-
-    @Test
-    public void testSuggestMethodNoMatch() {
-        List<String> suggestions = tabComplete("method", "xyz");
-        assertTrue(suggestions.isEmpty());
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // Tab Completion Subcommands
+    // ═══════════════════════════════════════════════════════════════
 
     @Test
     public void testTabCompletionSubcommands() {
         List<String> suggestions = tabComplete("");
-        assertSuggestionsContain(suggestions, "field", "method", "greedysug", "namesug", "defaultsug", "resolvesug", "greedyname");
+        assertSuggestionsContain(suggestions, "field", "method", "methodcontext", "methodsender",
+                "methodsendercurrent", "methodfull", "greedysug", "namesug", "defaultsug",
+                "resolvesug", "greedyname");
     }
 }

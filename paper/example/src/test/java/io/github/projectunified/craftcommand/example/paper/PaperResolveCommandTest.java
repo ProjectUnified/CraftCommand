@@ -9,15 +9,36 @@ public class PaperResolveCommandTest extends AbstractPaperCommandTest {
 
     @Test
     public void testNamedResolve() throws Exception {
-        PlayerMock player = server.addPlayer();
-        register(PaperResolveCommand.class).execute("presolve named", source(player));
-        assertEquals("named=Player0", player.nextMessage());
+        PlayerMock player = server.addPlayer("TestPlayer0");
+        register(PaperResolveCommand.class).execute("paperresolve named", source(player));
+        assertEquals("named=TestPlayer0", player.nextMessage());
     }
 
     @Test
-    public void testResolveDefault() throws Exception {
-        PlayerMock player = server.addPlayer();
-        register(PaperResolveCommand.class).execute("presolve def", source(player));
-        assertEquals("def=Player0", player.nextMessage());
+    public void testStringResolve() throws Exception {
+        PlayerMock player = server.addPlayer("TestPlayer0");
+        register(PaperResolveCommand.class).execute("paperresolve string hello", source(player));
+        assertEquals("string=hello", player.nextMessage());
+    }
+
+    @Test
+    public void testStringWithDefault() throws Exception {
+        PlayerMock player = server.addPlayer("TestPlayer0");
+        register(PaperResolveCommand.class).execute("paperresolve stringWithDefault world", source(player));
+        assertEquals("stringWithDefault=world,name=TestPlayer0", player.nextMessage());
+    }
+
+    @Test
+    public void testDefaultResolve() throws Exception {
+        PlayerMock player = server.addPlayer("TestPlayer0");
+        register(PaperResolveCommand.class).execute("paperresolve def", source(player));
+        assertEquals("def=def", player.nextMessage());
+    }
+
+    @Test
+    public void testDefaultResolveWithValue() throws Exception {
+        PlayerMock player = server.addPlayer("TestPlayer0");
+        register(PaperResolveCommand.class).execute("paperresolve def custom", source(player));
+        assertEquals("def=custom", player.nextMessage());
     }
 }

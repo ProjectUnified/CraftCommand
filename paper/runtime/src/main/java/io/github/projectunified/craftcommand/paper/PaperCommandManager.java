@@ -6,6 +6,9 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.*;
 import java.util.function.BiConsumer;
 
@@ -97,8 +100,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
 
     private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
         Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Paper");
-        java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
-                .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
+        MethodHandle handle = MethodHandles.lookup().findConstructor(wrapperClass, MethodType.methodType(void.class, commandClass, CommandManager.class));
         return handle.invoke(instance, this);
     }
 }

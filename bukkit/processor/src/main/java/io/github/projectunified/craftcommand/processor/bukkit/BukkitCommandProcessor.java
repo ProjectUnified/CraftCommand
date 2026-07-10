@@ -71,11 +71,6 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected TypeName getCommandInterfaceType() {
-        return ClassName.get("org.bukkit.command", "Command");
-    }
-
-    @Override
     protected ClassName getSenderTypeName() {
         return commandSenderClass;
     }
@@ -161,7 +156,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {
         methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
         String msg = permission.message();
-        if (!msg.isEmpty() && msg.startsWith("i18n:")) {
+        if (msg.startsWith("i18n:")) {
             String key = msg.substring(5);
             methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
                     chatColorClass, key, msg, permission.value());
