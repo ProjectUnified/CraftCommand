@@ -11,13 +11,23 @@ import java.util.List;
 public interface ArgumentResolver<S, T> {
     /**
      * Resolves a parameter value from the current argument.
+     *
+     * @param sender  the command sender
+     * @param current the argument array slice for this parameter type
+     * @param context the full command argument array
+     * @return the resolved value
      */
-    T resolve(S sender, String[] args, String current) throws Exception;
+    T resolve(S sender, String[] current, String[] context) throws Exception;
 
     /**
      * Returns tab-completion suggestions. Default: empty.
+     *
+     * @param sender  the command sender
+     * @param current the argument array slice for this parameter type
+     * @param context the full command argument array
+     * @return the list of suggestions
      */
-    default List<String> suggest(S sender, String[] args, String current) {
+    default List<String> suggest(S sender, String[] current, String[] context) {
         return java.util.Collections.emptyList();
     }
 

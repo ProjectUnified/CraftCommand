@@ -105,7 +105,8 @@ public class ArrayExecutionSource implements ExecutionSource {
 
     /**
      * Unified resolver param resolution: resolves each non-sender param using the same code path,
-     * then invokes the resolver method. Supports @Default, @Greedy, @Name, @Suggest, @Resolve (nested).
+     * then invokes the resolver method. Supports @Default, @Greedy, @Name, @Suggest, @Resolve (nested),
+     * and validation annotations like @Min, @Max, @ValidateWith.
      */
     private void generateResolverResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName) {
         ExecutableElement resolverElement = resolverModel.getElement();
@@ -125,6 +126,8 @@ public class ArrayExecutionSource implements ExecutionSource {
             String rpVarName = varName + "_rp_" + i;
             argNames.add(rpVarName);
             generateParameterResolution(methodSpec, classModel, method, rootModel, rp, rpVarName, senderVarName, i);
+            // Run validation handlers (e.g., @Min, @Max, @ValidateWith) on resolver params
+            processor.runParameterAnnotationHandlers(rp.getElement(), rpVarName, processor.getInstanceVarExpression(classModel, rootModel), senderVarName, methodSpec);
         }
 
         // Invoke resolver method

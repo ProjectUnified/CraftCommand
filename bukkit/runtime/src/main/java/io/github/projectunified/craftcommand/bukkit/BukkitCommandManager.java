@@ -1,7 +1,7 @@
 package io.github.projectunified.craftcommand.bukkit;
 
+import io.github.projectunified.craftcommand.CommandInfo;
 import io.github.projectunified.craftcommand.CommandManager;
-import io.github.projectunified.craftcommand.ErrorHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -12,8 +12,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 
@@ -90,8 +93,9 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
 
     private final JavaPlugin plugin;
     private final Map<String, Command> registered = new HashMap<>();
+    private final Map<Object, Command> wrappers = new HashMap<>();
 
-    public BukkitCommandManager(JavaPlugin plugin, ErrorHandler<CommandSender> errorHandler) {
+    public BukkitCommandManager(JavaPlugin plugin, BiConsumer<CommandSender, Exception> errorHandler) {
         super(errorHandler);
         this.plugin = plugin;
     }
@@ -156,14 +160,31 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
             try {
                 Class<?> commandClass = commandInstance.getClass();
                 Command command = (Command) instantiate(commandClass, commandInstance);
-                if (command instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
-                    registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) command);
-                }
+                wrappers.put(commandInstance, command);
                 register(command);
             } catch (Throwable e) {
                 throw new IllegalArgumentException("Failed to register Bukkit command: " + commandInstance.getClass().getName(), e);
             }
         }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<CommandInfo> getCommandInfo(Object commandInstance) {
+        Command wrapper = wrappers.get(commandInstance);
+        if (wrapper == null) return Collections.emptyList();
+
+        try {
+            Method getCommandInfoMethod = wrapper.getClass().getMethod("getCommandInfo");
+            Object result = getCommandInfoMethod.invoke(wrapper);
+            if (result instanceof List) {
+                return (List<CommandInfo>) result;
+            }
+        } catch (Exception e) {
+            // Ignore reflection errors
+        }
+
+        return Collections.emptyList();
     }
 
     private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {

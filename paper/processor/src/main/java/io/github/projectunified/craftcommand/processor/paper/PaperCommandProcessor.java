@@ -8,7 +8,6 @@ import io.github.projectunified.craftcommand.annotation.Suggest;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
-import io.github.projectunified.craftcommand.processor.Naming;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
@@ -214,6 +213,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
         ClassName suggestionsBuilderClass = ClassName.get("com.mojang.brigadier.suggestion", "SuggestionsBuilder");
         ClassName functionClass = ClassName.get("java.util.function", "Function");
+        ClassName collectionClass = ClassName.get("java.util", "Collection");
         ClassName listClass = ClassName.get("java.util", "List");
         ClassName arrayListClass = ClassName.get("java.util", "ArrayList");
 
@@ -222,7 +222,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 .returns(ParameterizedTypeName.get(completableFutureClass, suggestionsClass))
                 .addParameter(ParameterizedTypeName.get(commandContextClass, commandSourceStackClass), "ctx")
                 .addParameter(suggestionsBuilderClass, "builder")
-                .addParameter(ParameterizedTypeName.get(functionClass, ArrayTypeName.of(String.class), ParameterizedTypeName.get(listClass, ClassName.get(String.class))), "provider");
+                .addParameter(ParameterizedTypeName.get(functionClass, ArrayTypeName.of(String.class), ParameterizedTypeName.get(collectionClass, ClassName.get(String.class))), "provider");
 
         mb.addStatement("$T input = ctx.getInput()", String.class)
                 .addStatement("$T remaining = builder.getRemaining()", String.class)
@@ -382,20 +382,37 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                                 needsCast = true;
                             }
                         }
+                        int argCount = suggestMethod != null ? suggestMethod.getParameters().size() : 0;
                         if (needsCast) {
                             // Wrap in try-catch to handle non-player senders gracefully during tab completion
                             ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
                             spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar);
                             spec.beginControlFlow("try");
-                            spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args, sb.getRemaining()))",
-                                    instanceExpr, suggestProvider, suggestSenderExpr);
+                            if (argCount == 1) {
+                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L(args))",
+                                        instanceExpr, suggestProvider);
+                            } else if (argCount == 2) {
+                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args))",
+                                        instanceExpr, suggestProvider, suggestSenderExpr);
+                            } else if (argCount == 3) {
+                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args, args))",
+                                        instanceExpr, suggestProvider, suggestSenderExpr);
+                            }
                             spec.nextControlFlow("catch ($T e)", CommandException.class);
                             spec.addStatement("return $T.empty()", suggestionsClass);
                             spec.endControlFlow();
                             spec.endControlFlow(")");
                         } else {
-                            spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args, sb.getRemaining())))",
-                                    nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                            if (argCount == 1) {
+                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L(args)))",
+                                        nextBuilderVar, instanceExpr, suggestProvider);
+                            } else if (argCount == 2) {
+                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args)))",
+                                        nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                            } else if (argCount == 3) {
+                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args, args)))",
+                                        nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
+                            }
                         }
                     }
                 } else {
@@ -403,12 +420,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     io.github.projectunified.craftcommand.annotation.Resolve resolveAnn = p.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class);
                     if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
                         String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveAnn.value(), node.resolverArgIndex);
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args, sb.getRemaining())))",
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, helperName);
                     } else {
                         int paramIndex = method.getParameters().indexOf(p);
                         String helperName = getParameterSuggestionMethodName(classModel, method, paramIndex);
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args, sb.getRemaining())))",
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, helperName);
                     }
                 }
@@ -424,7 +441,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         PaperExecutionSource source = new PaperExecutionSource(this, nodes, parsedNodeCount);
         buildMethodExecution(spec, classModel, method, instanceExpr, rootModel, source);
         spec.nextControlFlow("catch ($T e)", Exception.class)
-                .addStatement("manager.getErrorHandler().handle(ctx.getSource(), e)")
+                .addStatement("manager.getErrorHandler().accept(ctx.getSource(), e)")
                 .endControlFlow();
         spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
     }

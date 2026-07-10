@@ -1,8 +1,8 @@
 package io.github.projectunified.craftcommand.example.paper;
 
 import io.github.projectunified.craftcommand.CommandInfo;
-import io.github.projectunified.craftcommand.CommandInfoExposer;
 import io.github.projectunified.craftcommand.CommandManager;
+import io.github.projectunified.craftcommand.paper.PaperCommand;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
@@ -21,7 +21,7 @@ public class PaperSenderCommandTest extends AbstractPaperCommandTest {
 
     @Test
     public void testCommandInfo() throws Exception {
-        CommandInfoExposer wrapper = (CommandInfoExposer) createWrapper();
+        PaperCommand wrapper = (PaperCommand) createWrapper();
         List<CommandInfo> infoList = wrapper.getCommandInfo();
         assertNotNull(infoList);
         assertFalse(infoList.isEmpty());
@@ -35,7 +35,7 @@ public class PaperSenderCommandTest extends AbstractPaperCommandTest {
 
     @Test
     public void testCommandInfoSubcommands() throws Exception {
-        CommandInfoExposer wrapper = (CommandInfoExposer) createWrapper();
+        PaperCommand wrapper = (PaperCommand) createWrapper();
         List<CommandInfo> infoList = wrapper.getCommandInfo();
         assertTrue(infoList.stream().anyMatch(info -> info.getPath().contains("css")));
         assertTrue(infoList.stream().anyMatch(info -> info.getPath().contains("cs")));

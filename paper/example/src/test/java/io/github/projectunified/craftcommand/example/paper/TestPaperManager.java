@@ -1,6 +1,9 @@
 package io.github.projectunified.craftcommand.example.paper;
 
+import io.github.projectunified.craftcommand.CommandInfo;
 import io.github.projectunified.craftcommand.CommandManager;
+
+import java.util.List;
 
 class TestPaperManager extends CommandManager<Object> {
     TestPaperManager() {
@@ -12,5 +15,10 @@ class TestPaperManager extends CommandManager<Object> {
 
     @Override
     public void register(Object command) {
+    }
+
+    @Override
+    public List<CommandInfo> getCommandInfo(Object commandInstance) {
+        return List.of();
     }
 }

@@ -44,15 +44,13 @@ public class CalculatorCommand {
     public final List<String> modes = Arrays.asList("basic", "scientific", "programmer");
 
     /**
-     * Method-based suggestion provider with sender, args, and current input.
+     * Method-based suggestion provider with current input.
      *
-     * @param sender  the command sender
-     * @param args    the command arguments
      * @param current the current input being typed
      * @return list of suggested modes
      */
     @SuppressWarnings("unused")
-    public List<String> getModes(Object sender, String[] args, String current) {
+    public java.util.Collection<String> getModes(String[] current) {
         return Arrays.asList("basic", "scientific", "programmer");
     }
 

@@ -3,6 +3,7 @@ package io.github.projectunified.craftcommand.example.standalone;
 import io.github.projectunified.craftcommand.annotation.*;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -15,7 +16,7 @@ public class SuggestCommand {
 
     public final List<String> colors = Arrays.asList("red", "green", "blue");
 
-    public List<String> getShapes(Object sender, String[] args, String current) {
+    public Collection<String> getShapes(String[] current) {
         return Arrays.asList("circle", "square", "triangle");
     }
 

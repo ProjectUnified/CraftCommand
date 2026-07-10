@@ -21,11 +21,11 @@ public class AllFeaturesCommand {
     public final List<String> modes = Arrays.asList("normal", "silent", "instant");
     public final List<String> colors = Arrays.asList("red", "green", "blue", "yellow");
 
-    public List<String> getNearPlayers(Player sender, String[] args, String current) {
+    public java.util.Collection<String> getNearPlayers(Player sender, String[] current) {
         List<String> suggestions = new ArrayList<>();
-        String lower = current.toLowerCase();
+        String prefix = current.length > 0 ? current[0].toLowerCase() : "";
         for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.getName().toLowerCase().startsWith(lower)) {
+            if (p.getName().toLowerCase().startsWith(prefix)) {
                 suggestions.add(p.getName());
             }
         }

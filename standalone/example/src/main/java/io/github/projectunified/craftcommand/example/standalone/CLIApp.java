@@ -13,7 +13,29 @@ public class CLIApp {
         // Register a dynamic provider for Java Enums
         manager.registerProvider(type -> {
             if (type.isEnum()) {
-                return (sender, cmdArgs, current) -> Enum.valueOf((Class<Enum>) type, current.toUpperCase());
+                return (sender, current, context) -> {
+                    @SuppressWarnings("unchecked")
+                    Class<Enum> enumType = (Class<Enum>) type;
+                    return new io.github.projectunified.craftcommand.ArgumentResolver<Object, Object>() {
+                        @Override
+                        public Object resolve(Object sender, String[] current, String[] context) throws Exception {
+                            if (current.length == 0) return null;
+                            return Enum.valueOf(enumType, current[0]);
+                        }
+
+                        @Override
+                        public java.util.List<String> suggest(Object sender, String[] current, String[] context) {
+                            String prefix = current.length > 0 ? current[0].toUpperCase() : "";
+                            java.util.List<String> result = new java.util.ArrayList<>();
+                            for (Enum e : enumType.getEnumConstants()) {
+                                if (e.name().startsWith(prefix)) {
+                                    result.add(e.name());
+                                }
+                            }
+                            return result;
+                        }
+                    };
+                };
             }
             return null;
         });

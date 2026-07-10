@@ -1,13 +1,13 @@
 package io.github.projectunified.craftcommand.paper;
 
+import io.github.projectunified.craftcommand.CommandInfo;
 import io.github.projectunified.craftcommand.CommandManager;
-import io.github.projectunified.craftcommand.ErrorHandler;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.function.BiConsumer;
 
 /**
  * CommandManager implementation for Paper plugins using Brigadier.
@@ -15,6 +15,7 @@ import java.util.List;
 public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     private final JavaPlugin plugin;
     private final List<PaperCommand> registered = new ArrayList<>();
+    private final Map<Object, PaperCommand> wrappers = new HashMap<>();
 
     /**
      * Constructs a PaperCommandManager with a custom error handler.
@@ -22,7 +23,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
      * @param plugin       the JavaPlugin instance
      * @param errorHandler the custom error handler
      */
-    public PaperCommandManager(JavaPlugin plugin, ErrorHandler<CommandSourceStack> errorHandler) {
+    public PaperCommandManager(JavaPlugin plugin, BiConsumer<CommandSourceStack, Exception> errorHandler) {
         super(errorHandler);
         this.plugin = plugin;
 
@@ -73,10 +74,9 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                 Object wrapper = instantiate(commandInstance.getClass(), commandInstance);
 
                 if (wrapper instanceof PaperCommand) {
-                    if (wrapper instanceof io.github.projectunified.craftcommand.CommandInfoExposer) {
-                        registerExposer(commandInstance, (io.github.projectunified.craftcommand.CommandInfoExposer) wrapper);
-                    }
-                    register((PaperCommand) wrapper);
+                    PaperCommand paperCommand = (PaperCommand) wrapper;
+                    wrappers.put(commandInstance, paperCommand);
+                    register(paperCommand);
                 } else {
                     throw new IllegalArgumentException("Wrapper is not PaperCommand: " + wrapper.getClass());
                 }
@@ -84,6 +84,15 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);
             }
         }
+    }
+
+    @Override
+    public List<CommandInfo> getCommandInfo(Object commandInstance) {
+        PaperCommand wrapper = wrappers.get(commandInstance);
+        if (wrapper != null) {
+            return wrapper.getCommandInfo();
+        }
+        return Collections.emptyList();
     }
 
     private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {

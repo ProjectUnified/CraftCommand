@@ -1,5 +1,7 @@
 package io.github.projectunified.craftcommand.standalone;
 
+import io.github.projectunified.craftcommand.CommandInfo;
+
 import java.util.List;
 
 /**
@@ -44,4 +46,11 @@ public interface StandaloneCommand {
      * @return a list of suggestions
      */
     List<String> tabComplete(Object sender, String[] args);
+
+    /**
+     * Gets the command metadata.
+     *
+     * @return the command info list
+     */
+    List<CommandInfo> getCommandInfo();
 }

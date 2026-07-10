@@ -3,6 +3,8 @@ package io.github.projectunified.craftcommand;
 import io.github.projectunified.craftcommand.exception.CommandException;
 
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
  * Base command manager. Handles resolver registration, message formatting, and error handling.
@@ -11,18 +13,18 @@ import java.util.*;
  */
 public abstract class CommandManager<S> {
     private final Map<Class<?>, ArgumentResolver<S, ?>> resolvers = new HashMap<>();
-    private final List<ArgumentResolverProvider<S>> providers = new ArrayList<>();
-    private final Map<Object, CommandInfoExposer> exposers = new java.util.concurrent.ConcurrentHashMap<>();
-    private ErrorHandler<S> errorHandler;
+    private final List<Function<Class<?>, ArgumentResolver<S, ?>>> providers = new ArrayList<>();
+    private final Map<Class<?>, Function<S, ?>> senderResolvers = new HashMap<>();
+    private BiConsumer<S, Exception> errorHandler;
 
-    public CommandManager(ErrorHandler<S> errorHandler) {
+    public CommandManager(BiConsumer<S, Exception> errorHandler) {
         this.errorHandler = errorHandler;
     }
 
     /**
      * Filters suggestions by prefix (case-insensitive).
      */
-    public static List<String> filterSuggestions(List<String> suggestions, String current) {
+    public static List<String> filterSuggestions(Collection<String> suggestions, String current) {
         if (suggestions == null) return Collections.emptyList();
         List<String> result = new ArrayList<>();
         String lower = current.toLowerCase();
@@ -33,9 +35,17 @@ public abstract class CommandManager<S> {
     }
 
     /**
-     * Registers a command. Platform-specific.
+     * Registers a command.
      */
     public abstract void register(Object command);
+
+    /**
+     * Gets command metadata for a registered command instance.
+     *
+     * @param commandInstance the original command instance passed to {@link #register(Object)}
+     * @return the command info list, or empty list if not found
+     */
+    public abstract List<CommandInfo> getCommandInfo(Object commandInstance);
 
     /**
      * Formats a message by key. Override for i18n.
@@ -59,8 +69,32 @@ public abstract class CommandManager<S> {
     /**
      * Registers a dynamic resolver provider.
      */
-    public void registerProvider(ArgumentResolverProvider<S> provider) {
+    public void registerProvider(Function<Class<?>, ArgumentResolver<S, ?>> provider) {
         providers.add(provider);
+    }
+
+    /**
+     * Registers a global sender resolver.
+     *
+     * @param type     the target sender type
+     * @param resolver function that converts the base sender to the target type
+     */
+    public <T> void registerSenderResolver(Class<T> type, Function<S, T> resolver) {
+        senderResolvers.put(type, resolver);
+    }
+
+    /**
+     * Resolves the sender to the target type using registered sender resolvers.
+     *
+     * @param type   the target sender type
+     * @param sender the base sender
+     * @return the resolved sender, or {@code null} if no resolver is registered
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T resolveSender(Class<T> type, S sender) {
+        Function<S, ?> resolver = senderResolvers.get(type);
+        if (resolver != null) return (T) resolver.apply(sender);
+        return null;
     }
 
     /**
@@ -78,21 +112,15 @@ public abstract class CommandManager<S> {
         if (argIdx + width > args.length) {
             if (optional) {
                 if (defaultValue == null) return null;
-                return resolver.resolve(sender, new String[]{defaultValue}, defaultValue);
+                String[] defaultCurrent = new String[]{defaultValue};
+                return resolver.resolve(sender, defaultCurrent, args);
             }
             throw new CommandException(formatMessage("missing-argument", "Missing arguments for parameter: %s", paramName));
         }
 
-        T result;
-        if (width == 1) {
-            String argStr = args[argIdx];
-            result = argStr == null ? null : resolver.resolve(sender, args, argStr);
-            indexHolder[0] = argIdx + 1;
-        } else {
-            String[] subArgs = Arrays.copyOfRange(args, argIdx, argIdx + width);
-            result = resolver.resolve(sender, subArgs, subArgs[subArgs.length - 1]);
-            indexHolder[0] = argIdx + width;
-        }
+        String[] current = Arrays.copyOfRange(args, argIdx, argIdx + width);
+        T result = resolver.resolve(sender, current, args);
+        indexHolder[0] = argIdx + width;
         return result;
     }
 
@@ -108,37 +136,22 @@ public abstract class CommandManager<S> {
             if (entry.getKey().isAssignableFrom(type)) return (ArgumentResolver<S, T>) entry.getValue();
         }
 
-        for (ArgumentResolverProvider<S> provider : providers) {
-            ArgumentResolver<S, ?> dynamicResolver = provider.getResolver(type);
+        for (Function<Class<?>, ArgumentResolver<S, ?>> provider : providers) {
+            ArgumentResolver<S, ?> dynamicResolver = provider.apply(type);
             if (dynamicResolver != null) return (ArgumentResolver<S, T>) dynamicResolver;
         }
 
-        return (sender, args, current) -> {
+        return (sender, current, context) -> {
             if (type.isInstance(sender)) return type.cast(sender);
             throw new IllegalArgumentException("No resolver for type: " + type.getName());
         };
     }
 
-    public ErrorHandler<S> getErrorHandler() {
+    public BiConsumer<S, Exception> getErrorHandler() {
         return errorHandler;
     }
 
-    public void setErrorHandler(ErrorHandler<S> errorHandler) {
+    public void setErrorHandler(BiConsumer<S, Exception> errorHandler) {
         this.errorHandler = errorHandler;
-    }
-
-    /**
-     * Stores command metadata for later retrieval via {@link #getCommandInfo(Object)}.
-     */
-    public void registerExposer(Object commandInstance, CommandInfoExposer exposer) {
-        exposers.put(commandInstance, exposer);
-    }
-
-    /**
-     * Gets command metadata, or empty list if not registered.
-     */
-    public List<CommandInfo> getCommandInfo(Object commandInstance) {
-        CommandInfoExposer exposer = exposers.get(commandInstance);
-        return exposer != null ? exposer.getCommandInfo() : Collections.emptyList();
     }
 }

@@ -17,7 +17,7 @@ public class PaperSuggestCommand {
 
     public final List<String> colors = Arrays.asList("red", "green", "blue");
 
-    public List<String> getShapes(CommandSourceStack sender, String[] args, String current) {
+    public java.util.Collection<String> getShapes(String[] current) {
         return Arrays.asList("circle", "square", "triangle");
     }
 

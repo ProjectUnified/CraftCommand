@@ -66,7 +66,7 @@ public class ResolveCommand {
     }
 
     @Command("implicit")
-    public void implicitResolve(Object sender, @Resolve Point pt) {
+    public void implicitResolve(Object sender, @Resolve("resolveImplicit") Point pt) {
         ((TestSender) sender).sendMessage("implicit=" + pt.x + "," + pt.y);
     }
 
