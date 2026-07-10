@@ -12,6 +12,7 @@ import java.util.List;
  * Resolve+Suggest (on resolver param), Greedy+Name+Suggest.
  * <p>
  * Suggest method signatures:
+ * 0. m()
  * 1. m(String[] current)
  * 2. m(String[] current, String[] context)
  * 3. m(SenderType sender)
@@ -22,6 +23,11 @@ import java.util.List;
 public class SuggestCommand {
 
     public final List<String> colors = Arrays.asList("red", "green", "blue");
+
+    // Signature 0: m()
+    public Collection<String> getNoArgShapes() {
+        return Arrays.asList("circle", "square", "triangle");
+    }
 
     // Signature 1: m(String[] current)
     public Collection<String> getShapes(String[] current) {
@@ -60,6 +66,11 @@ public class SuggestCommand {
     @Command("method")
     public void suggestMethod(Object sender, @Suggest("getShapes") String shape) {
         ((TestSender) sender).sendMessage("shape=" + shape);
+    }
+
+    @Command("methodnoarg")
+    public void suggestMethodNoArg(Object sender, @Suggest("getNoArgShapes") String shape) {
+        ((TestSender) sender).sendMessage("shapenoarg=" + shape);
     }
 
     @Command("methodcontext")

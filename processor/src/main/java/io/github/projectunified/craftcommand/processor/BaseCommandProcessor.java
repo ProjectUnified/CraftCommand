@@ -146,6 +146,26 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return sb.toString().trim();
     }
 
+    /**
+     * Walks up the enclosing element hierarchy to find the first annotation
+     * of the given type on the element or any of its enclosing elements.
+     *
+     * @param element        the starting element
+     * @param annotationType the annotation class to search for
+     * @return the annotation instance, or null if not found
+     */
+    protected static <A extends Annotation> A findAnnotationUp(Element element, Class<A> annotationType) {
+        A ann = element.getAnnotation(annotationType);
+        if (ann != null) return ann;
+        Element enclosing = element.getEnclosingElement();
+        while (enclosing != null) {
+            ann = enclosing.getAnnotation(annotationType);
+            if (ann != null) return ann;
+            enclosing = enclosing.getEnclosingElement();
+        }
+        return null;
+    }
+
     // ── Platform-Specific Configuration Hooks ──
 
     /**
@@ -208,7 +228,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     /**
      * Returns the wrapper class suffix specific to the platform.
      *
-     * @return the class name suffix (e.g. "_Executor" or "_Standalone")
+     * @return the class name suffix (e.g. "$BukkitCommand" or "$StandaloneCommand")
      */
     protected abstract String getWrapperClassSuffix();
 
@@ -599,29 +619,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return true;
     }
 
-    private String getBoxedType(String primitiveType) {
-        switch (primitiveType) {
-            case "int":
-                return "java.lang.Integer";
-            case "long":
-                return "java.lang.Long";
-            case "double":
-                return "java.lang.Double";
-            case "float":
-                return "java.lang.Float";
-            case "short":
-                return "java.lang.Short";
-            case "byte":
-                return "java.lang.Byte";
-            case "char":
-                return "java.lang.Character";
-            case "boolean":
-                return "java.lang.Boolean";
-            default:
-                return primitiveType;
-        }
-    }
-
     protected int getLocalResolverMinWidth(ExecutableElement resolverMethod, MethodModel commandMethod) {
         int minWidth = 0;
         List<? extends VariableElement> params = resolverMethod.getParameters();
@@ -989,7 +986,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             if (p.isGreedy() && pTypeName.toString().endsWith("[]")) {
                 // Greedy array type: create array from remaining args
                 String componentType = pTypeName.toString().replace("[]", "");
-                String boxedComponent = getBoxedType(componentType);
+                String boxedComponent = TypeSupport.getWrapperName(componentType);
                 int lastDot = boxedComponent.lastIndexOf('.');
                 String packageName = boxedComponent.substring(0, lastDot);
                 String simpleName = boxedComponent.substring(lastDot + 1);
@@ -1329,18 +1326,35 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     protected MethodSpec buildResolverParamSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel rp, String helperName, CommandModel rootModel) {
+        return buildSuggestionHelperInternal(classModel, method, rp.getSuggestProvider(),
+                getInstanceVarExpression(classModel, rootModel), TypeName.get(rp.getType()),
+                rp.getName(), method.getMethodName(), 0, helperName, "resolver param", rootModel);
+    }
+
+    protected MethodSpec buildParameterSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel p, int index, CommandModel rootModel) {
+        int tempIdx = 0;
+        for (int j = 0; j < index; j++) {
+            ParameterModel prev = method.getParameters().get(j);
+            tempIdx += getBuiltInWidth(TypeName.get(prev.getType()));
+        }
+        String helperName = getParameterSuggestionMethodName(classModel, method, index);
+        return buildSuggestionHelperInternal(classModel, method, p.getSuggestProvider(),
+                getInstanceVarExpression(classModel, rootModel), TypeName.get(p.getType()),
+                p.getName(), method.getMethodName(), tempIdx, helperName, "parameter", rootModel);
+    }
+
+    private MethodSpec buildSuggestionHelperInternal(CommandModel classModel, MethodModel method, String provider, String instanceExpr, TypeName pTypeName, String paramName, String methodName, int tempIdxOffset, String helperName, String paramLabel, CommandModel rootModel) {
         MethodSpec.Builder methodSpec = MethodSpec.methodBuilder(helperName)
-                .addJavadoc("Gets suggestions for resolver param {@code $L} of method {@code $L}.\n\n"
+                .addJavadoc("Gets suggestions for " + paramLabel + " {@code $L} of method {@code $L}.\n\n"
                         + "@param sender the command sender\n"
                         + "@param args the command arguments\n"
-                        + "@return the list of suggestions\n", rp.getName(), method.getMethodName())
+                        + "@return the list of suggestions\n", paramName, methodName)
                 .addModifiers(Modifier.PRIVATE)
                 .returns(ParameterizedTypeName.get(List.class, String.class))
                 .addParameter(getSenderTypeName(), "sender")
                 .addParameter(String[].class, "args");
 
-        String provider = rp.getSuggestProvider();
-        String instanceExpr = getInstanceVarExpression(classModel, rootModel);
+        String instanceVar = instanceExpr;
 
         // Determine sender cast based on suggest method's first parameter
         String senderCastVar = "sender";
@@ -1354,11 +1368,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 TypeName firstParamTypeName = TypeName.get(firstParamType);
 
                 if (!isStringArray(firstParamType) && !firstParamTypeName.toString().equals(getSenderTypeName().toString())) {
-                    // Check if first param has @Resolve annotation - it's a custom sender
                     Resolve resolveAnn = firstParam.getAnnotation(Resolve.class);
                     if (resolveAnn != null) {
                         if (!resolveAnn.value().isEmpty()) {
-                            // Local resolver method
                             ExecutableElement resolver = resolverLookup.findMethod(typeElement, resolveAnn.value());
                             if (resolver != null) {
                                 String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
@@ -1367,12 +1379,10 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                                 senderCastVar = "senderCast";
                             }
                         } else {
-                            // Global sender resolver
                             methodSpec.addStatement("$T senderCast = ($T) manager.resolveSender($T.class, sender)", firstParamTypeName, firstParamTypeName, firstParamTypeName);
                             senderCastVar = "senderCast";
                         }
                     } else if (isSenderType(firstParamTypeName)) {
-                        // Registered sender type - use cast helper
                         String castMethodName = "as" + getSimpleName(firstParamTypeName);
                         methodSpec.beginControlFlow("try");
                         methodSpec.addStatement("$T senderCast = $L($L)", firstParamTypeName, castMethodName, CodeBlock.of("sender"));
@@ -1392,188 +1402,46 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             ExecutableElement suggestMethod = findSuggestMethod(typeElement, provider);
             if (suggestMethod != null) {
                 int argCount = suggestMethod.getParameters().size();
-                if (argCount == 1) {
-                    // Either m(String[] current) or m(SenderType sender)
+                if (argCount == 0) {
+                    methodSpec.addStatement("return $T.filterSuggestions($L.$L(), $L)",
+                            ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider, "currentStr");
+                } else if (argCount == 1) {
                     TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
                     if (!isStringArray(firstParamType)) {
-                        // m(SenderType sender)
                         methodSpec.addStatement("return $T.filterSuggestions($L.$L($L), $L)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar, "currentStr");
+                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider, senderCastVar, "currentStr");
                     } else {
-                        // m(String[] current)
                         methodSpec.addStatement("return $T.filterSuggestions($L.$L(new String[]{currentStr}), currentStr)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
+                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider);
                     }
                 } else if (argCount == 2) {
                     TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
                     if (!isStringArray(firstParamType)) {
-                        // m(SenderType sender, String[] current)
                         methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, new String[]{currentStr}), currentStr)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar);
+                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider, senderCastVar);
                     } else {
-                        // m(String[] current, String[] context)
                         methodSpec.addStatement("return $T.filterSuggestions($L.$L(new String[]{currentStr}, $L), currentStr)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, "args");
+                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider, "args");
                     }
                 } else if (argCount == 3) {
-                    // m(SenderType sender, String[] current, String[] context)
                     methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, new String[]{currentStr}, $L), currentStr)",
-                            ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar, "args");
+                            ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider, senderCastVar, "args");
                 } else {
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Invalid signature for suggest method: " + provider + ". Must accept 1-3 parameters.", suggestMethod);
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Invalid signature for suggest method: " + provider + ". Must accept 0-3 parameters.", suggestMethod);
                     methodSpec.addStatement("return $T.emptyList()", Collections.class);
                 }
             } else if (isField(typeElement, provider)) {
                 methodSpec.addStatement("return $T.filterSuggestions($L.$L, currentStr)",
-                        ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
+                        ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceVar, provider);
             } else {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Could not find a field or method named '" + provider + "' for resolver param suggestions in class " + classModel.getClassName().simpleName());
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Could not find a field or method named '" + provider + "' for " + paramLabel + " suggestions in class " + classModel.getClassName().simpleName());
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
             }
         } else {
-            TypeName pTypeName = TypeName.get(rp.getType());
             if (pTypeName.toString().equals("boolean") || pTypeName.toString().equals("java.lang.Boolean")) {
                 methodSpec.addStatement("return suggestBoolean(currentStr)");
             } else if (isPlatformBuiltInType(pTypeName)) {
-                int tempIdx = 0;
-                typeSupport.emitPlatformSuggestions(methodSpec, pTypeName, senderCastVar, "args", "currentStr", String.valueOf(tempIdx));
-            } else if (isBuiltInType(pTypeName)) {
-                methodSpec.addStatement("return $T.emptyList()", Collections.class);
-            } else {
-                if (getSenderTypeName().toString().equals("java.lang.Object")) {
-                    methodSpec.addStatement("return manager.getResolver($T.class).suggest(sender, new String[]{currentStr}, args)",
-                            pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
-                } else {
-                    methodSpec.addStatement("return manager.getResolver($T.class).suggest(($T) sender, new String[]{currentStr}, args)",
-                            pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, getSenderTypeName());
-                }
-            }
-        }
-
-        if (needsSenderCast) {
-            methodSpec.nextControlFlow("catch ($T e)", CommandException.class)
-                    .addStatement("return $T.emptyList()", Collections.class)
-                    .endControlFlow();
-        }
-
-        return methodSpec.build();
-    }
-
-    protected MethodSpec buildParameterSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel p, int index, CommandModel rootModel) {
-        String helperName = getParameterSuggestionMethodName(classModel, method, index);
-        MethodSpec.Builder methodSpec = MethodSpec.methodBuilder(helperName)
-                .addJavadoc("Gets suggestions for parameter {@code $L} at index {@code $L} of method {@code $L}.\n\n"
-                        + "@param sender the command sender\n"
-                        + "@param args the command arguments\n"
-                        + "@return the list of suggestions\n", p.getName(), index, method.getMethodName())
-                .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(List.class, String.class))
-                .addParameter(getSenderTypeName(), "sender")
-                .addParameter(String[].class, "args");
-
-        String provider = p.getSuggestProvider();
-        String instanceExpr = getInstanceVarExpression(classModel, rootModel);
-
-        // Determine sender cast based on suggest method's first parameter
-        String senderCastVar = "sender";
-        boolean needsSenderCast = false;
-        if (provider != null) {
-            TypeElement typeElement = classModel.getElement();
-            ExecutableElement suggestMethod = findSuggestMethod(typeElement, provider);
-            if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                VariableElement firstParam = suggestMethod.getParameters().get(0);
-                TypeMirror firstParamType = firstParam.asType();
-                TypeName firstParamTypeName = TypeName.get(firstParamType);
-
-                if (!isStringArray(firstParamType) && !firstParamTypeName.toString().equals(getSenderTypeName().toString())) {
-                    // Check if first param has @Resolve annotation - it's a custom sender
-                    Resolve resolveAnn = firstParam.getAnnotation(Resolve.class);
-                    if (resolveAnn != null) {
-                        if (!resolveAnn.value().isEmpty()) {
-                            // Local resolver method
-                            ExecutableElement resolver = resolverLookup.findMethod(typeElement, resolveAnn.value());
-                            if (resolver != null) {
-                                String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
-                                String resolveExpr = String.format("%s.%s(%s)", resolverInstanceExpr, resolver.getSimpleName().toString(), "sender");
-                                methodSpec.addStatement("$T senderCast = ($T) $L", firstParamTypeName, firstParamTypeName, resolveExpr);
-                                senderCastVar = "senderCast";
-                            }
-                        } else {
-                            // Global sender resolver
-                            methodSpec.addStatement("$T senderCast = ($T) manager.resolveSender($T.class, sender)", firstParamTypeName, firstParamTypeName, firstParamTypeName);
-                            senderCastVar = "senderCast";
-                        }
-                    } else if (isSenderType(firstParamTypeName)) {
-                        // Registered sender type - use cast helper
-                        String castMethodName = "as" + getSimpleName(firstParamTypeName);
-                        methodSpec.beginControlFlow("try");
-                        methodSpec.addStatement("$T senderCast = $L($L)", firstParamTypeName, castMethodName, CodeBlock.of("sender"));
-                        senderCastVar = "senderCast";
-                        needsSenderCast = true;
-                    }
-                }
-            }
-        }
-
-        // Compute current index for this parameter
-        methodSpec.addStatement("int index = $L.length - 1", "args");
-        methodSpec.addStatement("String currentStr = $L[index]", "args");
-
-        if (provider != null) {
-            TypeElement typeElement = classModel.getElement();
-            ExecutableElement suggestMethod = findSuggestMethod(typeElement, provider);
-            if (suggestMethod != null) {
-                int argCount = suggestMethod.getParameters().size();
-                if (argCount == 1) {
-                    // Either m(String[] current) or m(SenderType sender)
-                    TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
-                    if (!isStringArray(firstParamType)) {
-                        // m(SenderType sender)
-                        methodSpec.addStatement("return $T.filterSuggestions($L.$L($L), $L)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar, "currentStr");
-                    } else {
-                        // m(String[] current)
-                        methodSpec.addStatement("return $T.filterSuggestions($L.$L(new String[]{currentStr}), currentStr)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
-                    }
-                } else if (argCount == 2) {
-                    // Check if first param is sender or String[]
-                    TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
-                    if (!isStringArray(firstParamType)) {
-                        // m(SenderType sender, String[] current)
-                        methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, new String[]{currentStr}), currentStr)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar);
-                    } else {
-                        // m(String[] current, String[] context)
-                        methodSpec.addStatement("return $T.filterSuggestions($L.$L(new String[]{currentStr}, $L), currentStr)",
-                                ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, "args");
-                    }
-                } else if (argCount == 3) {
-                    // m(SenderType sender, String[] current, String[] context)
-                    methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, new String[]{currentStr}, $L), currentStr)",
-                            ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar, "args");
-                } else {
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Invalid signature for suggest method: " + provider + ". Must accept 1-3 parameters.", suggestMethod);
-                    methodSpec.addStatement("return $T.emptyList()", Collections.class);
-                }
-            } else if (isField(typeElement, provider)) {
-                methodSpec.addStatement("return $T.filterSuggestions($L.$L, currentStr)",
-                        ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
-            } else {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, "Could not find a field or method named '" + provider + "' for parameter suggestions in class " + classModel.getClassName().simpleName());
-                methodSpec.addStatement("return $T.emptyList()", Collections.class);
-            }
-        } else {
-            TypeName pTypeName = TypeName.get(p.getType());
-            if (pTypeName.toString().equals("boolean") || pTypeName.toString().equals("java.lang.Boolean")) {
-                methodSpec.addStatement("return suggestBoolean(currentStr)");
-            } else if (isPlatformBuiltInType(pTypeName)) {
-                int tempIdx = 0;
-                for (int j = 0; j < index; j++) {
-                    ParameterModel prev = method.getParameters().get(j);
-                    tempIdx += getBuiltInWidth(TypeName.get(prev.getType()));
-                }
-                typeSupport.emitPlatformSuggestions(methodSpec, pTypeName, senderCastVar, "args", "currentStr", String.valueOf(tempIdx));
+                typeSupport.emitPlatformSuggestions(methodSpec, pTypeName, senderCastVar, "args", "currentStr", String.valueOf(tempIdxOffset));
             } else if (isBuiltInType(pTypeName)) {
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
             } else {
@@ -1664,6 +1532,54 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
         resolveCall.add(")");
         methodSpec.addStatement("$T $L = ($T) $L", pTypeName, varName, pTypeName, resolveCall.build());
+    }
+
+    /**
+     * Unified resolver param resolution: resolves each non-sender param using the same code path,
+     * then invokes the resolver method. Supports @Default, @Greedy, @Name, @Suggest, @Resolve (nested),
+     * and validation annotations like @Min, @Max, @ValidateWith.
+     *
+     * @param rawSourceExpr the raw sender expression for the platform (e.g. "sender" or "ctx.getSource()")
+     */
+    public void generateResolverResolution(
+            ExecutionSource executionSource,
+            MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method,
+            CommandModel rootModel, MethodModel resolverModel, String varName,
+            String senderVarName, ParameterModel parentParam, String rawSourceExpr) {
+        ExecutableElement resolverElement = resolverModel.getElement();
+        TypeName returnType = TypeName.get(resolverModel.getElement().getReturnType());
+
+        boolean includeSender = false;
+        if (!resolverModel.getParameters().isEmpty()) {
+            includeSender = isSenderParam(TypeName.get(resolverModel.getParameters().get(0).getType()), method);
+        }
+
+        List<String> argNames = new ArrayList<>();
+        for (int i = 0; i < resolverModel.getParameters().size(); i++) {
+            ParameterModel rp = resolverModel.getParameters().get(i);
+            if (isSenderParam(TypeName.get(rp.getType()), method)) continue;
+            String rpVarName = varName + "_rp_" + i;
+            argNames.add(rpVarName);
+
+            ParameterModel rpToResolve = rp;
+            if (!rp.isOptional() && parentParam != null && parentParam.isOptional()) {
+                rpToResolve = new ParameterModel(
+                        rp.getName(),
+                        rp.getType(),
+                        rp.isGreedy(),
+                        true,
+                        parentParam.getDefaultValue(),
+                        rp.getSuggestProvider(),
+                        rp.getElement()
+                );
+            }
+
+            executionSource.generateParameterResolution(methodSpec, classModel, method, rootModel, rpToResolve, rpVarName, senderVarName, i);
+            runParameterAnnotationHandlers(rp.getElement(), rpVarName, getInstanceVarExpression(classModel, rootModel), senderVarName, methodSpec);
+        }
+
+        String resolverSenderExpr = getResolverSenderExpression(resolverElement, rawSourceExpr, senderVarName, TypeName.get(method.getSenderType()));
+        generateResolverInvocation(methodSpec, resolverElement, classModel, rootModel, returnType, varName, resolverSenderExpr, argNames, includeSender);
     }
 
     @SuppressWarnings("unchecked")

@@ -2,11 +2,11 @@ package io.github.projectunified.craftcommand.validation.processor.extension;
 
 import com.palantir.javapoet.MethodSpec;
 import io.github.projectunified.craftcommand.exception.CommandException;
+import io.github.projectunified.craftcommand.processor.ResolverLookup;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
 
-import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 
@@ -25,7 +25,7 @@ public class ValidateWithHandler implements ParameterAnnotationHandler<ValidateW
 
         // Find the method in the enclosing class to see the parameter count
         TypeElement typeElement = (TypeElement) parameter.getElement().getEnclosingElement().getEnclosingElement();
-        ExecutableElement validateMethod = findMethod(typeElement, methodName);
+        ExecutableElement validateMethod = ResolverLookup.findMethod(typeElement, methodName);
 
         if (validateMethod == null) {
             throw new IllegalArgumentException("Could not find validation method '" + methodName + "' in class " + typeElement.getSimpleName());
@@ -51,26 +51,5 @@ public class ValidateWithHandler implements ParameterAnnotationHandler<ValidateW
         methodSpec.addStatement("throw new $T(manager.formatMessage($S, $S, $S, e.getMessage()), e)",
                 CommandException.class, messageKey, defaultTemplate, parameter.getName());
         methodSpec.endControlFlow();
-    }
-
-    private ExecutableElement findMethod(TypeElement typeElement, String name) {
-        TypeElement current = typeElement;
-        while (current != null) {
-            for (Element enclosed : current.getEnclosedElements()) {
-                if (enclosed instanceof ExecutableElement) {
-                    ExecutableElement method = (ExecutableElement) enclosed;
-                    if (method.getSimpleName().toString().equals(name)) {
-                        return method;
-                    }
-                }
-            }
-            Element enclosing = current.getEnclosingElement();
-            if (enclosing instanceof TypeElement) {
-                current = (TypeElement) enclosing;
-            } else {
-                current = null;
-            }
-        }
-        return null;
     }
 }

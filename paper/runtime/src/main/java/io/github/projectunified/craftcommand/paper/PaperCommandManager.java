@@ -99,7 +99,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     }
 
     private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
-        Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Paper");
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + "$PaperCommand");
         MethodHandle handle = MethodHandles.lookup().findConstructor(wrapperClass, MethodType.methodType(void.class, commandClass, CommandManager.class));
         return handle.invoke(instance, this);
     }

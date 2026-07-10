@@ -50,8 +50,8 @@ for translation support.
 
 Each `@Command` class produces a single wrapper:
 
-| Platform | Suffix        | Extends/Implements         |
-|----------|---------------|----------------------------|
-| Bukkit   | `_Executor`   | `Command`, `CommandInfoExposer` |
-| Paper    | `_Paper`      | `PaperCommand`, `CommandInfoExposer` |
-| Standalone | `_Standalone` | `StandaloneCommand`, `CommandInfoExposer` |
+| Platform   | Suffix            | Extends/Implements         |
+|------------|-------------------|----------------------------|
+| Bukkit     | `$BukkitCommand`  | `Command`, `CommandInfoExposer` |
+| Paper      | `$PaperCommand`   | `PaperCommand`, `CommandInfoExposer` |
+| Standalone | `$StandaloneCommand` | `StandaloneCommand`, `CommandInfoExposer` |

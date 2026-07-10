@@ -20,7 +20,7 @@ public class StandaloneCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected String getWrapperClassSuffix() {
-        return "_Standalone";
+        return "$StandaloneCommand";
     }
 
     @Override

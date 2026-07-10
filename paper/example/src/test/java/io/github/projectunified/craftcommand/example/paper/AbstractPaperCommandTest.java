@@ -28,7 +28,7 @@ public abstract class AbstractPaperCommandTest {
     protected CommandDispatcher<CommandSourceStack> register(Class<?> commandClass) {
         try {
             TestPaperManager manager = new TestPaperManager();
-            Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Paper");
+            Class<?> wrapperClass = Class.forName(commandClass.getName() + "$PaperCommand");
             Constructor<?> ctor = wrapperClass.getDeclaredConstructor(commandClass, CommandManager.class);
             PaperCommand wrapper = (PaperCommand) ctor.newInstance(commandClass.getDeclaredConstructor().newInstance(), manager);
             CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();

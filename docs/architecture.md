@@ -14,13 +14,13 @@ craftcommand/
 ├── bukkit/
 │   ├── annotations/    @Permission
 │   ├── runtime/        BukkitCommandManager
-│   └── processor/      BukkitCommandProcessor → *_Executor
+│   └── processor/      BukkitCommandProcessor → *$BukkitCommand
 ├── paper/
 │   ├── runtime/        PaperCommandManager
-│   └── processor/      PaperCommandProcessor → *_Paper
+│   └── processor/      PaperCommandProcessor → *$PaperCommand
 ├── standalone/
 │   ├── runtime/        StandaloneCommandManager
-│   └── processor/      StandaloneCommandProcessor → *_Standalone
+│   └── processor/      StandaloneCommandProcessor → *$StandaloneCommand
 ├── validation/
 │   ├── annotations/    @Min, @Max, @ValidateWith
 │   └── processor/      MinHandler, MaxHandler, ValidateWithHandler (SPI)

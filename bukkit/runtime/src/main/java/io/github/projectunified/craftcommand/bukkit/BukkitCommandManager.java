@@ -188,7 +188,7 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
     }
 
     private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
-        Class<?> wrapperClass = Class.forName(commandClass.getName() + "_Executor");
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + "$BukkitCommand");
         java.lang.invoke.MethodHandle handle = java.lang.invoke.MethodHandles.lookup()
                 .findConstructor(wrapperClass, java.lang.invoke.MethodType.methodType(void.class, commandClass, CommandManager.class));
         return handle.invoke(instance, this);

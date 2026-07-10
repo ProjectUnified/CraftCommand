@@ -62,7 +62,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected String getWrapperClassSuffix() {
-        return "_Executor";
+        return "$BukkitCommand";
     }
 
     @Override
@@ -135,22 +135,10 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
-        Permission permission = findPermission(element);
+        Permission permission = findAnnotationUp(element, Permission.class);
         if (permission != null) {
             generatePermissionCheck(methodSpec, permission, returnStatement);
         }
-    }
-
-    private Permission findPermission(javax.lang.model.element.Element element) {
-        Permission perm = element.getAnnotation(Permission.class);
-        if (perm != null) return perm;
-        javax.lang.model.element.Element enclosing = element.getEnclosingElement();
-        while (enclosing != null) {
-            perm = enclosing.getAnnotation(Permission.class);
-            if (perm != null) return perm;
-            enclosing = enclosing.getEnclosingElement();
-        }
-        return null;
     }
 
     private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {

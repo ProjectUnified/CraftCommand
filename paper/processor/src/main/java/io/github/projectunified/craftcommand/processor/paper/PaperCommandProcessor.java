@@ -61,35 +61,33 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         ClassName worldClass = ClassName.get("org.bukkit", "World");
         ClassName finePositionClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver");
 
+        // String (special: greedy variant)
         brigadierArgTypes.put("java.lang.String", g -> CodeBlock.of("$T.$L()", strArgClass, g ? "greedyString" : "string"));
         brigadierRetrievals.put("java.lang.String", a -> CodeBlock.of("$T.getString(ctx, $S)", strArgClass, a));
-        brigadierArgTypes.put("int", g -> CodeBlock.of("$T.integer()", intArgClass));
-        brigadierArgTypes.put("java.lang.Integer", g -> CodeBlock.of("$T.integer()", intArgClass));
-        brigadierRetrievals.put("int", a -> CodeBlock.of("$T.getInteger(ctx, $S)", intArgClass, a));
-        brigadierRetrievals.put("java.lang.Integer", a -> CodeBlock.of("$T.getInteger(ctx, $S)", intArgClass, a));
-        brigadierArgTypes.put("long", g -> CodeBlock.of("$T.longArg()", longArgClass));
-        brigadierArgTypes.put("java.lang.Long", g -> CodeBlock.of("$T.longArg()", longArgClass));
-        brigadierRetrievals.put("long", a -> CodeBlock.of("$T.getLong(ctx, $S)", longArgClass, a));
-        brigadierRetrievals.put("java.lang.Long", a -> CodeBlock.of("$T.getLong(ctx, $S)", longArgClass, a));
-        brigadierArgTypes.put("double", g -> CodeBlock.of("$T.doubleArg()", dblArgClass));
-        brigadierArgTypes.put("java.lang.Double", g -> CodeBlock.of("$T.doubleArg()", dblArgClass));
-        brigadierRetrievals.put("double", a -> CodeBlock.of("$T.getDouble(ctx, $S)", dblArgClass, a));
-        brigadierRetrievals.put("java.lang.Double", a -> CodeBlock.of("$T.getDouble(ctx, $S)", dblArgClass, a));
-        brigadierArgTypes.put("float", g -> CodeBlock.of("$T.floatArg()", fltArgClass));
-        brigadierArgTypes.put("java.lang.Float", g -> CodeBlock.of("$T.floatArg()", fltArgClass));
-        brigadierRetrievals.put("float", a -> CodeBlock.of("$T.getFloat(ctx, $S)", fltArgClass, a));
-        brigadierRetrievals.put("java.lang.Float", a -> CodeBlock.of("$T.getFloat(ctx, $S)", fltArgClass, a));
-        brigadierArgTypes.put("boolean", g -> CodeBlock.of("$T.bool()", boolArgClass));
-        brigadierArgTypes.put("java.lang.Boolean", g -> CodeBlock.of("$T.bool()", boolArgClass));
-        brigadierRetrievals.put("boolean", a -> CodeBlock.of("$T.getBool(ctx, $S)", boolArgClass, a));
-        brigadierRetrievals.put("java.lang.Boolean", a -> CodeBlock.of("$T.getBool(ctx, $S)", boolArgClass, a));
 
+        // Primitive/wrapper pairs
+        registerBrigadierType("int", "java.lang.Integer", intArgClass, "integer", "getInteger");
+        registerBrigadierType("long", "java.lang.Long", longArgClass, "longArg", "getLong");
+        registerBrigadierType("double", "java.lang.Double", dblArgClass, "doubleArg", "getDouble");
+        registerBrigadierType("float", "java.lang.Float", fltArgClass, "floatArg", "getFloat");
+        registerBrigadierType("boolean", "java.lang.Boolean", boolArgClass, "bool", "getBool");
+
+        // Platform types
         brigadierArgTypes.put("org.bukkit.entity.Player", g -> CodeBlock.of("$L.player()", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.entity.Player", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()", a, playerResolverClass));
         brigadierArgTypes.put("org.bukkit.World", g -> CodeBlock.of("$L.world()", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.World", a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, worldClass));
         brigadierArgTypes.put("org.bukkit.Location", g -> CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.Location", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())", a, finePositionClass));
+    }
+
+    private void registerBrigadierType(String primitive, String wrapper, ClassName argClass, String argMethod, String retrievalMethod) {
+        Function<Boolean, CodeBlock> argType = g -> CodeBlock.of("$T.$L()", argClass, argMethod);
+        Function<String, CodeBlock> retrieval = a -> CodeBlock.of("$T.$L(ctx, $S)", argClass, retrievalMethod, a);
+        brigadierArgTypes.put(primitive, argType);
+        brigadierArgTypes.put(wrapper, argType);
+        brigadierRetrievals.put(primitive, retrieval);
+        brigadierRetrievals.put(wrapper, retrieval);
     }
 
     @Override
@@ -107,7 +105,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected String getWrapperClassSuffix() {
-        return "_Paper";
+        return "$PaperCommand";
     }
 
     @Override
@@ -161,7 +159,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
-        Permission permission = findPermission(element);
+        Permission permission = findAnnotationUp(element, Permission.class);
         if (permission != null) {
             methodSpec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
             String msg = permission.message();
@@ -179,18 +177,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             methodSpec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
             methodSpec.endControlFlow();
         }
-    }
-
-    private Permission findPermission(javax.lang.model.element.Element element) {
-        Permission perm = element.getAnnotation(Permission.class);
-        if (perm != null) return perm;
-        javax.lang.model.element.Element enclosing = element.getEnclosingElement();
-        while (enclosing != null) {
-            perm = enclosing.getAnnotation(Permission.class);
-            if (perm != null) return perm;
-            enclosing = enclosing.getEnclosingElement();
-        }
-        return null;
     }
 
     @Override
@@ -412,7 +398,10 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
                             spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar);
                             spec.beginControlFlow("try");
-                            if (argCount == 1) {
+                            if (argCount == 0) {
+                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L())",
+                                        instanceExpr, suggestProvider);
+                            } else if (argCount == 1) {
                                 TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
                                 if (isSenderParam(TypeName.get(firstParamType), method)) {
                                     // m(SenderType sender)
@@ -435,7 +424,10 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             spec.endControlFlow();
                             spec.endControlFlow(")");
                         } else {
-                            if (argCount == 1) {
+                            if (argCount == 0) {
+                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L()))",
+                                        nextBuilderVar, instanceExpr, suggestProvider);
+                            } else if (argCount == 1) {
                                 TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
                                 if (isSenderParam(TypeName.get(firstParamType), method)) {
                                     // m(SenderType sender)

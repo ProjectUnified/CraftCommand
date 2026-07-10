@@ -153,44 +153,7 @@ public class PaperExecutionSource implements ExecutionSource {
      * and validation annotations like @Min, @Max, @ValidateWith.
      */
     private void generateResolverResolution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName, ParameterModel parentParam) {
-        ExecutableElement resolverElement = resolverModel.getElement();
-        TypeName returnType = TypeName.get(resolverModel.getElement().getReturnType());
-
-        // Determine if we should include sender
-        boolean includeSender = false;
-        if (!resolverModel.getParameters().isEmpty()) {
-            includeSender = processor.isSenderParam(TypeName.get(resolverModel.getParameters().get(0).getType()), method);
-        }
-
-        // Resolve each non-sender resolver param (recursive — same code path)
-        List<String> argNames = new ArrayList<>();
-        for (int i = 0; i < resolverModel.getParameters().size(); i++) {
-            ParameterModel rp = resolverModel.getParameters().get(i);
-            if (processor.isSenderParam(TypeName.get(rp.getType()), method)) continue;
-            String rpVarName = varName + "_rp_" + i;
-            argNames.add(rpVarName);
-
-            ParameterModel rpToResolve = rp;
-            if (!rp.isOptional() && parentParam != null && parentParam.isOptional()) {
-                rpToResolve = new ParameterModel(
-                        rp.getName(),
-                        rp.getType(),
-                        rp.isGreedy(),
-                        true,
-                        parentParam.getDefaultValue(),
-                        rp.getSuggestProvider(),
-                        rp.getElement()
-                );
-            }
-
-            generateParameterResolution(methodSpec, classModel, method, rootModel, rpToResolve, rpVarName, senderVarName, i);
-            // Run validation handlers (e.g., @Min, @Max, @ValidateWith) on resolver params
-            processor.runParameterAnnotationHandlers(rp.getElement(), rpVarName, processor.getInstanceVarExpression(classModel, rootModel), senderVarName, methodSpec);
-        }
-
-        // Invoke resolver method
-        String resolverSenderExpr = processor.getResolverSenderExpression(resolverElement, "ctx.getSource()", senderVarName, TypeName.get(method.getSenderType()));
-        processor.generateResolverInvocation(methodSpec, resolverElement, classModel, rootModel, returnType, varName, resolverSenderExpr, argNames, includeSender);
+        processor.generateResolverResolution(this, methodSpec, classModel, method, rootModel, resolverModel, varName, senderVarName, parentParam, "ctx.getSource()");
     }
 
     private List<String> resolveResolverParamsWithDefaults(MethodSpec.Builder methodSpec, ExecutableElement localResolver, String varName, int paramIndex) {

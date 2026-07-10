@@ -27,6 +27,25 @@ public final class ResolverLookup {
     }
 
     /**
+     * Find a no-arg/instance method by name on the given type element.
+     * Searches the current class and all parent classes.
+     */
+    public static ExecutableElement findMethod(TypeElement typeElement, String name) {
+        TypeElement current = typeElement;
+        while (current != null) {
+            for (Element enclosed : current.getEnclosedElements()) {
+                if (enclosed instanceof ExecutableElement
+                        && enclosed.getSimpleName().toString().equals(name)) {
+                    return (ExecutableElement) enclosed;
+                }
+            }
+            javax.lang.model.element.Element enclosing = current.getEnclosingElement();
+            current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
+        }
+        return null;
+    }
+
+    /**
      * Find a local {@code @Resolve} method for the given parameter.
      *
      * <p>If the parameter carries an explicit {@code @Resolve("name")}, the
@@ -77,29 +96,11 @@ public final class ResolverLookup {
     }
 
     /**
-     * Find a no-arg/instance method by name on the given type element.
-     * Searches the current class and all parent classes.
-     */
-    public ExecutableElement findMethod(TypeElement typeElement, String name) {
-        TypeElement current = typeElement;
-        while (current != null) {
-            for (Element enclosed : current.getEnclosedElements()) {
-                if (enclosed instanceof ExecutableElement
-                        && enclosed.getSimpleName().toString().equals(name)) {
-                    return (ExecutableElement) enclosed;
-                }
-            }
-            javax.lang.model.element.Element enclosing = current.getEnclosingElement();
-            current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
-        }
-        return null;
-    }
-
-    /**
      * Find a suggest method by name and validate its signature.
      *
-     * <p>Valid signatures (where S is a sender type, T is any type):
+     * <p>Valid signatures (where S is a sender type):
      * <ul>
+     *   <li>{@code Collection<String> m()}</li>
      *   <li>{@code Collection<String> m(String[] current)}</li>
      *   <li>{@code Collection<String> m(String[] current, String[] context)}</li>
      *   <li>{@code Collection<String> m(S sender, String[] current)}</li>
@@ -130,6 +131,7 @@ public final class ResolverLookup {
      *
      * <p>Valid signatures:
      * <ul>
+     *   <li>{@code Collection<String> m()}</li>
      *   <li>{@code Collection<String> m(SenderType sender)}</li>
      *   <li>{@code Collection<String> m(String[] current)}</li>
      *   <li>{@code Collection<String> m(String[] current, String[] context)}</li>
@@ -147,9 +149,14 @@ public final class ResolverLookup {
         List<? extends javax.lang.model.element.VariableElement> params = method.getParameters();
         int paramCount = params.size();
 
-        // Valid param counts: 1, 2, or 3
-        if (paramCount < 1 || paramCount > 3) {
+        // Valid param counts: 0, 1, 2, or 3
+        if (paramCount < 0 || paramCount > 3) {
             return false;
+        }
+
+        if (paramCount == 0) {
+            // m() — no parameters
+            return true;
         }
 
         // Check parameter types based on count

@@ -28,6 +28,57 @@ public final class TypeSupport {
     private final Map<String, Entry> entries = new HashMap<>();
 
     /**
+     * Returns true if the given type name is a numeric primitive or wrapper type.
+     */
+    public static boolean isNumericType(String typeName) {
+        switch (typeName) {
+            case "int":
+            case "long":
+            case "double":
+            case "float":
+            case "short":
+            case "byte":
+            case "java.lang.Integer":
+            case "java.lang.Long":
+            case "java.lang.Double":
+            case "java.lang.Float":
+            case "java.lang.Short":
+            case "java.lang.Byte":
+            case "java.lang.Number":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Returns the fully qualified wrapper class name for a primitive type name.
+     * If the input is not a primitive, it is returned unchanged.
+     */
+    public static String getWrapperName(String primitiveType) {
+        switch (primitiveType) {
+            case "int":
+                return "java.lang.Integer";
+            case "long":
+                return "java.lang.Long";
+            case "double":
+                return "java.lang.Double";
+            case "float":
+                return "java.lang.Float";
+            case "short":
+                return "java.lang.Short";
+            case "byte":
+                return "java.lang.Byte";
+            case "char":
+                return "java.lang.Character";
+            case "boolean":
+                return "java.lang.Boolean";
+            default:
+                return primitiveType;
+        }
+    }
+
+    /**
      * @return the shared, immutable registry of JDK built-in types.
      */
     public static TypeSupport builtins() {

@@ -20,6 +20,29 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // Signature 0: m()
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    public void testSignature0_SuggestMethodNoArg() {
+        List<String> suggestions = tabComplete("methodnoarg", "");
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSignature0_SuggestMethodNoArgFiltering() {
+        List<String> suggestions = tabComplete("methodnoarg", "s");
+        assertTrue(suggestions.contains("square"));
+        assertFalse(suggestions.contains("circle"));
+    }
+
+    @Test
+    public void testSignature0_SuggestMethodNoArgExecute() {
+        assertTrue(execute("methodnoarg", "triangle"));
+        assertEquals("shapenoarg=triangle", sender.getMessages().get(0));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // Signature 1: m(String[] current)
     // ═══════════════════════════════════════════════════════════════
 
@@ -207,7 +230,7 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
     @Test
     public void testTabCompletionSubcommands() {
         List<String> suggestions = tabComplete("");
-        assertSuggestionsContain(suggestions, "field", "method", "methodcontext", "methodsender",
+        assertSuggestionsContain(suggestions, "field", "method", "methodnoarg", "methodcontext", "methodsender",
                 "methodsendercurrent", "methodfull", "greedysug", "namesug", "defaultsug",
                 "resolvesug", "greedyname");
     }

@@ -14,7 +14,7 @@ public class PaperSenderCommandTest extends AbstractPaperCommandTest {
 
     private Object createWrapper() throws Exception {
         PaperSenderCommand instance = new PaperSenderCommand();
-        Constructor<?> ctor = PaperSenderCommand_Paper.class.getDeclaredConstructor(PaperSenderCommand.class, CommandManager.class);
+        Constructor<?> ctor = PaperSenderCommand$PaperCommand.class.getDeclaredConstructor(PaperSenderCommand.class, CommandManager.class);
         ctor.setAccessible(true);
         return ctor.newInstance(instance, null);
     }
