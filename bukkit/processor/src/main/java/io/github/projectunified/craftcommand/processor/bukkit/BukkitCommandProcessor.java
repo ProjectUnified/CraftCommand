@@ -144,10 +144,9 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {
         methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
         String msg = permission.message();
-        if (msg.startsWith("i18n:")) {
-            String key = msg.substring(5);
+        if (isI18nKey(msg)) {
             methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
-                    chatColorClass, key, msg, permission.value());
+                    chatColorClass, i18nKey(msg), msg, permission.value());
         } else if (!msg.isEmpty()) {
             methodSpec.addStatement("sender.sendMessage($S)", msg);
         } else {

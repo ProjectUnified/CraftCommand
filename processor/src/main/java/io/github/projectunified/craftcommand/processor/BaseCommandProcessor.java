@@ -94,16 +94,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     /**
-     * Utility method to build the command usage syntax string for a command method.
-     *
-     * @param method the method model
-     * @return the usage string
-     */
-    protected static String getUsage(MethodModel method) {
-        return getUsage(method, null);
-    }
-
-    /**
      * Utility method to build the command usage syntax string for a command method,
      * with support for flattening @Resolve resolver params.
      *
@@ -164,6 +154,20 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             enclosing = enclosing.getEnclosingElement();
         }
         return null;
+    }
+
+    /**
+     * Returns true if the message uses the {@code i18n:} prefix for runtime lookup.
+     */
+    protected static boolean isI18nKey(String message) {
+        return message.startsWith("i18n:");
+    }
+
+    /**
+     * Extracts the i18n key from a message. Assumes {@link #isI18nKey(String)} is true.
+     */
+    protected static String i18nKey(String message) {
+        return message.substring(5);
     }
 
     // ── Platform-Specific Configuration Hooks ──
@@ -1902,9 +1906,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     private boolean hasDescriptionKey(CommandModel model) {
-        if (model.getDescription().startsWith("i18n:")) return true;
+        if (isI18nKey(model.getDescription())) return true;
         for (MethodModel sub : model.getSubcommands()) {
-            if (sub.getDescription().startsWith("i18n:")) return true;
+            if (isI18nKey(sub.getDescription())) return true;
         }
         for (CommandModel child : model.getNestedSubcommands()) {
             if (hasDescriptionKey(child)) return true;
@@ -1944,10 +1948,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     private void addDescription(StatementAdder adder, ClassName commandInfoClass, List<String> path, String usage, String desc) {
-        if (desc.startsWith("i18n:")) {
-            String key = desc.substring(5);
+        if (isI18nKey(desc)) {
             adder.add("list.add(new $T($L, $S, manager.formatMessage($S, $S)))",
-                    commandInfoClass, buildPathExpression(path), usage, key, desc);
+                    commandInfoClass, buildPathExpression(path), usage, i18nKey(desc), desc);
         } else {
             adder.add("list.add(new $T($L, $S, $S))",
                     commandInfoClass, buildPathExpression(path), usage, desc);

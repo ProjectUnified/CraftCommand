@@ -163,10 +163,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         if (permission != null) {
             methodSpec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
             String msg = permission.message();
-            if (!msg.isEmpty() && msg.startsWith("i18n:")) {
-                String key = msg.substring(5);
+            if (!msg.isEmpty() && isI18nKey(msg)) {
                 methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
-                        componentClass, key, msg, permission.value(), errorColorClass);
+                        componentClass, i18nKey(msg), msg, permission.value(), errorColorClass);
             } else if (!msg.isEmpty()) {
                 methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text($S, $T.RED))",
                         componentClass, msg, errorColorClass);
