@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static io.github.projectunified.craftcommand.example.standalone.TestHelpers.assertSuggestionsContain;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ResolveCommandTest extends AbstractStandaloneCommandTest {
@@ -77,5 +78,25 @@ public class ResolveCommandTest extends AbstractStandaloneCommandTest {
     public void testImplicitResolveWithNegative() {
         assertTrue(execute("implicit", "-1", "-2"));
         assertEquals(List.of("implicit=-1.0,-2.0"), sender.getMessages());
+    }
+
+    @Test
+    public void testTabCompletionSubcommands() {
+        List<String> suggestions = tabComplete("");
+        assertSuggestionsContain(suggestions, "named", "sender", "def", "min", "vw", "implicit");
+    }
+
+    @Test
+    public void testTabCompletionNamed() {
+        // named resolve takes two doubles, no suggestions expected
+        List<String> suggestions = tabComplete("named", "");
+        assertTrue(suggestions.isEmpty());
+    }
+
+    @Test
+    public void testTabCompletionDef() {
+        // def resolve takes two doubles with default for y, no suggestions expected
+        List<String> suggestions = tabComplete("def", "");
+        assertTrue(suggestions.isEmpty());
     }
 }

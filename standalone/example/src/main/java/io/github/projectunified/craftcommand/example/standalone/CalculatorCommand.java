@@ -353,6 +353,11 @@ public class CalculatorCommand {
         ((TestSender) sender).sendMessage("greedyResolve=" + text);
     }
 
+    @Command("greedyResolveWithPrefix")
+    public void greedyResolveWithPrefix(Object sender, String prefix, @Resolve("resolveGreedy") String text) {
+        ((TestSender) sender).sendMessage("greedyResolveWithPrefix=" + prefix + ":" + text);
+    }
+
     // ── Nested Subcommand Class ──
 
     public enum MathOp {

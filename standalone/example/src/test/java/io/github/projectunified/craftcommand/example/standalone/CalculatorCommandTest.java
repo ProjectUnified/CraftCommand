@@ -170,9 +170,19 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
-    public void testGreedyString() {
-        assertTrue(execute("echo", "Hello", "World", "Foo"));
-        assertEquals("Hello World Foo", sender.getMessages().get(0));
+    public void testGreedyResolve() {
+        assertTrue(execute("greedyResolve", "Hello", "World", "Foo"));
+        assertEquals("greedyResolve=Hello World Foo", sender.getMessages().get(0));
+        sender.getMessages().clear();
+    }
+
+    @Test
+    public void testGreedyResolveWithPrefix() {
+        assertTrue(execute("greedyResolveWithPrefix", "prefix", "Hello", "World"));
+        assertEquals("greedyResolveWithPrefix=prefix:Hello World", sender.getMessages().get(0));
+        sender.getMessages().clear();
+        assertTrue(execute("greedyResolveWithPrefix", "tag", "single"));
+        assertEquals("greedyResolveWithPrefix=tag:single", sender.getMessages().get(0));
         sender.getMessages().clear();
     }
 
@@ -383,7 +393,7 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
         List<String> suggestions = tabComplete("");
         assertSuggestionsContain(suggestions, "add", "sub", "mul", "div", "op", "mode", "print",
                 "repeat", "echo", "sum", "msg", "point", "whoami", "coord", "level", "enumop",
-                "advanced", "resolve");
+                "advanced", "resolve", "greedyResolve", "greedyResolveWithPrefix");
     }
 
     @Test
@@ -402,6 +412,21 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
     public void testTabCompletionMode() {
         List<String> suggestions = tabComplete("mode", "");
         assertSuggestionsContain(suggestions, "basic", "scientific", "programmer");
+    }
+
+    @Test
+    public void testTabCompletionEnumOp() {
+        List<String> suggestions = tabComplete("enumop", "");
+        assertSuggestionsContain(suggestions, "ADD", "SUBTRACT", "MULTIPLY", "DIVIDE");
+    }
+
+    @Test
+    public void testTabCompletionEnumOpFiltering() {
+        List<String> suggestions = tabComplete("enumop", "M");
+        assertSuggestionsContain(suggestions, "MULTIPLY");
+        assertFalse(suggestions.contains("ADD"));
+        assertFalse(suggestions.contains("SUBTRACT"));
+        assertFalse(suggestions.contains("DIVIDE"));
     }
 
     // ═══════════════════════════════════════════════════════════════

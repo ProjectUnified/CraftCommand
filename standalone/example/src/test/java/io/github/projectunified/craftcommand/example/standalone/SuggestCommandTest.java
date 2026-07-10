@@ -77,4 +77,36 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
         assertTrue(suggestions.contains("square"));
         assertFalse(suggestions.contains("circle"));
     }
+
+    @Test
+    public void testSuggestFieldEmptyInput() {
+        List<String> suggestions = tabComplete("field", "");
+        assertEquals(3, suggestions.size());
+        assertSuggestionsContain(suggestions, "red", "green", "blue");
+    }
+
+    @Test
+    public void testSuggestMethodEmptyInput() {
+        List<String> suggestions = tabComplete("method", "");
+        assertEquals(3, suggestions.size());
+        assertSuggestionsContain(suggestions, "circle", "square", "triangle");
+    }
+
+    @Test
+    public void testSuggestFieldNoMatch() {
+        List<String> suggestions = tabComplete("field", "xyz");
+        assertTrue(suggestions.isEmpty());
+    }
+
+    @Test
+    public void testSuggestMethodNoMatch() {
+        List<String> suggestions = tabComplete("method", "xyz");
+        assertTrue(suggestions.isEmpty());
+    }
+
+    @Test
+    public void testTabCompletionSubcommands() {
+        List<String> suggestions = tabComplete("");
+        assertSuggestionsContain(suggestions, "field", "method", "greedysug", "namesug", "defaultsug", "resolvesug", "greedyname");
+    }
 }

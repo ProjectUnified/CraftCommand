@@ -7,8 +7,7 @@ import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class BukkitSuggestCommandTest extends AbstractBukkitCommandTest {
 
@@ -40,5 +39,31 @@ public class BukkitSuggestCommandTest extends AbstractBukkitCommandTest {
         PlayerMock player = server.addPlayer();
         server.getCommandMap().getCommand("buksug").execute(player, "buksug", new String[]{"greedy", "red green"});
         assertEquals("greedy=red green", player.nextMessage());
+    }
+
+    @Test
+    public void testSuggestFieldFiltering() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"field", "r"});
+        assertTrue(suggestions.contains("red"));
+        assertFalse(suggestions.contains("green"));
+    }
+
+    @Test
+    public void testSuggestMethodFiltering() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"method", "s"});
+        assertTrue(suggestions.contains("square"));
+        assertFalse(suggestions.contains("circle"));
+    }
+
+    @Test
+    public void testSuggestFieldComplete() {
+        PlayerMock player = server.addPlayer();
+        List<String> suggestions = server.getCommandMap().getCommand("buksug").tabComplete(player, "buksug", new String[]{"field", ""});
+        assertEquals(3, suggestions.size());
+        assertTrue(suggestions.contains("red"));
+        assertTrue(suggestions.contains("green"));
+        assertTrue(suggestions.contains("blue"));
     }
 }
