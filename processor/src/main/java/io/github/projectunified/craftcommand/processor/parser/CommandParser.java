@@ -2,6 +2,7 @@ package io.github.projectunified.craftcommand.processor.parser;
 
 import com.palantir.javapoet.ClassName;
 import io.github.projectunified.craftcommand.annotation.*;
+import io.github.projectunified.craftcommand.processor.ResolverLookup;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
@@ -111,37 +112,27 @@ public class CommandParser {
 
                 for (int i = 1; i < parameters.size(); i++) {
                     VariableElement param = parameters.get(i);
-                    Default paramDefaultAnn = param.getAnnotation(Default.class);
-                    Greedy greedyAnn = param.getAnnotation(Greedy.class);
-                    Name nameAnn = param.getAnnotation(Name.class);
-                    Suggest suggestAnn = param.getAnnotation(Suggest.class);
+                    ParameterModel paramModel = parseParameter(param);
 
-                    String paramName = nameAnn != null ? nameAnn.value() : param.getSimpleName().toString();
-                    TypeMirror paramType = param.asType();
-                    boolean isOptional = paramDefaultAnn != null;
-                    String defaultValue = (paramDefaultAnn != null && !paramDefaultAnn.value().isEmpty()) ? paramDefaultAnn.value() : null;
-                    boolean isGreedy = greedyAnn != null;
-                    String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-
-                    if (isGreedy && hasGreedy) {
+                    if (paramModel.isGreedy() && hasGreedy) {
                         messager.printMessage(Diagnostic.Kind.ERROR, "A command method can only have at most one @Greedy parameter", method);
                     }
-                    if (isGreedy && i != parameters.size() - 1) {
+                    if (paramModel.isGreedy() && i != parameters.size() - 1) {
                         messager.printMessage(Diagnostic.Kind.ERROR, "The @Greedy parameter must be the last parameter in the method", param);
                         continue;
                     }
 
-                    if (isOptional) {
+                    if (paramModel.isOptional()) {
                         hasOptional = true;
-                    } else if (hasOptional && !isGreedy) {
+                    } else if (hasOptional && !paramModel.isGreedy()) {
                         messager.printMessage(Diagnostic.Kind.ERROR, "Required parameters cannot follow optional parameters", param);
                     }
 
-                    if (isGreedy) {
+                    if (paramModel.isGreedy()) {
                         hasGreedy = true;
                     }
 
-                    paramModels.add(new ParameterModel(paramName, paramType, isGreedy, isOptional, defaultValue, suggestProvider, param));
+                    paramModels.add(paramModel);
                 }
 
                 // Determine subcommand name, aliases, description from @Command
@@ -223,54 +214,38 @@ public class CommandParser {
         // For each referenced resolver name, find and parse the method
         for (String resolveName : resolveNames) {
             if (resolverMethods.containsKey(resolveName)) continue;
-            ExecutableElement resolverMethod = findMethodByName(typeElement, resolveName);
+            ExecutableElement resolverMethod = ResolverLookup.findMethod(typeElement, resolveName);
             if (resolverMethod == null) {
                 messager.printMessage(Diagnostic.Kind.ERROR, "Resolver method '" + resolveName + "' not found in " + typeElement.getSimpleName(), typeElement);
                 continue;
             }
-            MethodModel resolverModel = parseResolverMethod(resolverMethod, messager);
+            MethodModel resolverModel = parseResolverMethod(resolverMethod);
             resolverMethods.put(resolveName, resolverModel);
         }
     }
 
-    private static ExecutableElement findMethodByName(TypeElement typeElement, String name) {
-        // Search current class and parent classes
-        TypeElement current = typeElement;
-        while (current != null) {
-            for (Element enclosed : current.getEnclosedElements()) {
-                if (enclosed instanceof ExecutableElement && enclosed.getSimpleName().toString().equals(name)) {
-                    return (ExecutableElement) enclosed;
-                }
-            }
-            javax.lang.model.element.Element enclosing = current.getEnclosingElement();
-            current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
-        }
-        return null;
+    private static ParameterModel parseParameter(VariableElement param) {
+        Default paramDefaultAnn = param.getAnnotation(Default.class);
+        Greedy greedyAnn = param.getAnnotation(Greedy.class);
+        Name nameAnn = param.getAnnotation(Name.class);
+        Suggest suggestAnn = param.getAnnotation(Suggest.class);
+
+        String paramName = nameAnn != null ? nameAnn.value() : param.getSimpleName().toString();
+        TypeMirror paramType = param.asType();
+        boolean isOptional = paramDefaultAnn != null;
+        String defaultValue = (paramDefaultAnn != null && !paramDefaultAnn.value().isEmpty()) ? paramDefaultAnn.value() : null;
+        boolean isGreedy = greedyAnn != null;
+        String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
+
+        return new ParameterModel(paramName, paramType, isGreedy, isOptional, defaultValue, suggestProvider, param);
     }
 
-    private static MethodModel parseResolverMethod(ExecutableElement method, Messager messager) {
+    private static MethodModel parseResolverMethod(ExecutableElement method) {
         List<? extends VariableElement> parameters = method.getParameters();
-
-        // All params are regular params (sender-type params are skipped during resolution via isSenderParam)
-        ParameterModel senderParam = null;
         List<ParameterModel> paramModels = new ArrayList<>();
-
         for (VariableElement param : parameters) {
-            Default paramDefaultAnn = param.getAnnotation(Default.class);
-            Greedy greedyAnn = param.getAnnotation(Greedy.class);
-            Name nameAnn = param.getAnnotation(Name.class);
-            Suggest suggestAnn = param.getAnnotation(Suggest.class);
-
-            String paramName = nameAnn != null ? nameAnn.value() : param.getSimpleName().toString();
-            TypeMirror paramType = param.asType();
-            boolean isOptional = paramDefaultAnn != null;
-            String defaultValue = (paramDefaultAnn != null && !paramDefaultAnn.value().isEmpty()) ? paramDefaultAnn.value() : null;
-            boolean isGreedy = greedyAnn != null;
-            String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-
-            paramModels.add(new ParameterModel(paramName, paramType, isGreedy, isOptional, defaultValue, suggestProvider, param));
+            paramModels.add(parseParameter(param));
         }
-
-        return new MethodModel(method.getSimpleName().toString(), null, null, null, senderParam, paramModels, false, method);
+        return new MethodModel(method.getSimpleName().toString(), null, null, null, null, paramModels, false, method);
     }
 }

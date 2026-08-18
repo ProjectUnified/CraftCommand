@@ -38,18 +38,18 @@ craftcommand/
   → JavaFile written to build/generated/sources
 ```
 
-## Template Anchors
+## Code Generation Pipeline
 
-The base processor defines a 7-phase template. Platform processors override anchors:
+The base processor defines a 6-step template. Platform processors override hooks:
 
-| Phase | Anchor                        | Purpose                            |
-|-------|-------------------------------|------------------------------------|
-| 1     | `anchorConfigureType`         | Set superclass/interface           |
-| 2     | `anchorAdditionalFields`      | Extra fields                       |
-| 3     | `anchorConstructorTop/Bottom` | Constructor setup                  |
-| 4     | `anchorBuildEntryMethods`     | execute/tabComplete/getCommandNode |
-| 5     | `anchorAdditionalHelpers`     | Platform helper methods            |
-| 7     | `anchorExtraMethods`          | Brigadier tree, etc.               |
+| Step | Method Hook                   | Purpose                            |
+|------|-------------------------------|------------------------------------|
+| 1    | `configureClass`              | Set superclass/interface           |
+| 2    | `addPlatformFields`           | Extra fields                       |
+| 3    | `addConstructorStatements`    | Constructor setup & subcommands    |
+| 4    | `generateEntryMethods`        | execute/tabComplete/getCommandNode |
+| 5    | `generateHelpers`             | Subcommand routing & helpers       |
+| 6    | `buildCommandInfo`            | BaseCommand.getCommandInfo()       |
 
 ## Runtime Flow
 
@@ -66,9 +66,7 @@ manager.register(new MyCommand())
 |------------------------------|---------------|--------------------------------------|
 | `ParameterAnnotationHandler` | processor SPI | Custom parameter annotations         |
 | `MethodAnnotationHandler`    | processor SPI | Custom method annotations            |
-| `SuggestionProvider`         | processor SPI | Global type suggestions              |
-| `CommandValidator`           | processor SPI | Execution wrapping (cooldown, async) |
-| `ArgumentResolver`           | runtime       | Custom type resolution               |
+| `ArgumentResolver`           | runtime       | Custom type resolution & suggestions |
 | `ArgumentResolverProvider`   | runtime       | Dynamic resolver lookup              |
 
 ## Design Principles

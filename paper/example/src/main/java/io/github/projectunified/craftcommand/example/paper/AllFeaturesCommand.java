@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 @Command(value = "features", aliases = {"f"}, description = "All CraftCommand features combined for Paper")
@@ -21,7 +22,7 @@ public class AllFeaturesCommand {
     public final List<String> modes = Arrays.asList("normal", "silent", "instant");
     public final List<String> colors = Arrays.asList("red", "green", "blue", "yellow");
 
-    public java.util.Collection<String> getNearPlayers(Player sender, String[] current) {
+    public Collection<String> getNearPlayers(Player sender, String[] current) {
         List<String> suggestions = new ArrayList<>();
         String prefix = current.length > 0 ? current[0].toLowerCase() : "";
         for (Player p : Bukkit.getOnlinePlayers()) {

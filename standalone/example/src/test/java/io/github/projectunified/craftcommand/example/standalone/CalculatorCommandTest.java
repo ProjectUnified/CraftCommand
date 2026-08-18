@@ -1,5 +1,6 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
+import io.github.projectunified.craftcommand.CommandInfo;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -34,11 +35,11 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
 
     @Test
     public void testCommandInfo() {
-        List<io.github.projectunified.craftcommand.CommandInfo> infoList = manager.getCommandInfo(instance);
+        List<CommandInfo> infoList = manager.getCommandInfo(instance);
         assertNotNull(infoList);
         assertFalse(infoList.isEmpty());
 
-        io.github.projectunified.craftcommand.CommandInfo defaultInfo = infoList.stream()
+        CommandInfo defaultInfo = infoList.stream()
                 .filter(info -> info.getPath().size() == 1 && info.getPath().get(0).equals("calc"))
                 .findFirst()
                 .orElse(null);

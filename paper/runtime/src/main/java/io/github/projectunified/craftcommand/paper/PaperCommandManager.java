@@ -1,15 +1,15 @@
 package io.github.projectunified.craftcommand.paper;
 
-import io.github.projectunified.craftcommand.CommandInfo;
 import io.github.projectunified.craftcommand.CommandManager;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 /**
@@ -18,7 +18,6 @@ import java.util.function.BiConsumer;
 public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     private final JavaPlugin plugin;
     private final List<PaperCommand> registered = new ArrayList<>();
-    private final Map<Object, PaperCommand> wrappers = new HashMap<>();
 
     /**
      * Constructs a PaperCommandManager with a custom error handler.
@@ -40,7 +39,7 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
      */
     public PaperCommandManager(JavaPlugin plugin) {
         super((source, exception) -> source.getSender().sendMessage(
-                net.kyori.adventure.text.Component.text(exception.getMessage(), net.kyori.adventure.text.format.NamedTextColor.RED)
+                Component.text(exception.getMessage(), NamedTextColor.RED)
         ));
         this.plugin = plugin;
 
@@ -68,39 +67,27 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
         this.registered.add(command);
     }
 
+    /**
+     * Gets all registered Paper commands as an unmodifiable list.
+     *
+     * @return an unmodifiable list of PaperCommand instances
+     */
+    public List<PaperCommand> getRegisteredCommands() {
+        return Collections.unmodifiableList(registered);
+    }
+
     @Override
     public void register(Object commandInstance) {
         if (commandInstance instanceof PaperCommand) {
             register((PaperCommand) commandInstance);
         } else {
             try {
-                Object wrapper = instantiate(commandInstance.getClass(), commandInstance);
-
-                if (wrapper instanceof PaperCommand) {
-                    PaperCommand paperCommand = (PaperCommand) wrapper;
-                    wrappers.put(commandInstance, paperCommand);
-                    register(paperCommand);
-                } else {
-                    throw new IllegalArgumentException("Wrapper is not PaperCommand: " + wrapper.getClass());
-                }
+                PaperCommand paperCommand = instantiateWrapper(commandInstance, "$PaperCommand", PaperCommand.class);
+                registerWrapper(commandInstance, paperCommand);
+                register(paperCommand);
             } catch (Throwable e) {
                 throw new IllegalArgumentException("Failed to register Paper command: " + commandInstance.getClass().getName(), e);
             }
         }
-    }
-
-    @Override
-    public List<CommandInfo> getCommandInfo(Object commandInstance) {
-        PaperCommand wrapper = wrappers.get(commandInstance);
-        if (wrapper != null) {
-            return wrapper.getCommandInfo();
-        }
-        return Collections.emptyList();
-    }
-
-    private Object instantiate(Class<?> commandClass, Object instance) throws Throwable {
-        Class<?> wrapperClass = Class.forName(commandClass.getName() + "$PaperCommand");
-        MethodHandle handle = MethodHandles.lookup().findConstructor(wrapperClass, MethodType.methodType(void.class, commandClass, CommandManager.class));
-        return handle.invoke(instance, this);
     }
 }

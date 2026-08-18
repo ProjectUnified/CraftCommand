@@ -2,12 +2,15 @@ package io.github.projectunified.craftcommand;
 
 import io.github.projectunified.craftcommand.exception.CommandException;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * Base command manager. Handles resolver registration, message formatting, and error handling.
+ * Base command manager. Handles resolver registration, message formatting, wrapper instantiation, and error handling.
  *
  * @param <S> sender type
  */
@@ -15,6 +18,7 @@ public abstract class CommandManager<S> {
     private final Map<Class<?>, ArgumentResolver<S, ?>> resolvers = new HashMap<>();
     private final List<Function<Class<?>, ArgumentResolver<S, ?>>> providers = new ArrayList<>();
     private final Map<Class<?>, Function<S, ?>> senderResolvers = new HashMap<>();
+    private final Map<Object, BaseCommand> wrappers = new HashMap<>();
     private BiConsumer<S, Exception> errorHandler;
 
     public CommandManager(BiConsumer<S, Exception> errorHandler) {
@@ -25,11 +29,13 @@ public abstract class CommandManager<S> {
      * Filters suggestions by prefix (case-insensitive).
      */
     public static List<String> filterSuggestions(Collection<String> suggestions, String current) {
-        if (suggestions == null) return Collections.emptyList();
+        if (suggestions == null || suggestions.isEmpty()) return Collections.emptyList();
         List<String> result = new ArrayList<>();
-        String lower = current.toLowerCase();
+        String lower = (current == null || current.isEmpty()) ? null : current.toLowerCase();
         for (String s : suggestions) {
-            if (s.toLowerCase().startsWith(lower)) result.add(s);
+            if (s != null && (lower == null || s.toLowerCase().startsWith(lower))) {
+                result.add(s);
+            }
         }
         return result;
     }
@@ -40,12 +46,49 @@ public abstract class CommandManager<S> {
     public abstract void register(Object command);
 
     /**
+     * Helper to instantiate a generated command wrapper using MethodHandles.
+     *
+     * @param commandInstance  the original command instance
+     * @param suffix           the wrapper class suffix (e.g. "$StandaloneCommand")
+     * @param wrapperClassType the expected wrapper class or interface
+     * @param <W>              the wrapper type
+     * @return the instantiated wrapper
+     * @throws Throwable if reflection or instantiation fails
+     */
+    protected <W> W instantiateWrapper(Object commandInstance, String suffix, Class<W> wrapperClassType) throws Throwable {
+        Class<?> commandClass = commandInstance.getClass();
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + suffix);
+        MethodHandle handle = MethodHandles.lookup().findConstructor(
+                wrapperClass,
+                MethodType.methodType(void.class, commandClass, CommandManager.class)
+        );
+        Object wrapper = handle.invoke(commandInstance, this);
+        return wrapperClassType.cast(wrapper);
+    }
+
+    /**
+     * Associates a command instance with its generated wrapper.
+     *
+     * @param commandInstance the original command instance
+     * @param wrapper         the generated command wrapper
+     */
+    protected void registerWrapper(Object commandInstance, BaseCommand wrapper) {
+        this.wrappers.put(commandInstance, wrapper);
+    }
+
+    /**
      * Gets command metadata for a registered command instance.
      *
      * @param commandInstance the original command instance passed to {@link #register(Object)}
      * @return the command info list, or empty list if not found
      */
-    public abstract List<CommandInfo> getCommandInfo(Object commandInstance);
+    public List<CommandInfo> getCommandInfo(Object commandInstance) {
+        BaseCommand wrapper = wrappers.get(commandInstance);
+        if (wrapper != null) {
+            return wrapper.getCommandInfo();
+        }
+        return Collections.emptyList();
+    }
 
     /**
      * Formats a message by key. Override for i18n.
@@ -125,7 +168,26 @@ public abstract class CommandManager<S> {
     }
 
     /**
-     * Gets the resolver for a type. Checks exact match, hierarchy, providers, then sender fallback.
+     * Checks if a resolver is registered or provided for the given type.
+     *
+     * @param type the type to check
+     * @return {@code true} if a resolver is available
+     */
+    public boolean hasResolver(Class<?> type) {
+        if (resolvers.containsKey(type)) return true;
+        for (Class<?> key : resolvers.keySet()) {
+            if (key.isAssignableFrom(type)) return true;
+        }
+        for (Function<Class<?>, ArgumentResolver<S, ?>> provider : providers) {
+            if (provider.apply(type) != null) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Gets the resolver for a type. Checks exact match, hierarchy, and providers.
+     *
+     * @throws IllegalArgumentException if no resolver is registered for the type
      */
     @SuppressWarnings("unchecked")
     public <T> ArgumentResolver<S, T> getResolver(Class<T> type) {
@@ -141,10 +203,7 @@ public abstract class CommandManager<S> {
             if (dynamicResolver != null) return (ArgumentResolver<S, T>) dynamicResolver;
         }
 
-        return (sender, current, context) -> {
-            if (type.isInstance(sender)) return type.cast(sender);
-            throw new IllegalArgumentException("No resolver for type: " + type.getName());
-        };
+        throw new IllegalArgumentException("No resolver registered for type: " + type.getName());
     }
 
     public BiConsumer<S, Exception> getErrorHandler() {

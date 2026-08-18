@@ -26,10 +26,12 @@ public class MaxHandler implements ParameterAnnotationHandler<Max> {
         String defaultTemplate = annotation.message().isEmpty()
                 ? "%s cannot be greater than %s"
                 : annotation.message();
-        methodSpec.addComment("Validate parameter '" + parameter.getName() + "' against max limit: " + annotation.value());
-        methodSpec.beginControlFlow("if ($L > $L)", varName, annotation.value())
+        boolean isInt = TypeSupport.isIntegerType(typeName) && annotation.value() == Math.floor(annotation.value()) && !Double.isInfinite(annotation.value());
+        Object limitValue = isInt ? (long) annotation.value() : annotation.value();
+        methodSpec.addComment("Validate parameter '" + parameter.getName() + "' against max limit: " + limitValue);
+        methodSpec.beginControlFlow("if ($L > $L)", varName, limitValue)
                 .addStatement("throw new $T(manager.formatMessage($S, $S, $S, $L))",
-                        CommandException.class, messageKey, defaultTemplate, parameter.getName(), annotation.value())
+                        CommandException.class, messageKey, defaultTemplate, parameter.getName(), limitValue)
                 .endControlFlow();
     }
 }

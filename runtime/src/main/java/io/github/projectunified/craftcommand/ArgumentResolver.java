@@ -1,5 +1,6 @@
 package io.github.projectunified.craftcommand;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -28,7 +29,7 @@ public interface ArgumentResolver<S, T> {
      * @return the list of suggestions
      */
     default List<String> suggest(S sender, String[] current, String[] context) {
-        return java.util.Collections.emptyList();
+        return Collections.emptyList();
     }
 
     /**

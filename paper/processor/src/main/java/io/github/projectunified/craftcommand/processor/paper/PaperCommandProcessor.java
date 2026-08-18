@@ -18,9 +18,7 @@ import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.Modifier;
-import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.*;
 import javax.lang.model.type.TypeMirror;
 import java.util.*;
 import java.util.function.Function;
@@ -109,7 +107,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorConfigureType(TypeSpec.Builder typeSpec) {
+    protected void configureClass(TypeSpec.Builder typeSpec, CommandModel model) {
         typeSpec.addSuperinterface(ClassName.get("io.github.projectunified.craftcommand.paper", "PaperCommand"));
     }
 
@@ -130,7 +128,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorBuildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
+    protected void generateEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
         typeSpec.addMethod(MethodSpec.methodBuilder("getDescription")
                 .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC).returns(String.class)
                 .addStatement("return $S", model.getDescription()).build());
@@ -138,10 +136,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC)
                 .returns(ParameterizedTypeName.get(Collection.class, String.class))
                 .addStatement("return $L", buildAliasesExpression(model)).build());
-    }
 
-    @Override
-    protected void anchorExtraMethods(TypeSpec.Builder typeSpec, CommandModel model) {
         // getCommandNode()
         MethodSpec.Builder getCommandNodeSpec = MethodSpec.methodBuilder("getCommandNode")
                 .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC)
@@ -152,46 +147,33 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         buildBrigadierTree(getCommandNodeSpec, model, "builder", "instance", model);
         getCommandNodeSpec.addStatement("return builder.build()");
         typeSpec.addMethod(getCommandNodeSpec.build());
+    }
 
-        // getSuggestions helper
+    @Override
+    protected void generateHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
+        buildSenderCastHelpers(typeSpec, model);
         generateSuggestionsHelper(typeSpec);
     }
 
     @Override
-    protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
+    protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
         Permission permission = findAnnotationUp(element, Permission.class);
         if (permission != null) {
-            methodSpec.beginControlFlow("if (!ctx.getSource().getSender().hasPermission($S))", permission.value());
+            methodSpec.beginControlFlow("if (!sender.getSender().hasPermission($S))", permission.value());
             String msg = permission.message();
             if (!msg.isEmpty() && isI18nKey(msg)) {
-                methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
+                methodSpec.addStatement("sender.getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
                         componentClass, i18nKey(msg), msg, permission.value(), errorColorClass);
             } else if (!msg.isEmpty()) {
-                methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text($S, $T.RED))",
+                methodSpec.addStatement("sender.getSender().sendMessage($T.text($S, $T.RED))",
                         componentClass, msg, errorColorClass);
             } else {
-                methodSpec.addStatement("ctx.getSource().getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
+                methodSpec.addStatement("sender.getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
                         componentClass, "permission", "You do not have permission to execute this command.", permission.value(), errorColorClass);
             }
             methodSpec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
             methodSpec.endControlFlow();
         }
-    }
-
-    @Override
-    protected void generateSubcommandClassExecutors(TypeSpec.Builder typeSpec, CommandModel model, CommandModel rootModel) {
-        // In Paper (Brigadier), both execute_* and suggest_* routing methods are dead code —
-        // the Brigadier tree handles all routing and suggestion attachment directly.
-        // Only recurse into nested subcommands for their own nested classes.
-        for (CommandModel child : model.getNestedSubcommands()) {
-            generateSubcommandClassExecutors(typeSpec, child, rootModel);
-        }
-    }
-
-    @Override
-    protected void buildParameterSuggestions(TypeSpec.Builder typeSpec, CommandModel model, CommandModel rootModel) {
-        // In Paper (Brigadier), suggest helpers are dead code — the Brigadier tree handles
-        // suggestions directly via .suggests() calls. Skip generating suggest helpers.
     }
 
     // ── Brigadier tree generation (private helpers) ──
@@ -230,8 +212,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                 .addStatement("argsList.remove(0)")
                 .endControlFlow()
                 .addStatement("$T[] args = argsList.toArray(new $T[0])", String.class, String.class)
+                .addStatement("$T remainingLower = remaining.toLowerCase()", String.class)
                 .beginControlFlow("for ($T suggestion : provider.apply(args))", String.class)
-                .beginControlFlow("if (suggestion.toLowerCase().startsWith(remaining.toLowerCase()))")
+                .beginControlFlow("if (remainingLower.isEmpty() || suggestion.toLowerCase().startsWith(remainingLower))")
                 .addStatement("builder.suggest(suggestion)")
                 .endControlFlow()
                 .endControlFlow()
@@ -273,11 +256,11 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         for (ParameterModel p : cmdArgs) {
             ExecutableElement localResolver = findLocalResolver(classModel, p, rootModel);
             if (localResolver != null) {
-                List<? extends javax.lang.model.element.VariableElement> resolverParams = localResolver.getParameters();
+                List<? extends VariableElement> resolverParams = localResolver.getParameters();
                 int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
                 int resolverWidth = resolverParams.size() - resolverStartIndex;
                 for (int i = 0; i < resolverWidth; i++) {
-                    javax.lang.model.element.VariableElement rp = resolverParams.get(resolverStartIndex + i);
+                    VariableElement rp = resolverParams.get(resolverStartIndex + i);
                     TypeName rpTypeName = TypeName.get(rp.asType());
                     if (isSenderParam(rpTypeName, method)) {
                         continue;
@@ -353,14 +336,15 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     needsSuggestions = true;
                 }
             }
+
             if (needsSuggestions && node.isLastForParameter) {
                 String suggestProvider = node.suggestProvider != null ? node.suggestProvider : p.getSuggestProvider();
                 if (suggestProvider != null) {
                     // Custom suggest provider — check if it's a field or method
                     TypeElement typeElement = classModel.getElement();
                     if (isField(typeElement, suggestProvider)) {
-                        // Field: use filterSuggestions wrapped in getSuggestions
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $T.filterSuggestions($L.$L, sb.getRemaining())))",
+                        // Field: access directly on instance
+                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $T.filterSuggestions($L.$L, args[args.length - 1])))",
                                 nextBuilderVar, ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, suggestProvider);
                     } else {
                         // Method: invoke on command instance — get correct sender expression
@@ -368,7 +352,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                         ExecutableElement suggestMethod = findSuggestMethod(typeElement, suggestProvider);
                         boolean needsCast = false;
                         if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                            javax.lang.model.element.VariableElement firstParam = suggestMethod.getParameters().get(0);
+                            VariableElement firstParam = suggestMethod.getParameters().get(0);
                             TypeName firstParamType = TypeName.get(firstParam.asType());
                             if (!firstParamType.toString().equals(getSenderTypeName().toString())) {
                                 // Check if first param has @Resolve annotation - it's a custom sender
@@ -392,63 +376,25 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             }
                         }
                         int argCount = suggestMethod != null ? suggestMethod.getParameters().size() : 0;
+                        String callExpr = getSuggestCallExpr(argCount, suggestMethod, method, instanceExpr, suggestProvider, suggestSenderExpr);
                         if (needsCast) {
                             // Wrap in try-catch to handle non-player senders gracefully during tab completion
                             ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
-                            spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar);
-                            spec.beginControlFlow("try");
-                            if (argCount == 0) {
-                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L())",
-                                        instanceExpr, suggestProvider);
-                            } else if (argCount == 1) {
-                                TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
-                                if (isSenderParam(TypeName.get(firstParamType), method)) {
-                                    // m(SenderType sender)
-                                    spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L))",
-                                            instanceExpr, suggestProvider, suggestSenderExpr);
-                                } else {
-                                    // m(String[] current)
-                                    spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L(args))",
-                                            instanceExpr, suggestProvider);
-                                }
-                            } else if (argCount == 2) {
-                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args))",
-                                        instanceExpr, suggestProvider, suggestSenderExpr);
-                            } else if (argCount == 3) {
-                                spec.addStatement("return getSuggestions(ctx, sb, args -> $L.$L($L, args, args))",
-                                        instanceExpr, suggestProvider, suggestSenderExpr);
-                            }
-                            spec.nextControlFlow("catch ($T e)", CommandException.class);
-                            spec.addStatement("return $T.empty()", suggestionsClass);
-                            spec.endControlFlow();
-                            spec.endControlFlow(")");
+                            spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar)
+                                    .beginControlFlow("try")
+                                    .addStatement("return getSuggestions(ctx, sb, args -> $L)", callExpr)
+                                    .nextControlFlow("catch ($T e)", CommandException.class)
+                                    .addStatement("return $T.empty()", suggestionsClass)
+                                    .endControlFlow()
+                                    .endControlFlow(")");
                         } else {
-                            if (argCount == 0) {
-                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L()))",
-                                        nextBuilderVar, instanceExpr, suggestProvider);
-                            } else if (argCount == 1) {
-                                TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
-                                if (isSenderParam(TypeName.get(firstParamType), method)) {
-                                    // m(SenderType sender)
-                                    spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L)))",
-                                            nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
-                                } else {
-                                    // m(String[] current)
-                                    spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L(args)))",
-                                            nextBuilderVar, instanceExpr, suggestProvider);
-                                }
-                            } else if (argCount == 2) {
-                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args)))",
-                                        nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
-                            } else if (argCount == 3) {
-                                spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L.$L($L, args, args)))",
-                                        nextBuilderVar, instanceExpr, suggestProvider, suggestSenderExpr);
-                            }
+                            spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L))",
+                                    nextBuilderVar, callExpr);
                         }
                     }
                 } else {
                     // Boolean or platform built-in — use standard suggestion helper
-                    io.github.projectunified.craftcommand.annotation.Resolve resolveAnn = p.getElement().getAnnotation(io.github.projectunified.craftcommand.annotation.Resolve.class);
+                    Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
                     if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
                         String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveAnn.value(), node.resolverArgIndex);
                         spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args)))",
@@ -467,12 +413,13 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     private void generateExecutionBlock(MethodSpec.Builder spec, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int parsedNodeCount) {
+        spec.addStatement("$T sender = ctx.getSource()", commandSourceStackClass);
         spec.beginControlFlow("try");
         onBeforeExecute(spec, method.getElement(), "return");
         PaperExecutionSource source = new PaperExecutionSource(this, nodes, parsedNodeCount);
-        buildMethodExecution(spec, classModel, method, instanceExpr, rootModel, source);
+        source.generateExecution(spec, classModel, method, instanceExpr, rootModel);
         spec.nextControlFlow("catch ($T e)", Exception.class)
-                .addStatement("manager.getErrorHandler().accept(ctx.getSource(), e)")
+                .addStatement("manager.getErrorHandler().accept(sender, e)")
                 .endControlFlow();
         spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
     }
@@ -484,7 +431,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         return getArgumentTypeExpressionFromTypeName(TypeName.get(param.getType()), param.getElement());
     }
 
-    private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, javax.lang.model.element.VariableElement element) {
+    private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, VariableElement element) {
         boolean isGreedy = element.getAnnotation(Greedy.class) != null;
         if (isGreedy)
             return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
@@ -495,6 +442,24 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     CodeBlock getArgumentRetrievalExpression(TypeName typeName, String argName) {
         Function<String, CodeBlock> provider = brigadierRetrievals.get(typeName.toString());
         return provider != null ? provider.apply(argName) : CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
+    }
+
+    private String getSuggestCallExpr(int argCount, ExecutableElement suggestMethod, MethodModel method, String instanceExpr, String suggestProvider, String suggestSenderExpr) {
+        if (argCount == 0) {
+            return String.format("%s.%s()", instanceExpr, suggestProvider);
+        } else if (argCount == 1) {
+            TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
+            if (isSenderParam(TypeName.get(firstParamType), method)) {
+                return String.format("%s.%s(%s)", instanceExpr, suggestProvider, suggestSenderExpr);
+            } else {
+                return String.format("%s.%s(args)", instanceExpr, suggestProvider);
+            }
+        } else if (argCount == 2) {
+            return String.format("%s.%s(%s, args)", instanceExpr, suggestProvider, suggestSenderExpr);
+        } else if (argCount == 3) {
+            return String.format("%s.%s(%s, args, args)", instanceExpr, suggestProvider, suggestSenderExpr);
+        }
+        return String.format("%s.%s()", instanceExpr, suggestProvider);
     }
 
     private String sanitizeIdentifier(String name) {

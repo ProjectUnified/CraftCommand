@@ -200,6 +200,8 @@
                 </executions>
                 <configuration>
                     <outputDirectory>${project.build.directory}/reports</outputDirectory>
+                    <doclint>none</doclint>
+                    <quiet>true</quiet>
                 </configuration>
             </plugin>
         </plugins>

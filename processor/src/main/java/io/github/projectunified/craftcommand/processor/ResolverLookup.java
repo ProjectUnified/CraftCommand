@@ -2,14 +2,18 @@ package io.github.projectunified.craftcommand.processor;
 
 import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
+import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.tools.Diagnostic;
 import java.util.List;
 
 /**
@@ -22,6 +26,11 @@ import java.util.List;
 public final class ResolverLookup {
     private final ProcessingEnvironment env;
 
+    /**
+     * Constructs a new ResolverLookup instance.
+     *
+     * @param env the annotation processing environment
+     */
     public ResolverLookup(ProcessingEnvironment env) {
         this.env = env;
     }
@@ -29,6 +38,10 @@ public final class ResolverLookup {
     /**
      * Find a no-arg/instance method by name on the given type element.
      * Searches the current class and all parent classes.
+     *
+     * @param typeElement the type element to search
+     * @param name        the method name
+     * @return the matching ExecutableElement, or null if not found
      */
     public static ExecutableElement findMethod(TypeElement typeElement, String name) {
         TypeElement current = typeElement;
@@ -39,7 +52,7 @@ public final class ResolverLookup {
                     return (ExecutableElement) enclosed;
                 }
             }
-            javax.lang.model.element.Element enclosing = current.getEnclosingElement();
+            Element enclosing = current.getEnclosingElement();
             current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
         }
         return null;
@@ -56,7 +69,7 @@ public final class ResolverLookup {
      * @param p          the parameter to resolve
      * @return the matching resolver method, or {@code null} if none
      */
-    public ExecutableElement findLocalResolver(CommandModel classModel, io.github.projectunified.craftcommand.processor.model.ParameterModel p) {
+    public ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p) {
         Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
         if (resolveAnn == null || resolveAnn.value().isEmpty()) {
             return null;
@@ -81,6 +94,10 @@ public final class ResolverLookup {
     /**
      * Walk the command tree to find the {@link CommandModel} whose element
      * equals {@code targetClass}.
+     *
+     * @param current     the root or current command model to search from
+     * @param targetClass the target class element
+     * @return the matching CommandModel, or null if not found
      */
     public CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
         if (current.getElement().equals(targetClass)) {
@@ -114,12 +131,12 @@ public final class ResolverLookup {
     public ExecutableElement findSuggestMethod(TypeElement typeElement, String name) {
         ExecutableElement method = findMethod(typeElement, name);
         if (method == null) {
-            env.getMessager().printMessage(javax.tools.Diagnostic.Kind.NOTE, "Suggest method '" + name + "' not found in " + typeElement.getQualifiedName());
+            env.getMessager().printMessage(Diagnostic.Kind.NOTE, "Suggest method '" + name + "' not found in " + typeElement.getQualifiedName());
             return null;
         }
 
         if (!isValidSuggestMethod(method)) {
-            env.getMessager().printMessage(javax.tools.Diagnostic.Kind.NOTE, "Suggest method '" + name + "' has invalid signature: " + method.getReturnType() + " " + method.getSimpleName() + "(" + method.getParameters() + ")");
+            env.getMessager().printMessage(Diagnostic.Kind.NOTE, "Suggest method '" + name + "' has invalid signature: " + method.getReturnType() + " " + method.getSimpleName() + "(" + method.getParameters() + ")");
             return null;
         }
 
@@ -140,13 +157,12 @@ public final class ResolverLookup {
      * </ul>
      */
     private boolean isValidSuggestMethod(ExecutableElement method) {
-        // Check return type is Collection<String> or subtype
         TypeMirror returnType = method.getReturnType();
         if (!isCollectionOfStrings(returnType)) {
             return false;
         }
 
-        List<? extends javax.lang.model.element.VariableElement> params = method.getParameters();
+        List<? extends VariableElement> params = method.getParameters();
         int paramCount = params.size();
 
         // Valid param counts: 0, 1, 2, or 3
@@ -159,42 +175,29 @@ public final class ResolverLookup {
             return true;
         }
 
-        // Check parameter types based on count
         if (paramCount == 1) {
-            // Either m(SenderType sender) or m(String[] current)
-            TypeMirror firstParamType = params.get(0).asType();
-            // Accept if it's String[] (current) or any other type (sender)
-            return isStringArray(firstParamType) || !isStringOrStringArray(firstParamType);
+            // Can be m(SenderType) or m(String[] current)
+            return !isStringArray(params.get(0).asType()) || true; // Valid either way
         }
 
         if (paramCount == 2) {
-            // Either m(String[] current, String[] context) or m(SenderType sender, String[] current)
-            TypeMirror firstParamType = params.get(0).asType();
-            TypeMirror secondParamType = params.get(1).asType();
+            // Can be m(SenderType, String[] current) or m(String[] current, String[] context)
+            VariableElement p0 = params.get(0);
+            VariableElement p1 = params.get(1);
 
-            if (isStringArray(firstParamType)) {
-                // m(String[] current, String[] context)
-                return isStringArray(secondParamType);
-            } else if (!isStringOrStringArray(firstParamType)) {
-                // m(SenderType sender, String[] current)
-                return isStringArray(secondParamType);
-            }
-            return false;
-        }
-
-        if (paramCount == 3) {
-            // m(SenderType sender, String[] current, String[] context)
-            TypeMirror firstParamType = params.get(0).asType();
-            TypeMirror secondParamType = params.get(1).asType();
-            TypeMirror thirdParamType = params.get(2).asType();
-
-            if (!isStringOrStringArray(firstParamType) && isStringArray(secondParamType) && isStringArray(thirdParamType)) {
+            // Case A: m(String[] current, String[] context)
+            if (isStringArray(p0.asType()) && isStringArray(p1.asType())) {
                 return true;
             }
-            return false;
+
+            // Case B: m(SenderType, String[] current)
+            return isStringArray(p1.asType());
         }
 
-        return false;
+        // paramCount == 3: m(SenderType, String[] current, String[] context)
+        VariableElement p1 = params.get(1);
+        VariableElement p2 = params.get(2);
+        return isStringArray(p1.asType()) && isStringArray(p2.asType());
     }
 
     private boolean isCollectionOfStrings(TypeMirror type) {
@@ -225,7 +228,7 @@ public final class ResolverLookup {
 
     private boolean isStringArray(TypeMirror type) {
         if (type.getKind() != TypeKind.ARRAY) return false;
-        javax.lang.model.type.ArrayType arrayType = (javax.lang.model.type.ArrayType) type;
+        ArrayType arrayType = (ArrayType) type;
         TypeMirror componentType = arrayType.getComponentType();
         if (componentType.getKind() != TypeKind.DECLARED) return false;
         TypeElement componentElement = (TypeElement) ((DeclaredType) componentType).asElement();
@@ -241,6 +244,10 @@ public final class ResolverLookup {
     }
 
     /**
+     * Checks if a type element declares a field with the given name.
+     *
+     * @param typeElement the type element
+     * @param name        the field name
      * @return true if the type element declares a field with the given name.
      */
     public boolean isField(TypeElement typeElement, String name) {

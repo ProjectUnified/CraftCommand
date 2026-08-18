@@ -16,6 +16,9 @@ public final class Naming {
     }
 
     /**
+     * Gets the simple name of a type name.
+     *
+     * @param typeName the type name
      * @return the simple name of a {@link TypeName} (text after the last dot).
      */
     public static String simpleName(TypeName typeName) {
@@ -25,6 +28,9 @@ public final class Naming {
     }
 
     /**
+     * Gets the field name for a nested subcommand class instance.
+     *
+     * @param nestedClass the class name of the nested command
      * @return the field name for a nested subcommand class instance, e.g.
      * {@code subInstance_outer_inner} for class {@code Outer.Inner}.
      */
@@ -32,18 +38,10 @@ public final class Naming {
         return "subInstance_" + String.join("_", nestedClass.simpleNames()).toLowerCase();
     }
 
-    /**
-     * @return the helper method name for resolving a dynamic (global-resolver)
-     * parameter type, e.g. {@code resolve_com_example_Foo}.
-     */
-    public static String resolverMethod(TypeName type) {
-        if (type instanceof ClassName) {
-            return "resolve_" + String.join("_", ((ClassName) type).simpleNames());
-        }
-        return "resolve_" + type.toString().replace(".", "_").replace("$", "_");
-    }
 
     /**
+     * Gets the helper method name for a parameter suggestion provider.
+     *
      * @param classModelPath  the lowercased dot-joined class simple-names
      * @param methodOrDefault the subcommand name, or {@code "default"} for the default action
      * @param paramIndex      the zero-based parameter index
@@ -55,6 +53,9 @@ public final class Naming {
     }
 
     /**
+     * Gets the class path prefix for a class name.
+     *
+     * @param className the class name
      * @return the lowercased dot-joined simple-names of a class, used as a
      * disambiguating prefix for generated identifiers.
      */
@@ -63,6 +64,9 @@ public final class Naming {
     }
 
     /**
+     * Gets the execution helper method name for a nested subcommand class.
+     *
+     * @param nestedClass the nested class name
      * @return {@code "execute_" + lowercased class path} — the routing helper
      * for a nested subcommand class.
      */
@@ -71,6 +75,9 @@ public final class Naming {
     }
 
     /**
+     * Gets the suggestion routing helper method name for a nested subcommand class.
+     *
+     * @param nestedClass the nested class name
      * @return {@code "suggest_" + lowercased class path} — the suggestion
      * routing helper for a nested subcommand class.
      */
@@ -79,6 +86,9 @@ public final class Naming {
     }
 
     /**
+     * Sanitizes a string into a valid Java identifier.
+     *
+     * @param name the input name
      * @return a valid Java identifier derived from an arbitrary command name
      * (replaces {@code -} and spaces with {@code _}).
      */

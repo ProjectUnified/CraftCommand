@@ -1,16 +1,15 @@
 package io.github.projectunified.craftcommand.paper;
 
 import com.mojang.brigadier.tree.LiteralCommandNode;
-import io.github.projectunified.craftcommand.CommandInfo;
+import io.github.projectunified.craftcommand.BaseCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import java.util.Collection;
-import java.util.List;
 
 /**
  * Interface for Paper command wrappers.
  */
-public interface PaperCommand {
+public interface PaperCommand extends BaseCommand {
     /**
      * Gets the Brigadier command node.
      *
@@ -31,11 +30,4 @@ public interface PaperCommand {
      * @return the command aliases
      */
     Collection<String> getAliases();
-
-    /**
-     * Gets the command metadata.
-     *
-     * @return the command info list
-     */
-    List<CommandInfo> getCommandInfo();
 }

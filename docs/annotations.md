@@ -47,7 +47,8 @@ public Location resolveLocation(Player sender, double x, double y, double z) { .
 public void tp(Player sender, @Resolve("resolveLocation") Location loc) { ... }
 ```
 
-Resolver methods can have any sender type (same as command, different supported type, or base type). The framework automatically casts and passes the correct sender.
+Resolver methods can have any sender type (same as command, different supported type, or base type). The framework
+automatically casts and passes the correct sender.
 
 ## `@Name`
 
@@ -86,10 +87,10 @@ public void tpNear(Player sender, @Suggest("getNearPlayers") Player target) { ..
 
 Sets command permission. Works on classes and methods.
 
-| Attribute | Type     | Default  | Description                          |
-|-----------|----------|----------|--------------------------------------|
-| `value`   | `String` | required | Permission node                      |
-| `message` | `String` | `""`     | Custom denied message or i18n key    |
+| Attribute | Type     | Default  | Description                       |
+|-----------|----------|----------|-----------------------------------|
+| `value`   | `String` | required | Permission node                   |
+| `message` | `String` | `""`     | Custom denied message or i18n key |
 
 ```java
 @Command("admin")
@@ -105,10 +106,10 @@ public void secret(Player sender) { ... }
 
 Validates numeric parameters against bounds.
 
-| Attribute | Type     | Default  | Description         |
-|-----------|----------|----------|---------------------|
-| `value`   | `double` | required | Min/max value       |
-| `message` | `String` | `""`     | Custom error message|
+| Attribute | Type     | Default  | Description          |
+|-----------|----------|----------|----------------------|
+| `value`   | `double` | required | Min/max value        |
+| `message` | `String` | `""`     | Custom error message |
 
 ```java
 public void setLevel(Player sender, @Min(0) @Max(100) @Default("50") int level) { ... }
@@ -118,10 +119,10 @@ public void setLevel(Player sender, @Min(0) @Max(100) @Default("50") int level) 
 
 Custom validation method. The method must accept the parameter type and throw `IllegalArgumentException` on failure.
 
-| Attribute | Type     | Default  | Description              |
-|-----------|----------|----------|--------------------------|
-| `value`   | `String` | required | Validation method name   |
-| `message` | `String` | `""`     | Custom error message     |
+| Attribute | Type     | Default  | Description            |
+|-----------|----------|----------|------------------------|
+| `value`   | `String` | required | Validation method name |
+| `message` | `String` | `""`     | Custom error message   |
 
 ```java
 public void validateCoordinate(double coord) {

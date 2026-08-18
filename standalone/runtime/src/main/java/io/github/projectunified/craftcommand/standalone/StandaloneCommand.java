@@ -1,13 +1,13 @@
 package io.github.projectunified.craftcommand.standalone;
 
-import io.github.projectunified.craftcommand.CommandInfo;
+import io.github.projectunified.craftcommand.BaseCommand;
 
 import java.util.List;
 
 /**
  * Interface representing a generated standalone command executor.
  */
-public interface StandaloneCommand {
+public interface StandaloneCommand extends BaseCommand {
     /**
      * Gets the primary name of the command.
      *
@@ -46,11 +46,4 @@ public interface StandaloneCommand {
      * @return a list of suggestions
      */
     List<String> tabComplete(Object sender, String[] args);
-
-    /**
-     * Gets the command metadata.
-     *
-     * @return the command info list
-     */
-    List<CommandInfo> getCommandInfo();
 }

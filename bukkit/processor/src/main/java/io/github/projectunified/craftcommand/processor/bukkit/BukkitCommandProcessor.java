@@ -11,10 +11,15 @@ import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import java.util.Collections;
 import java.util.List;
 
+/**
+ * Annotation processor for Bukkit command wrapper generation.
+ */
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
@@ -40,23 +45,26 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
         types.register(TypeSupport.Entry.builder(playerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
+                .parseExpr(arg -> CodeBlock.of("getPlayer($L)", arg))
                 .platformResolution((spec, p) -> spec.addStatement("$L = getPlayer($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
                 .build());
         types.register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
+                .parseExpr(arg -> CodeBlock.of("getOfflinePlayer($L)", arg))
                 .platformResolution((spec, p) -> spec.addStatement("$L = getOfflinePlayer($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
                 .build());
         types.register(TypeSupport.Entry.builder(worldClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
+                .parseExpr(arg -> CodeBlock.of("getWorld($L)", arg))
                 .platformResolution((spec, p) -> spec.addStatement("$L = getWorld($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p[2]))
                 .build());
         types.register(TypeSupport.Entry.builder(locationClass, 3)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L, $L)", p[0], p[1], p[2], p[3]))
-                .platformSuggestions((spec, p) -> spec.addStatement("return $T.emptyList()", java.util.Collections.class))
+                .platformSuggestions((spec, p) -> spec.addStatement("return $T.emptyList()", Collections.class))
                 .build());
     }
 
@@ -66,7 +74,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorConfigureType(TypeSpec.Builder typeSpec) {
+    protected void configureClass(TypeSpec.Builder typeSpec, CommandModel model) {
         typeSpec.superclass(ClassName.get("org.bukkit.command", "Command"));
     }
 
@@ -82,14 +90,14 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorConstructorTop(MethodSpec.Builder constructorBuilder, CommandModel model) {
+    protected void addConstructorStatements(MethodSpec.Builder constructorBuilder, CommandModel model) {
         constructorBuilder.addStatement("super($S)", model.getCommandName());
         constructorBuilder.addStatement("this.setDescription($S)", model.getDescription());
         constructorBuilder.addStatement("this.setAliases($L)", buildAliasesExpression(model));
     }
 
     @Override
-    protected void anchorBuildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
+    protected void generateEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
         MethodSpec.Builder executeSpec = MethodSpec.methodBuilder("execute")
                 .addJavadoc("Executes the Bukkit command.\n\n"
                         + "@param sender the execution initiator\n"
@@ -123,8 +131,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorAdditionalHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
-        super.anchorAdditionalHelpers(typeSpec, model);
+    protected void generatePlatformHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
         BukkitHelperMethods.generate(typeSpec, model);
     }
 
@@ -134,7 +141,7 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void onBeforeExecute(MethodSpec.Builder methodSpec, javax.lang.model.element.Element element, String returnStatement) {
+    protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
         Permission permission = findAnnotationUp(element, Permission.class);
         if (permission != null) {
             generatePermissionCheck(methodSpec, permission, returnStatement);

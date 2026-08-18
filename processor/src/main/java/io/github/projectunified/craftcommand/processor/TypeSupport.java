@@ -8,7 +8,6 @@ import com.palantir.javapoet.TypeName;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -45,6 +44,25 @@ public final class TypeSupport {
             case "java.lang.Short":
             case "java.lang.Byte":
             case "java.lang.Number":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Returns true if the given type name is an integer numeric primitive or wrapper type (int, long, short, byte).
+     */
+    public static boolean isIntegerType(String typeName) {
+        switch (typeName) {
+            case "int":
+            case "long":
+            case "short":
+            case "byte":
+            case "java.lang.Integer":
+            case "java.lang.Long":
+            case "java.lang.Short":
+            case "java.lang.Byte":
                 return true;
             default:
                 return false;
@@ -145,22 +163,25 @@ public final class TypeSupport {
     }
 
     /**
+     * @return an expression CodeBlock that parses the given argument string expression, or null.
+     */
+    public CodeBlock parseExpr(TypeName type, String argExpr) {
+        Entry e = entries.get(type.toString());
+        if (e != null && e.parseExpr != null) {
+            return e.parseExpr.apply(argExpr);
+        }
+        return null;
+    }
+
+    /**
      * Emit parse statements (e.g. {@code var = Integer.parseInt(arg)}) into the given builder.
      */
     public void emitParse(MethodSpec.Builder spec, TypeName type, String var, String arg) {
         Entry e = entries.get(type.toString());
-        if (e == null || e.parse == null) {
-            return;
+        if (e == null) return;
+        if (e.parseExpr != null) {
+            spec.addStatement("$L = $L", var, e.parseExpr.apply(arg));
         }
-        e.parse.accept(spec, new String[]{var, arg});
-    }
-
-    /**
-     * @return the suggest-method return CodeBlock, or {@code null} if no platform suggestion.
-     */
-    public CodeBlock suggestReturn(TypeName type, String argsVar, String currentVar) {
-        Entry e = entries.get(type.toString());
-        return e == null ? null : e.suggestReturn.apply(argsVar, currentVar);
     }
 
     private void registerJdkTypes() {
@@ -178,7 +199,7 @@ public final class TypeSupport {
         register(entry(str, 1)
                 .primitiveDefault("null")
                 .literal(d -> CodeBlock.of("$S", d == null ? "" : d))
-                .parse((spec, va) -> spec.addStatement("$L = $L", va[0], va[1]))
+                .parseExpr(arg -> CodeBlock.of("$L", arg))
                 .build());
 
         // int / Integer
@@ -214,10 +235,7 @@ public final class TypeSupport {
                     char c = (d == null || d.isEmpty()) ? ' ' : d.charAt(0);
                     return CodeBlock.of("'$L'", c);
                 })
-                .parse((spec, va) -> {
-                    spec.addStatement("if ($L.length() != 1) throw new $T($S + $L)", va[1], IllegalArgumentException.class, "Invalid character: ", va[1]);
-                    spec.addStatement("$L = $L.charAt(0)", va[0], va[1]);
-                })
+                .parseExpr(arg -> CodeBlock.of("$L.charAt(0)", arg))
                 .build());
         register(entry(TypeName.CHAR, 1)
                 .primitiveDefault("'\\0'")
@@ -225,40 +243,29 @@ public final class TypeSupport {
                     char c = (d == null || d.isEmpty()) ? ' ' : d.charAt(0);
                     return CodeBlock.of("'$L'", c);
                 })
-                .parse((spec, va) -> {
-                    spec.addStatement("if ($L.length() != 1) throw new $T($S + $L)", va[1], IllegalArgumentException.class, "Invalid character: ", va[1]);
-                    spec.addStatement("$L = $L.charAt(0)", va[0], va[1]);
-                })
+                .parseExpr(arg -> CodeBlock.of("$L.charAt(0)", arg))
                 .build());
         // boolean / Boolean
         register(entry(bool, 1)
                 .primitiveDefault("false")
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, "false")))
-                .parse((spec, va) -> {
-                    spec.addStatement("if (!$S.equalsIgnoreCase($L) && !$S.equalsIgnoreCase($L)) throw new $T($S + $L)",
-                            "true", va[1], "false", va[1], IllegalArgumentException.class, "Invalid boolean value: ", va[1]);
-                    spec.addStatement("$L = $T.parseBoolean($L)", va[0], Boolean.class, va[1]);
-                })
+                .parseExpr(arg -> CodeBlock.of("$T.parseBoolean($L)", Boolean.class, arg))
                 .build());
         register(entry(TypeName.BOOLEAN, 1)
                 .primitiveDefault("false")
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, "false")))
-                .parse((spec, va) -> {
-                    spec.addStatement("if (!$S.equalsIgnoreCase($L) && !$S.equalsIgnoreCase($L)) throw new $T($S + $L)",
-                            "true", va[1], "false", va[1], IllegalArgumentException.class, "Invalid boolean value: ", va[1]);
-                    spec.addStatement("$L = $T.parseBoolean($L)", va[0], Boolean.class, va[1]);
-                })
+                .parseExpr(arg -> CodeBlock.of("$T.parseBoolean($L)", Boolean.class, arg))
                 .build());
     }
 
     /**
-     * Builder for the int/long/double/float/short/byte family (they only differ by parse method).
+     * Builder for the int/long/double/float/short/byte family.
      */
     private Entry.Builder integerEntry(TypeName keyType, ClassName wrapper, String defaultVal, String parseMethod) {
         return entry(keyType, 1)
                 .primitiveDefault(defaultVal)
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, defaultVal)))
-                .parse((spec, va) -> spec.addStatement("$L = $T.$L($L)", va[0], wrapper, parseMethod, va[1]));
+                .parseExpr(arg -> CodeBlock.of("$T.$L($L)", wrapper, parseMethod, arg));
     }
 
     /**
@@ -269,10 +276,12 @@ public final class TypeSupport {
      */
     public void emitPlatformResolution(MethodSpec.Builder spec, TypeName type, String... params) {
         Entry e = entries.get(type.toString());
-        if (e == null || e.platformResolution == null) {
-            return;
+        if (e == null) return;
+        if (e.parseExpr != null) {
+            spec.addStatement("$L = $L", params[0], e.parseExpr.apply(params[1]));
+        } else if (e.platformResolution != null) {
+            e.platformResolution.accept(spec, params);
         }
-        e.platformResolution.accept(spec, params);
     }
 
     /**
@@ -286,14 +295,6 @@ public final class TypeSupport {
             return;
         }
         e.platformMultiResolution.accept(spec, params);
-    }
-
-    /**
-     * @return the platform-specific width for multi-arg types (e.g. Location=4), defaulting to 1.
-     */
-    public int getPlatformWidth(TypeName type) {
-        Entry e = entries.get(type.toString());
-        return e == null ? 1 : e.platformWidth;
     }
 
     /**
@@ -317,9 +318,7 @@ public final class TypeSupport {
         public final int width;
         final String primitiveDefault;
         final Function<String, CodeBlock> literal;
-        final BiConsumer<MethodSpec.Builder, String[]> parse;
-        final BiFunction<String, String, CodeBlock> suggestReturn;
-        final int platformWidth;
+        final Function<String, CodeBlock> parseExpr;
         final BiConsumer<MethodSpec.Builder, String[]> platformResolution;
         final BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
         final BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
@@ -329,9 +328,7 @@ public final class TypeSupport {
             this.width = b.width;
             this.primitiveDefault = b.primitiveDefault;
             this.literal = b.literal;
-            this.parse = b.parse;
-            this.suggestReturn = b.suggestReturn;
-            this.platformWidth = b.platformWidth;
+            this.parseExpr = b.parseExpr;
             this.platformResolution = b.platformResolution;
             this.platformMultiResolution = b.platformMultiResolution;
             this.platformSuggestions = b.platformSuggestions;
@@ -349,9 +346,7 @@ public final class TypeSupport {
             private final int width;
             String primitiveDefault;
             Function<String, CodeBlock> literal;
-            BiConsumer<MethodSpec.Builder, String[]> parse;
-            BiFunction<String, String, CodeBlock> suggestReturn;
-            int platformWidth = 1;
+            Function<String, CodeBlock> parseExpr;
             BiConsumer<MethodSpec.Builder, String[]> platformResolution;
             BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
             BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
@@ -371,18 +366,8 @@ public final class TypeSupport {
                 return this;
             }
 
-            public Builder parse(BiConsumer<MethodSpec.Builder, String[]> f) {
-                this.parse = f;
-                return this;
-            }
-
-            public Builder suggestReturn(BiFunction<String, String, CodeBlock> f) {
-                this.suggestReturn = f;
-                return this;
-            }
-
-            public Builder platformWidth(int w) {
-                this.platformWidth = w;
+            public Builder parseExpr(Function<String, CodeBlock> f) {
+                this.parseExpr = f;
                 return this;
             }
 

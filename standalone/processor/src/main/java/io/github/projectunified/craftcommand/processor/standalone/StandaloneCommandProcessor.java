@@ -13,6 +13,9 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import java.util.List;
 
+/**
+ * Annotation processor for standalone command wrapper generation.
+ */
 @AutoService(Processor.class)
 @SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
@@ -24,7 +27,7 @@ public class StandaloneCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorConfigureType(TypeSpec.Builder typeSpec) {
+    protected void configureClass(TypeSpec.Builder typeSpec, CommandModel model) {
         typeSpec.addSuperinterface(ClassName.get("io.github.projectunified.craftcommand.standalone", "StandaloneCommand"));
     }
 
@@ -40,7 +43,7 @@ public class StandaloneCommandProcessor extends BaseCommandProcessor {
     }
 
     @Override
-    protected void anchorBuildEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
+    protected void generateEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
         typeSpec.addMethod(MethodSpec.methodBuilder("getName")
                 .addJavadoc("Gets the main name of the command.\n\n@return the command name\n")
                 .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC).returns(String.class)

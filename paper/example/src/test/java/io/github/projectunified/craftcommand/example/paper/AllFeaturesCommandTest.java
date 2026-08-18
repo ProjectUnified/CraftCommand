@@ -1,7 +1,9 @@
 package io.github.projectunified.craftcommand.example.paper;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.suggestion.Suggestion;
+import com.mojang.brigadier.suggestion.Suggestions;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,9 +34,9 @@ public class AllFeaturesCommandTest extends AbstractPaperCommandTest {
     }
 
     private List<String> suggestions(String input, PlayerMock player) {
-        com.mojang.brigadier.ParseResults<CommandSourceStack> parse =
+        ParseResults<CommandSourceStack> parse =
                 dispatcher.parse(input, source(player));
-        CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> future =
+        CompletableFuture<Suggestions> future =
                 dispatcher.getCompletionSuggestions(parse);
         return future.join().getList().stream()
                 .map(Suggestion::getText)

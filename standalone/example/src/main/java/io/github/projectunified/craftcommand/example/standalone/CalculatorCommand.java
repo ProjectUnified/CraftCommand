@@ -5,7 +5,9 @@ import io.github.projectunified.craftcommand.validation.annotation.Max;
 import io.github.projectunified.craftcommand.validation.annotation.Min;
 import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -50,7 +52,7 @@ public class CalculatorCommand {
      * @return list of suggested modes
      */
     @SuppressWarnings("unused")
-    public java.util.Collection<String> getModes(String[] current) {
+    public Collection<String> getModes(String[] current) {
         return Arrays.asList("basic", "scientific", "programmer");
     }
 
@@ -369,7 +371,7 @@ public class CalculatorCommand {
     public static class CustomSender {
         private final String name;
         private final Object delegate;
-        private final java.util.List<String> messages = new java.util.ArrayList<>();
+        private final List<String> messages = new ArrayList<>();
 
         public CustomSender(String name) {
             this(name, null);
@@ -391,7 +393,7 @@ public class CalculatorCommand {
             }
         }
 
-        public java.util.List<String> getMessages() {
+        public List<String> getMessages() {
             return messages;
         }
     }

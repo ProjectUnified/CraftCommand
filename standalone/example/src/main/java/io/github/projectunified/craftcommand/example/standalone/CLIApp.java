@@ -1,8 +1,10 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
+import io.github.projectunified.craftcommand.ArgumentResolver;
 import io.github.projectunified.craftcommand.standalone.StandaloneCommand;
 import io.github.projectunified.craftcommand.standalone.StandaloneCommandManager;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -16,7 +18,7 @@ public class CLIApp {
                 return (sender, current, context) -> {
                     @SuppressWarnings("unchecked")
                     Class<Enum> enumType = (Class<Enum>) type;
-                    return new io.github.projectunified.craftcommand.ArgumentResolver<Object, Object>() {
+                    return new ArgumentResolver<Object, Object>() {
                         @Override
                         public Object resolve(Object sender, String[] current, String[] context) throws Exception {
                             if (current.length == 0) return null;
@@ -24,9 +26,9 @@ public class CLIApp {
                         }
 
                         @Override
-                        public java.util.List<String> suggest(Object sender, String[] current, String[] context) {
+                        public List<String> suggest(Object sender, String[] current, String[] context) {
                             String prefix = current.length > 0 ? current[0].toUpperCase() : "";
-                            java.util.List<String> result = new java.util.ArrayList<>();
+                            List<String> result = new ArrayList<>();
                             for (Enum e : enumType.getEnumConstants()) {
                                 if (e.name().startsWith(prefix)) {
                                     result.add(e.name());

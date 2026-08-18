@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.mockito.Mockito;
 
 import java.lang.reflect.Constructor;
 
@@ -40,8 +41,8 @@ public abstract class AbstractPaperCommandTest {
     }
 
     protected CommandSourceStack source(PlayerMock player) {
-        CommandSourceStack s = org.mockito.Mockito.mock(CommandSourceStack.class);
-        org.mockito.Mockito.when(s.getSender()).thenReturn(player);
+        CommandSourceStack s = Mockito.mock(CommandSourceStack.class);
+        Mockito.when(s.getSender()).thenReturn(player);
         return s;
     }
 }
