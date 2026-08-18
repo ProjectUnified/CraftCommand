@@ -8,6 +8,7 @@ reflection for execution.
 Use the BOM for version management:
 
 ```xml
+
 <dependencyManagement>
     <dependencies>
         <dependency>
@@ -24,17 +25,19 @@ Use the BOM for version management:
 Add annotations + runtime + processor:
 
 ```xml
+
 <dependency>
     <groupId>io.github.projectunified</groupId>
     <artifactId>craftcommand-annotations</artifactId>
 </dependency>
 <dependency>
-    <groupId>io.github.projectunified</groupId>
-    <artifactId>craftcommand-standalone-runtime</artifactId>
+<groupId>io.github.projectunified</groupId>
+<artifactId>craftcommand-standalone-runtime</artifactId>
 </dependency>
 ```
 
 ```xml
+
 <plugin>
     <groupId>org.apache.maven.plugins</groupId>
     <artifactId>maven-compiler-plugin</artifactId>
@@ -53,6 +56,7 @@ Add annotations + runtime + processor:
 ## Quick Start
 
 ```java
+
 @Command("calc")
 public class CalculatorCommand {
 
@@ -70,10 +74,16 @@ public class CalculatorCommand {
 
 ```java
 StandaloneCommandManager manager = new StandaloneCommandManager();
-manager.register(new CalculatorCommand());
+manager.
+
+register(new CalculatorCommand());
 
 StandaloneCommand cmd = manager.getCommand("calc");
-cmd.execute("sender", new String[]{"add", "5", "10"}); // Result: 15.0
+cmd.
+
+execute("sender",new String[] {
+    "add", "5", "10"
+}); // Result: 15.0
 ```
 
 ## Supported Platforms

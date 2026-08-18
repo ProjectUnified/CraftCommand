@@ -27,10 +27,11 @@ Dual-purpose: marks default method or optional parameter.
 - **On parameters:** Marks optional with a default value string.
 
 ```java
-@Default
-public void execute(Player sender, double x, double y, double z) { ... }
 
-public void heal(Player sender, @Default("10") int amount) { ... }
+@Default
+public void execute(Player sender, double x, double y, double z) { ...}
+
+public void heal(Player sender, @Default("10") int amount) { ...}
 ```
 
 ## `@Resolve`
@@ -41,10 +42,11 @@ Binds a parameter to a local resolver method.
 - **On parameters:** Binds to a resolver by name.
 
 ```java
-@Resolve
-public Location resolveLocation(Player sender, double x, double y, double z) { ... }
 
-public void tp(Player sender, @Resolve("resolveLocation") Location loc) { ... }
+@Resolve
+public Location resolveLocation(Player sender, double x, double y, double z) { ...}
+
+public void tp(Player sender, @Resolve("resolveLocation") Location loc) { ...}
 ```
 
 Resolver methods can have any sender type (same as command, different supported type, or base type). The framework
@@ -55,7 +57,7 @@ automatically casts and passes the correct sender.
 Overrides parameter name in usage/error messages.
 
 ```java
-public void heal(Player sender, @Name("amount") int health) { ... }
+public void heal(Player sender, @Name("amount") int health) { ...}
 // Usage: <amount>
 ```
 
@@ -64,7 +66,7 @@ public void heal(Player sender, @Name("amount") int health) { ... }
 Parameter consumes all remaining arguments. Must be last.
 
 ```java
-public void msg(Player sender, @Greedy String message) { ... }
+public void msg(Player sender, @Greedy String message) { ...}
 ```
 
 ## `@Suggest`
@@ -76,11 +78,13 @@ Can reference a **field** (returns `List<String>`) or a **method** (accepts 0-3 
 ```java
 // Field-based suggestions
 public final List<String> modes = Arrays.asList("normal", "silent", "instant");
-public void setMode(Player sender, @Suggest("modes") String mode) { ... }
+
+public void setMode(Player sender, @Suggest("modes") String mode) { ...}
 
 // Method-based suggestions
-public List<String> getNearPlayers(Player sender, String[] args, String current) { ... }
-public void tpNear(Player sender, @Suggest("getNearPlayers") Player target) { ... }
+public List<String> getNearPlayers(Player sender, String[] args, String current) { ...}
+
+public void tpNear(Player sender, @Suggest("getNearPlayers") Player target) { ...}
 ```
 
 ## `@Permission` (Bukkit/Paper only)
@@ -93,13 +97,15 @@ Sets command permission. Works on classes and methods.
 | `message` | `String` | `""`     | Custom denied message or i18n key |
 
 ```java
+
 @Command("admin")
 @Permission("myplugin.admin")
-public class AdminCommands { ... }
+public class AdminCommands { ...
+}
 
 @Command("secret")
 @Permission(value = "myplugin.secret", message = "Access denied!")
-public void secret(Player sender) { ... }
+public void secret(Player sender) { ...}
 ```
 
 ## `@Min` / `@Max` (Validation)
@@ -112,7 +118,7 @@ Validates numeric parameters against bounds.
 | `message` | `String` | `""`     | Custom error message |
 
 ```java
-public void setLevel(Player sender, @Min(0) @Max(100) @Default("50") int level) { ... }
+public void setLevel(Player sender, @Min(0) @Max(100) @Default("50") int level) { ...}
 ```
 
 ## `@ValidateWith` (Validation)
@@ -131,7 +137,7 @@ public void validateCoordinate(double coord) {
     }
 }
 
-public void tp(Player sender, @ValidateWith("validateCoordinate") double x, double y, double z) { ... }
+public void tp(Player sender, @ValidateWith("validateCoordinate") double x, double y, double z) { ...}
 ```
 
 ## Annotation Combinations
@@ -140,11 +146,11 @@ Annotations can be stacked on the same parameter:
 
 ```java
 // @Default + @Min + @Max + @ValidateWith (quadruple stack)
-public void setLevel(Player sender, @Min(0) @Max(100) @ValidateWith("validateEven") @Default("50") int level) { ... }
+public void setLevel(Player sender, @Min(0) @Max(100) @ValidateWith("validateEven") @Default("50") int level) { ...}
 
 // @Greedy + @Name + @Suggest + @Default (quadruple stack)
-public void chat(Player sender, @Name("text") @Greedy @Suggest("colors") @Default("red") String message) { ... }
+public void chat(Player sender, @Name("text") @Greedy @Suggest("colors") @Default("red") String message) { ...}
 
 // @Resolve + @Suggest (on different params)
-public void build(Player sender, @Resolve("resolvePoint") Point pt, @Suggest("blocks") String block) { ... }
+public void build(Player sender, @Resolve("resolvePoint") Point pt, @Suggest("blocks") String block) { ...}
 ```

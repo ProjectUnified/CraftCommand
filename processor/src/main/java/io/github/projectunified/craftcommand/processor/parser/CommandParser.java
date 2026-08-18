@@ -20,7 +20,10 @@ import java.util.*;
 /**
  * Parser utility to convert compile-time annotated class elements into structured command models.
  */
-public class CommandParser {
+public final class CommandParser {
+
+    private CommandParser() {
+    }
 
     /**
      * Parses the given TypeElement if annotated with {@code @Command}.

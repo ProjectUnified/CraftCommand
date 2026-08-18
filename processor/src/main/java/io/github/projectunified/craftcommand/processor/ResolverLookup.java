@@ -4,7 +4,6 @@ import io.github.projectunified.craftcommand.annotation.Resolve;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
-import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
@@ -13,26 +12,15 @@ import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
-import javax.tools.Diagnostic;
 import java.util.List;
 
 /**
  * Compile-time lookups for local resolvers, suggest methods, fields, and
  * command-model class resolution.
- *
- * <p>Holds a {@link ProcessingEnvironment} for type comparison. Constructed
- * once per processor {@link javax.annotation.processing.Processor#init} call.
  */
 public final class ResolverLookup {
-    private final ProcessingEnvironment env;
 
-    /**
-     * Constructs a new ResolverLookup instance.
-     *
-     * @param env the annotation processing environment
-     */
-    public ResolverLookup(ProcessingEnvironment env) {
-        this.env = env;
+    private ResolverLookup() {
     }
 
     /**
@@ -69,7 +57,7 @@ public final class ResolverLookup {
      * @param p          the parameter to resolve
      * @return the matching resolver method, or {@code null} if none
      */
-    public ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p) {
+    public static ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p) {
         Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
         if (resolveAnn == null || resolveAnn.value().isEmpty()) {
             return null;
@@ -99,7 +87,7 @@ public final class ResolverLookup {
      * @param targetClass the target class element
      * @return the matching CommandModel, or null if not found
      */
-    public CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
+    public static CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
         if (current.getElement().equals(targetClass)) {
             return current;
         }
@@ -128,18 +116,11 @@ public final class ResolverLookup {
      * @param name        the method name
      * @return the matching method, or {@code null} if not found or invalid signature
      */
-    public ExecutableElement findSuggestMethod(TypeElement typeElement, String name) {
+    public static ExecutableElement findSuggestMethod(TypeElement typeElement, String name) {
         ExecutableElement method = findMethod(typeElement, name);
-        if (method == null) {
-            env.getMessager().printMessage(Diagnostic.Kind.NOTE, "Suggest method '" + name + "' not found in " + typeElement.getQualifiedName());
+        if (method == null || !isValidSuggestMethod(method)) {
             return null;
         }
-
-        if (!isValidSuggestMethod(method)) {
-            env.getMessager().printMessage(Diagnostic.Kind.NOTE, "Suggest method '" + name + "' has invalid signature: " + method.getReturnType() + " " + method.getSimpleName() + "(" + method.getParameters() + ")");
-            return null;
-        }
-
         return method;
     }
 
@@ -156,7 +137,7 @@ public final class ResolverLookup {
      *   <li>{@code Collection<String> m(SenderType sender, String[] current, String[] context)}</li>
      * </ul>
      */
-    private boolean isValidSuggestMethod(ExecutableElement method) {
+    private static boolean isValidSuggestMethod(ExecutableElement method) {
         TypeMirror returnType = method.getReturnType();
         if (!isCollectionOfStrings(returnType)) {
             return false;
@@ -200,7 +181,7 @@ public final class ResolverLookup {
         return isStringArray(p1.asType()) && isStringArray(p2.asType());
     }
 
-    private boolean isCollectionOfStrings(TypeMirror type) {
+    private static boolean isCollectionOfStrings(TypeMirror type) {
         if (type.getKind() != TypeKind.DECLARED) return false;
         DeclaredType declaredType = (DeclaredType) type;
         TypeElement typeElement = (TypeElement) declaredType.asElement();
@@ -226,7 +207,7 @@ public final class ResolverLookup {
         return typeArgElement.getQualifiedName().toString().equals("java.lang.String");
     }
 
-    private boolean isStringArray(TypeMirror type) {
+    private static boolean isStringArray(TypeMirror type) {
         if (type.getKind() != TypeKind.ARRAY) return false;
         ArrayType arrayType = (ArrayType) type;
         TypeMirror componentType = arrayType.getComponentType();
@@ -235,7 +216,7 @@ public final class ResolverLookup {
         return componentElement.getQualifiedName().toString().equals("java.lang.String");
     }
 
-    private boolean isStringOrStringArray(TypeMirror type) {
+    private static boolean isStringOrStringArray(TypeMirror type) {
         if (type.getKind() == TypeKind.DECLARED) {
             TypeElement typeElement = (TypeElement) ((DeclaredType) type).asElement();
             return typeElement.getQualifiedName().toString().equals("java.lang.String");
@@ -250,7 +231,7 @@ public final class ResolverLookup {
      * @param name        the field name
      * @return true if the type element declares a field with the given name.
      */
-    public boolean isField(TypeElement typeElement, String name) {
+    public static boolean isField(TypeElement typeElement, String name) {
         for (Element enclosed : typeElement.getEnclosedElements()) {
             if (enclosed.getKind().isField() && enclosed.getSimpleName().toString().equals(name)) {
                 return true;

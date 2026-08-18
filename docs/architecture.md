@@ -42,14 +42,14 @@ craftcommand/
 
 The base processor defines a 6-step template. Platform processors override hooks:
 
-| Step | Method Hook                   | Purpose                            |
-|------|-------------------------------|------------------------------------|
-| 1    | `configureClass`              | Set superclass/interface           |
-| 2    | `addPlatformFields`           | Extra fields                       |
-| 3    | `addConstructorStatements`    | Constructor setup & subcommands    |
-| 4    | `generateEntryMethods`        | execute/tabComplete/getCommandNode |
-| 5    | `generateHelpers`             | Subcommand routing & helpers       |
-| 6    | `buildCommandInfo`            | BaseCommand.getCommandInfo()       |
+| Step | Method Hook                | Purpose                            |
+|------|----------------------------|------------------------------------|
+| 1    | `configureClass`           | Set superclass/interface           |
+| 2    | `addPlatformFields`        | Extra fields                       |
+| 3    | `addConstructorStatements` | Constructor setup & subcommands    |
+| 4    | `generateEntryMethods`     | execute/tabComplete/getCommandNode |
+| 5    | `generateHelpers`          | Subcommand routing & helpers       |
+| 6    | `buildCommandInfo`         | BaseCommand.getCommandInfo()       |
 
 ## Runtime Flow
 

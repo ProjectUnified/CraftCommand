@@ -34,7 +34,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     private final List<ParameterAnnotationHandler<?>> parameterHandlers = new ArrayList<>();
     private final List<MethodAnnotationHandler<?>> methodHandlers = new ArrayList<>();
     private final SenderTypeRegistry senderTypeRegistry = new SenderTypeRegistry();
-    protected ResolverLookup resolverLookup;
 
     protected static String getUsage(MethodModel method, CommandModel classModel) {
         StringBuilder sb = new StringBuilder();
@@ -117,7 +116,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
-        this.resolverLookup = new ResolverLookup(processingEnv);
         loadExtensions();
         registerTypes(typeSupport);
     }
@@ -1061,7 +1059,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     Resolve resolveAnn = firstParam.getAnnotation(Resolve.class);
                     if (resolveAnn != null) {
                         if (!resolveAnn.value().isEmpty()) {
-                            ExecutableElement resolver = resolverLookup.findMethod(typeElement, resolveAnn.value());
+                            ExecutableElement resolver = ResolverLookup.findMethod(typeElement, resolveAnn.value());
                             if (resolver != null) {
                                 String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
                                 String resolveExpr = String.format("%s.%s(%s)", resolverInstanceExpr, resolver.getSimpleName().toString(), "sender");
@@ -1291,19 +1289,19 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     // ── Model and Lookup Utilities ──
 
     public ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p, CommandModel rootModel) {
-        return resolverLookup.findLocalResolver(classModel, p);
+        return ResolverLookup.findLocalResolver(classModel, p);
     }
 
     protected ExecutableElement findSuggestMethod(TypeElement typeElement, String name) {
-        return resolverLookup.findSuggestMethod(typeElement, name);
+        return ResolverLookup.findSuggestMethod(typeElement, name);
     }
 
     protected boolean isField(TypeElement typeElement, String name) {
-        return resolverLookup.isField(typeElement, name);
+        return ResolverLookup.isField(typeElement, name);
     }
 
     public CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
-        return resolverLookup.findModelForClass(current, targetClass);
+        return ResolverLookup.findModelForClass(current, targetClass);
     }
 
     public int getBuiltInWidth(TypeName typeName) {
@@ -1397,7 +1395,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             if (p == method.getSenderParameter()) continue;
             Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
             if (resolveAnn != null) {
-                ExecutableElement resolver = resolverLookup.findMethod((TypeElement) method.getElement().getEnclosingElement(), resolveAnn.value());
+                ExecutableElement resolver = ResolverLookup.findMethod((TypeElement) method.getElement().getEnclosingElement(), resolveAnn.value());
                 if (resolver != null && !resolver.getParameters().isEmpty()) {
                     TypeName firstParamType = TypeName.get(resolver.getParameters().get(0).asType());
                     if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {

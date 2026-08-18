@@ -9,6 +9,7 @@ import io.github.projectunified.craftcommand.annotation.Suggest;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.ResolverLookup;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
@@ -360,7 +361,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                                 if (resolveAnn != null) {
                                     if (!resolveAnn.value().isEmpty()) {
                                         // Local resolver method
-                                        ExecutableElement resolver = resolverLookup.findMethod(typeElement, resolveAnn.value());
+                                        ExecutableElement resolver = ResolverLookup.findMethod(typeElement, resolveAnn.value());
                                         if (resolver != null) {
                                             String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
                                             suggestSenderExpr = String.format("%s.%s(ctx.getSource())", resolverInstanceExpr, resolver.getSimpleName().toString());
