@@ -1,8 +1,7 @@
 package io.github.projectunified.craftcommand.processor;
 
 import com.palantir.javapoet.*;
-import io.github.projectunified.craftcommand.annotation.*;
-import io.github.projectunified.craftcommand.annotation.Name;
+import io.github.projectunified.craftcommand.annotation.Command;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
@@ -35,30 +34,24 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     private final List<MethodAnnotationHandler<?>> methodHandlers = new ArrayList<>();
     private final SenderTypeRegistry senderTypeRegistry = new SenderTypeRegistry();
 
-    protected static String getUsage(MethodModel method, CommandModel classModel) {
+    protected static String getUsage(MethodModel method) {
         StringBuilder sb = new StringBuilder();
         for (ParameterModel p : method.getParameters()) {
             if (p == method.getSenderParameter()) continue;
 
-            Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-            if (resolveAnn != null && !resolveAnn.value().isEmpty() && classModel != null) {
-                MethodModel resolverModel = classModel.getResolverMethod(resolveAnn.value());
-                if (resolverModel != null) {
-                    for (ParameterModel rp : resolverModel.getParameters()) {
-                        if (resolverModel.getSenderParameter() != null && rp == resolverModel.getSenderParameter()) {
-                            continue;
-                        }
-                        String paramName = rp.getName();
-                        Name nameAnn = rp.getElement().getAnnotation(Name.class);
-                        if (nameAnn != null) paramName = nameAnn.value();
-                        if (rp.isOptional()) {
-                            sb.append("[").append(paramName).append("] ");
-                        } else {
-                            sb.append("<").append(paramName).append("> ");
-                        }
+            MethodModel resolverModel = p.getResolverMethod();
+            if (resolverModel != null) {
+                for (ParameterModel rp : resolverModel.getParameters()) {
+                    if (resolverModel.getSenderParameter() != null && rp == resolverModel.getSenderParameter()) {
+                        continue;
                     }
-                    continue;
+                    if (rp.isOptional()) {
+                        sb.append("[").append(rp.getName()).append("] ");
+                    } else {
+                        sb.append("<").append(rp.getName()).append("> ");
+                    }
                 }
+                continue;
             }
 
             if (p.isOptional()) {
@@ -87,18 +80,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return list.toString();
     }
 
-    protected static <A extends Annotation> A findAnnotationUp(Element element, Class<A> annotationType) {
-        A ann = element.getAnnotation(annotationType);
-        if (ann != null) return ann;
-        Element enclosing = element.getEnclosingElement();
-        while (enclosing != null) {
-            ann = enclosing.getAnnotation(annotationType);
-            if (ann != null) return ann;
-            enclosing = enclosing.getEnclosingElement();
-        }
-        return null;
-    }
-
     protected static boolean isI18nKey(String message) {
         return message.startsWith("i18n:");
     }
@@ -107,11 +88,21 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return message.substring(5);
     }
 
-    public TypeSupport typeSupport() {
-        return typeSupport;
+    /**
+     * Resolves the resolver declared by a parameter of a resolver, which is not part of the resolver set of the
+     * enclosing command class.
+     */
+    private static ExecutableElement resolveLocalResolver(ParameterModel p, CommandModel classModel) {
+        String resolveName = p.getResolveName();
+        if (resolveName == null || resolveName.isEmpty()) return null;
+        return ResolverLookup.findMethod(classModel.getElement(), resolveName);
     }
 
     // ── Processor Lifecycle ──
+
+    public TypeSupport typeSupport() {
+        return typeSupport;
+    }
 
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
@@ -128,13 +119,15 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         methodHandlers.addAll(SpiLoader.loadMethodHandlers(cl));
     }
 
+    // ── Platform Customization Hooks ──
+
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getElementsAnnotatedWith(Command.class)) {
             if (element instanceof TypeElement) {
                 TypeElement typeElement = (TypeElement) element;
                 Element enclosing = typeElement.getEnclosingElement();
-                if (enclosing instanceof TypeElement && ((TypeElement) enclosing).getAnnotation(Command.class) != null) {
+                if (enclosing instanceof TypeElement && CommandPrism.isPresent(enclosing)) {
                     continue;
                 }
                 CommandModel commandModel = CommandParser.parse(typeElement, processingEnv);
@@ -152,8 +145,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
         return true;
     }
-
-    // ── Platform Customization Hooks ──
 
     protected void registerTypes(TypeSupport types) {
     }
@@ -185,11 +176,11 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         methodSpec.addStatement("System.out.println($S)", "Unknown subcommand. Available: " + getSubcommandNames(model));
     }
 
+    // ── Class Generation Orchestrator ──
+
     protected CodeBlock getSenderExpression(String senderVar) {
         return CodeBlock.of("$L", senderVar);
     }
-
-    // ── Class Generation Orchestrator ──
 
     protected void buildWrapperClass(CommandModel model, TypeElement typeElement) throws IOException {
         String wrapperClassName = model.getClassName().simpleName() + getWrapperClassSuffix();
@@ -243,6 +234,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         javaFile.writeTo(processingEnv.getFiler());
     }
 
+    // ── Nested Subcommands ──
+
     protected void generateHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
         generateSubcommandClassExecutors(typeSpec, model, model);
         buildParameterSuggestions(typeSpec, model, model);
@@ -250,8 +243,6 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         buildBooleanSuggestionHelper(typeSpec, model);
         generatePlatformHelpers(typeSpec, model);
     }
-
-    // ── Nested Subcommands ──
 
     protected void generateSubcommandFieldsAndConstructors(CommandModel model, TypeSpec.Builder typeSpec, MethodSpec.Builder constructor, String parentFieldName) {
         for (CommandModel child : model.getNestedSubcommands()) {
@@ -278,16 +269,16 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return "this." + getSubcommandFieldName(classModel);
     }
 
-    public String getResolverInstanceExpr(ExecutableElement resolver, CommandModel classModel, CommandModel rootModel) {
-        TypeElement resolverClass = (TypeElement) resolver.getEnclosingElement();
-        CommandModel resolverModel = findModelForClass(rootModel, resolverClass);
+    // ── Array Execution Routing ──
+
+    public String getResolverInstanceExpr(MethodModel resolver, CommandModel rootModel) {
+        TypeElement resolverClass = (TypeElement) resolver.getElement().getEnclosingElement();
+        CommandModel resolverModel = rootModel.findModel(resolverClass);
         if (resolverModel != null) {
             return getInstanceVarExpression(resolverModel, rootModel);
         }
         return null;
     }
-
-    // ── Array Execution Routing ──
 
     public void generateExecuteMethodBody(MethodSpec.Builder executeSpec, CommandModel model, String returnStatement) {
         executeSpec.beginControlFlow("try");
@@ -386,7 +377,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         TypeName senderParamTypeName = TypeName.get(senderParam.getType());
         String senderVarName = senderParamTypeName.toString().equals(getSenderTypeName().toString()) ? "sender" : "senderCast";
 
-        resolveSender(methodSpec, classModel, method, rootModel, senderVarName, senderParam, senderParamTypeName);
+        resolveSender(methodSpec, rootModel, senderVarName, senderParam, senderParamTypeName);
         runSPIAnnotationHandlers(methodSpec, method, instanceVar, senderVarName, senderParam);
 
         // 2. Minimum Argument Count Check
@@ -394,13 +385,13 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         boolean hasDynamic = false;
         for (ParameterModel p : method.getParameters()) {
             TypeName pTypeName = TypeName.get(p.getType());
-            if (findLocalResolver(classModel, p, rootModel) == null && !typeSupport.isBuiltIn(pTypeName)) {
+            MethodModel resolverModel = p.getResolverMethod();
+            if (resolverModel == null && !typeSupport.isBuiltIn(pTypeName)) {
                 hasDynamic = true;
             }
             if (!p.isOptional()) {
-                ExecutableElement localRes = findLocalResolver(classModel, p, rootModel);
-                if (localRes != null) {
-                    staticRequiredCount += getLocalResolverMinWidth(localRes, method);
+                if (resolverModel != null) {
+                    staticRequiredCount += getLocalResolverMinWidth(resolverModel, method);
                 } else {
                     staticRequiredCount += typeSupport.getWidth(pTypeName);
                 }
@@ -411,7 +402,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (staticRequiredCount > 0) {
             methodSpec.beginControlFlow("if ($L.length < $L)", argsVar, totalRequired)
                     .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
-                            CommandException.class, "usage", "Usage: %s", getUsage(method, classModel))
+                            CommandException.class, "usage", "Usage: %s", getUsage(method))
                     .endControlFlow();
         }
 
@@ -434,7 +425,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             paramNames.add(varName);
 
             resolveParameter(methodSpec, classModel, method, rootModel, p, varName, senderVarName, argsVar, argIdxVar, hasDynamic, i);
-            runParameterAnnotationHandlers(p.getElement(), varName, instanceVar, senderVarName, methodSpec);
+            runParameterAnnotationHandlers(p, varName, instanceVar, senderVarName, methodSpec);
         }
 
         // 5. Invoke Target Method
@@ -447,18 +438,18 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         methodSpec.addStatement(callBuilder.build());
     }
 
-    public void resolveSender(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
-        Resolve resolveAnn = senderParam.getElement().getAnnotation(Resolve.class);
+    public void resolveSender(MethodSpec.Builder methodSpec, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
+        String resolveName = senderParam.getResolveName();
 
-        if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
-            ExecutableElement senderResolver = findLocalResolver(classModel, senderParam, rootModel);
+        if (resolveName != null && !resolveName.isEmpty()) {
+            MethodModel senderResolver = senderParam.getResolverMethod();
             if (senderResolver != null) {
-                String resolverInstanceExpr = getResolverInstanceExpr(senderResolver, classModel, rootModel);
+                String resolverInstanceExpr = getResolverInstanceExpr(senderResolver, rootModel);
                 if (resolverInstanceExpr == null) {
                     methodSpec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
                             senderParamTypeName, senderVarName, senderParamTypeName, senderParamTypeName);
                 } else {
-                    String resolverMethodName = senderResolver.getSimpleName().toString();
+                    String resolverMethodName = senderResolver.getElement().getSimpleName().toString();
                     int resolverParamCount = senderResolver.getParameters().size();
                     String resolveExpr;
                     if (resolverParamCount == 0) {
@@ -470,7 +461,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     } else {
                         resolveExpr = String.format("%s.%s(%s, %s, %s)", resolverInstanceExpr, resolverMethodName, "sender", "new String[0]", "sender");
                     }
-                    TypeName resolverReturnType = TypeName.get(senderResolver.getReturnType());
+                    TypeName resolverReturnType = TypeName.get(senderResolver.getElement().getReturnType());
                     if (resolverReturnType.equals(senderParamTypeName)) {
                         methodSpec.addStatement("$T $L = $L", senderParamTypeName, senderVarName, resolveExpr);
                     } else {
@@ -481,7 +472,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 methodSpec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
                         senderParamTypeName, senderVarName, senderParamTypeName, senderParamTypeName);
             }
-        } else if (resolveAnn != null) {
+        } else if (resolveName != null) {
             methodSpec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
                     senderParamTypeName, senderVarName, senderParamTypeName, senderParamTypeName);
         } else {
@@ -505,17 +496,20 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         TypeName pTypeName = TypeName.get(p.getType());
 
         // 1. Resolver model from @Resolve("name")
-        Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-        if (resolveAnn != null && classModel.getResolverMethod(resolveAnn.value()) != null) {
-            resolveResolverParameters(methodSpec, classModel, method, rootModel, classModel.getResolverMethod(resolveAnn.value()), varName, senderVarName, argsVar, argIdxVar, p, hasDynamic, paramIndex);
+        MethodModel resolverModel = p.getResolverMethod();
+        if (resolverModel != null) {
+            resolveResolverParameters(methodSpec, classModel, method, rootModel, resolverModel, varName, senderVarName, argsVar, argIdxVar, p, hasDynamic);
             return;
         }
 
-        // 2. Local Resolver Method
-        ExecutableElement localResolver = findLocalResolver(classModel, p, rootModel);
-        if (localResolver != null) {
-            resolveLocalResolverParameter(methodSpec, classModel, method, p, pTypeName, varName, localResolver, rootModel, senderVarName, argsVar, argIdxVar, hasDynamic, paramIndex);
-            return;
+        // 2. Resolvers declared on a resolver's own parameter are invoked directly
+        String resolveName = p.getResolveName();
+        if (resolveName != null && !resolveName.isEmpty()) {
+            ExecutableElement localResolver = ResolverLookup.findMethod(classModel.getElement(), resolveName);
+            if (localResolver != null) {
+                resolveLocalResolverParameter(methodSpec, classModel, method, p, pTypeName, varName, CommandParser.parseResolverMethod(localResolver), rootModel, senderVarName, argsVar, argIdxVar, hasDynamic);
+                return;
+            }
         }
 
         // 3. Greedy Primitive Array
@@ -619,9 +613,9 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 argsVar, hasDynamic ? "argIdxHolder" : "new int[]{" + argIdxVar + "}", p.getName(), p.isOptional(), defValLiteral);
     }
 
-    private void resolveLocalResolverParameter(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, ParameterModel p, TypeName pTypeName, String varName, ExecutableElement localResolver, CommandModel rootModel, String senderVarName, String argsVar, String argIdxVar, boolean hasDynamic, int paramIndex) {
-        int minWidth = getLocalResolverMinWidth(localResolver, method);
-        int maxWidth = getLocalResolverMaxWidth(localResolver, method);
+    private void resolveLocalResolverParameter(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, ParameterModel p, TypeName pTypeName, String varName, MethodModel resolverModel, CommandModel rootModel, String senderVarName, String argsVar, String argIdxVar, boolean hasDynamic) {
+        ExecutableElement localResolver = resolverModel.getElement();
+        int minWidth = getLocalResolverMinWidth(resolverModel, method);
 
         if (hasDynamic && minWidth > 0) {
             methodSpec.beginControlFlow("if ($L + $L > $L.length)", argIdxVar, minWidth, argsVar)
@@ -630,14 +624,14 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     .endControlFlow();
         }
 
-        List<? extends VariableElement> resolverParams = localResolver.getParameters();
+        List<ParameterModel> resolverParams = resolverModel.getParameters();
         int resolverStartIndex = firstParamIsSender(localResolver, method) ? 1 : 0;
         List<String> resolverArgVarNames = new ArrayList<>();
         int resolverArgIdx = 0;
 
         for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
-            VariableElement rp = resolverParams.get(j);
-            TypeName rpTypeName = TypeName.get(rp.asType());
+            ParameterModel rp = resolverParams.get(j);
+            TypeName rpTypeName = TypeName.get(rp.getType());
             String rpVarName = varName + "_rp_" + resolverArgIdx;
             resolverArgVarNames.add(rpVarName);
 
@@ -645,9 +639,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 methodSpec.addStatement("$T $L = $L", rpTypeName, rpVarName,
                         getResolverSenderExpression(localResolver, method.getSenderParameter().getName(), senderVarName, TypeName.get(method.getSenderType())));
             } else {
-                Default defaultAnn = rp.getAnnotation(Default.class);
-                boolean isOptional = defaultAnn != null;
-                String defaultValue = (defaultAnn != null && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null;
+                boolean isOptional = rp.isOptional();
+                String defaultValue = rp.getDefaultValue();
                 if (!isOptional && p.isOptional()) {
                     isOptional = true;
                     defaultValue = p.getDefaultValue();
@@ -670,9 +663,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         resolverArgIdx = 0;
         String instanceVarExpr = getInstanceVarExpression(classModel, rootModel);
         for (int j = resolverStartIndex; j < resolverParams.size(); j++) {
-            VariableElement rp = resolverParams.get(j);
-            TypeName rpTypeName = TypeName.get(rp.asType());
-            if (isSenderParam(rpTypeName, method)) continue;
+            ParameterModel rp = resolverParams.get(j);
+            if (isSenderParam(TypeName.get(rp.getType()), method)) continue;
 
             String rpVarName = varName + "_rp_" + resolverArgIdx;
             runParameterAnnotationHandlers(rp, rpVarName, instanceVarExpr, senderVarName, methodSpec);
@@ -680,7 +672,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
 
         // Invoke resolver
-        String resolverInstanceExpr = getResolverInstanceExpr(localResolver, classModel, rootModel);
+        String resolverInstanceExpr = getResolverInstanceExpr(resolverModel, rootModel);
         if (resolverInstanceExpr == null) {
             methodSpec.addStatement("$T $L = null", pTypeName, varName);
             return;
@@ -704,7 +696,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
     }
 
-    public void resolveResolverParameters(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName, String argsVar, String argIdxVar, ParameterModel parentParam, boolean hasDynamic, int paramIndex) {
+    public void resolveResolverParameters(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel, MethodModel resolverModel, String varName, String senderVarName, String argsVar, String argIdxVar, ParameterModel parentParam, boolean hasDynamic) {
         ExecutableElement resolverElement = resolverModel.getElement();
         TypeName returnType = TypeName.get(resolverElement.getReturnType());
 
@@ -719,22 +711,22 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
             ParameterModel rpToResolve = rp;
             if (!rp.isOptional() && parentParam != null && parentParam.isOptional()) {
-                rpToResolve = new ParameterModel(
-                        rp.getName(), rp.getType(), rp.isGreedy(), true,
-                        parentParam.getDefaultValue(), rp.getSuggestProvider(), rp.getElement()
-                );
+                rpToResolve = rp.asOptional(parentParam.getDefaultValue());
             }
 
             resolveParameter(methodSpec, classModel, method, rootModel, rpToResolve, rpVarName, senderVarName, argsVar, argIdxVar, hasDynamic, i);
-            runParameterAnnotationHandlers(rp.getElement(), rpVarName, getInstanceVarExpression(classModel, rootModel), senderVarName, methodSpec);
+            runParameterAnnotationHandlers(rp, rpVarName, getInstanceVarExpression(classModel, rootModel), senderVarName, methodSpec);
         }
 
         String resolverSenderExpr = getResolverSenderExpression(resolverElement, method.getSenderParameter().getName(), senderVarName, TypeName.get(method.getSenderType()));
-        generateResolverInvocation(methodSpec, resolverElement, classModel, rootModel, returnType, varName, resolverSenderExpr, argNames, includeSender);
+        generateResolverInvocation(methodSpec, resolverModel, rootModel, returnType, varName, resolverSenderExpr, argNames, includeSender);
     }
 
-    public void generateResolverInvocation(MethodSpec.Builder methodSpec, ExecutableElement localResolver, CommandModel classModel, CommandModel rootModel, TypeName pTypeName, String varName, String senderVarName, List<String> resolverArgVarNames, boolean includeSender) {
-        String resolverInstanceExpr = getResolverInstanceExpr(localResolver, classModel, rootModel);
+    // ── Tab Completion & Suggestions ──
+
+    public void generateResolverInvocation(MethodSpec.Builder methodSpec, MethodModel resolverModel, CommandModel rootModel, TypeName pTypeName, String varName, String senderVarName, List<String> resolverArgVarNames, boolean includeSender) {
+        ExecutableElement localResolver = resolverModel.getElement();
+        String resolverInstanceExpr = getResolverInstanceExpr(resolverModel, rootModel);
         if (resolverInstanceExpr == null) {
             methodSpec.addStatement("$T $L = $L", pTypeName, varName, pTypeName.isPrimitive() ? "false" : "null");
             return;
@@ -757,28 +749,23 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         }
     }
 
-    // ── Tab Completion & Suggestions ──
-
-    public boolean isParamDirectSuggestionAvailable(ParameterModel p, CommandModel classModel) {
+    public boolean isParamDirectSuggestionAvailable(ParameterModel p) {
         if (p.getSuggestProvider() != null) return true;
         TypeName typeName = TypeName.get(p.getType());
         if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) return true;
         if (isPlatformBuiltInType(typeName)) return true;
 
-        Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-        if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
+        String resolveName = p.getResolveName();
+        if (resolveName != null && !resolveName.isEmpty()) {
             return false; // Resolver params generate their own suggestions
-        }
-        if (findLocalResolver(classModel, p, classModel) != null) {
-            return false; // Flattened into local resolver params
         }
 
         return !typeSupport.isBuiltIn(typeName);
     }
 
-    public boolean isResolverParamSuggestionAvailable(VariableElement rp) {
-        if (rp.getAnnotation(Suggest.class) != null) return true;
-        TypeName typeName = TypeName.get(rp.asType());
+    public boolean isResolverParamSuggestionAvailable(ParameterModel rp) {
+        if (rp.getSuggestProvider() != null) return true;
+        TypeName typeName = TypeName.get(rp.getType());
         if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) return true;
         if (isPlatformBuiltInType(typeName)) return true;
         return !typeSupport.isBuiltIn(typeName);
@@ -790,21 +777,18 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) return true;
         if (isPlatformBuiltInType(typeName)) return true;
 
-        Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-        if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
-            MethodModel resolverModel = classModel.getResolverMethod(resolveAnn.value());
-            if (resolverModel != null) {
-                for (ParameterModel rp : resolverModel.getParameters()) {
-                    if (isSenderParam(TypeName.get(rp.getType()), null)) continue;
-                    if (isParamSuggestionAvailable(rp, classModel)) return true;
-                }
-                return false;
+        MethodModel resolverModel = p.getResolverMethod();
+        if (resolverModel != null) {
+            for (ParameterModel rp : resolverModel.getParameters()) {
+                if (isSenderParam(TypeName.get(rp.getType()), null)) continue;
+                if (isParamSuggestionAvailable(rp, classModel)) return true;
             }
+            return false;
         }
-        ExecutableElement localRes = findLocalResolver(classModel, p, classModel);
+        ExecutableElement localRes = resolveLocalResolver(p, classModel);
         if (localRes != null) {
-            for (VariableElement rp : localRes.getParameters()) {
-                if (isSenderParam(TypeName.get(rp.asType()), null)) continue;
+            for (ParameterModel rp : CommandParser.parseResolverMethod(localRes).getParameters()) {
+                if (isSenderParam(TypeName.get(rp.getType()), null)) continue;
                 if (isResolverParamSuggestionAvailable(rp)) return true;
             }
             return false;
@@ -920,19 +904,16 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             ParameterModel p = method.getParameters().get(i);
             TypeName pTypeName = TypeName.get(p.getType());
 
-            ExecutableElement localResolver = findLocalResolver(classModel, p, classModel);
+            MethodModel resolverModel = p.getResolverMethod();
 
-            if (localResolver != null) {
+            if (resolverModel != null) {
+                ExecutableElement localResolver = resolverModel.getElement();
                 int resolverStartIndex = firstParamIsSender(localResolver, method) ? 1 : 0;
-                List<? extends VariableElement> resolverParams = localResolver.getParameters();
-
-                Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-                String resolverName = (resolveAnn != null && !resolveAnn.value().isEmpty())
-                        ? resolveAnn.value()
-                        : localResolver.getSimpleName().toString();
+                List<ParameterModel> resolverParams = resolverModel.getParameters();
+                String resolverName = p.getResolveName();
 
                 for (int ri = resolverStartIndex; ri < resolverParams.size(); ri++) {
-                    VariableElement rp = resolverParams.get(ri);
+                    ParameterModel rp = resolverParams.get(ri);
                     boolean hasSugg = isResolverParamSuggestionAvailable(rp);
                     if (hasSugg) {
                         String helperName = getResolverParamSuggestionMethodName(classModel, method, resolverName, ri - resolverStartIndex);
@@ -953,7 +934,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     widthExpr = String.valueOf(width);
                 }
 
-                if (isParamDirectSuggestionAvailable(p, classModel)) {
+                if (isParamDirectSuggestionAvailable(p)) {
                     String helperName = getParameterSuggestionMethodName(classModel, method, i);
                     methodSpec.beginControlFlow("if (index < tempIdx + $L)", widthExpr)
                             .addStatement("return $L(sender, $L)", helperName, argsVar)
@@ -969,7 +950,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         if (model.getDefaultMethod() != null) {
             for (int i = 0; i < model.getDefaultMethod().getParameters().size(); i++) {
                 ParameterModel p = model.getDefaultMethod().getParameters().get(i);
-                if (isParamDirectSuggestionAvailable(p, model)) {
+                if (isParamDirectSuggestionAvailable(p)) {
                     typeSpec.addMethod(buildParameterSuggestionHelper(model, model.getDefaultMethod(), p, i, rootModel));
                 }
                 buildResolverParamSuggestions(typeSpec, model, model.getDefaultMethod(), p, rootModel);
@@ -978,7 +959,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         for (MethodModel sub : model.getSubcommands()) {
             for (int i = 0; i < sub.getParameters().size(); i++) {
                 ParameterModel p = sub.getParameters().get(i);
-                if (isParamDirectSuggestionAvailable(p, model)) {
+                if (isParamDirectSuggestionAvailable(p)) {
                     typeSpec.addMethod(buildParameterSuggestionHelper(model, sub, p, i, rootModel));
                 }
                 buildResolverParamSuggestions(typeSpec, model, sub, p, rootModel);
@@ -990,15 +971,13 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     private void buildResolverParamSuggestions(TypeSpec.Builder typeSpec, CommandModel classModel, MethodModel method, ParameterModel p, CommandModel rootModel) {
-        Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-        if (resolveAnn == null || resolveAnn.value().isEmpty()) return;
-        MethodModel resolverModel = classModel.getResolverMethod(resolveAnn.value());
+        MethodModel resolverModel = p.getResolverMethod();
         if (resolverModel == null) return;
 
         for (int i = 0; i < resolverModel.getParameters().size(); i++) {
             ParameterModel rp = resolverModel.getParameters().get(i);
-            if (isResolverParamSuggestionAvailable(rp.getElement())) {
-                String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveAnn.value(), i);
+            if (isResolverParamSuggestionAvailable(rp)) {
+                String helperName = getResolverParamSuggestionMethodName(classModel, method, p.getResolveName(), i);
                 typeSpec.addMethod(buildResolverParamSuggestionHelper(classModel, method, rp, helperName, rootModel));
             }
         }
@@ -1017,9 +996,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     protected MethodSpec buildResolverParamSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel rp, String helperName, CommandModel rootModel) {
-        return buildSuggestionHelperInternal(classModel, method, rp.getSuggestProvider(),
-                getInstanceVarExpression(classModel, rootModel), TypeName.get(rp.getType()),
-                rp.getName(), method.getMethodName(), 0, helperName, "resolver param", rootModel);
+        return buildSuggestionHelperInternal(classModel, method, rp,
+                getInstanceVarExpression(classModel, rootModel), 0, helperName, "resolver param", rootModel);
     }
 
     protected MethodSpec buildParameterSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel p, int index, CommandModel rootModel) {
@@ -1029,17 +1007,18 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
             tempIdx += getBuiltInWidth(TypeName.get(prev.getType()));
         }
         String helperName = getParameterSuggestionMethodName(classModel, method, index);
-        return buildSuggestionHelperInternal(classModel, method, p.getSuggestProvider(),
-                getInstanceVarExpression(classModel, rootModel), TypeName.get(p.getType()),
-                p.getName(), method.getMethodName(), tempIdx, helperName, "parameter", rootModel);
+        return buildSuggestionHelperInternal(classModel, method, p,
+                getInstanceVarExpression(classModel, rootModel), tempIdx, helperName, "parameter", rootModel);
     }
 
-    private MethodSpec buildSuggestionHelperInternal(CommandModel classModel, MethodModel method, String provider, String instanceExpr, TypeName pTypeName, String paramName, String methodName, int tempIdxOffset, String helperName, String paramLabel, CommandModel rootModel) {
+    private MethodSpec buildSuggestionHelperInternal(CommandModel classModel, MethodModel method, ParameterModel p, String instanceExpr, int tempIdxOffset, String helperName, String paramLabel, CommandModel rootModel) {
+        String provider = p.getSuggestProvider();
+        TypeName pTypeName = TypeName.get(p.getType());
         MethodSpec.Builder methodSpec = MethodSpec.methodBuilder(helperName)
                 .addJavadoc("Gets suggestions for " + paramLabel + " {@code $L} of method {@code $L}.\n\n"
                         + "@param sender the command sender\n"
                         + "@param args the command arguments\n"
-                        + "@return the list of suggestions\n", paramName, methodName)
+                        + "@return the list of suggestions\n", p.getName(), method.getMethodName())
                 .addModifiers(Modifier.PRIVATE)
                 .returns(ParameterizedTypeName.get(List.class, String.class))
                 .addParameter(getSenderTypeName(), "sender")
@@ -1047,36 +1026,33 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
         String senderCastVar = "sender";
         boolean needsSenderCast = false;
-        if (provider != null) {
-            TypeElement typeElement = classModel.getElement();
-            ExecutableElement suggestMethod = findSuggestMethod(typeElement, provider);
-            if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                VariableElement firstParam = suggestMethod.getParameters().get(0);
-                TypeMirror firstParamType = firstParam.asType();
-                TypeName firstParamTypeName = TypeName.get(firstParamType);
+        MethodModel suggestMethod = p.getSuggestMethod();
+        if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
+            ParameterModel firstParam = suggestMethod.getParameters().get(0);
+            TypeMirror firstParamType = firstParam.getType();
+            TypeName firstParamTypeName = TypeName.get(firstParamType);
 
-                if (!isStringArray(firstParamType) && !firstParamTypeName.toString().equals(getSenderTypeName().toString())) {
-                    Resolve resolveAnn = firstParam.getAnnotation(Resolve.class);
-                    if (resolveAnn != null) {
-                        if (!resolveAnn.value().isEmpty()) {
-                            ExecutableElement resolver = ResolverLookup.findMethod(typeElement, resolveAnn.value());
-                            if (resolver != null) {
-                                String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
-                                String resolveExpr = String.format("%s.%s(%s)", resolverInstanceExpr, resolver.getSimpleName().toString(), "sender");
-                                methodSpec.addStatement("$T senderCast = ($T) $L", firstParamTypeName, firstParamTypeName, resolveExpr);
-                                senderCastVar = "senderCast";
-                            }
-                        } else {
-                            methodSpec.addStatement("$T senderCast = ($T) manager.resolveSender($T.class, sender)", firstParamTypeName, firstParamTypeName, firstParamTypeName);
+            if (!isStringArray(firstParamType) && !firstParamTypeName.toString().equals(getSenderTypeName().toString())) {
+                String resolveName = firstParam.getResolveName();
+                if (resolveName != null) {
+                    if (!resolveName.isEmpty()) {
+                        ExecutableElement resolver = ResolverLookup.findMethod(classModel.getElement(), resolveName);
+                        if (resolver != null) {
+                            String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
+                            String resolveExpr = String.format("%s.%s(%s)", resolverInstanceExpr, resolver.getSimpleName().toString(), "sender");
+                            methodSpec.addStatement("$T senderCast = ($T) $L", firstParamTypeName, firstParamTypeName, resolveExpr);
                             senderCastVar = "senderCast";
                         }
-                    } else if (isSenderType(firstParamTypeName)) {
-                        String castMethodName = "as" + getSimpleName(firstParamTypeName);
-                        methodSpec.beginControlFlow("try");
-                        methodSpec.addStatement("$T senderCast = $L($L)", firstParamTypeName, castMethodName, CodeBlock.of("sender"));
+                    } else {
+                        methodSpec.addStatement("$T senderCast = ($T) manager.resolveSender($T.class, sender)", firstParamTypeName, firstParamTypeName, firstParamTypeName);
                         senderCastVar = "senderCast";
-                        needsSenderCast = true;
                     }
+                } else if (isSenderType(firstParamTypeName)) {
+                    String castMethodName = "as" + getSimpleName(firstParamTypeName);
+                    methodSpec.beginControlFlow("try");
+                    methodSpec.addStatement("$T senderCast = $L($L)", firstParamTypeName, castMethodName, CodeBlock.of("sender"));
+                    senderCastVar = "senderCast";
+                    needsSenderCast = true;
                 }
             }
         }
@@ -1085,15 +1061,13 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         methodSpec.addStatement("String currentStr = $L[index]", "args");
 
         if (provider != null) {
-            TypeElement typeElement = classModel.getElement();
-            ExecutableElement suggestMethod = findSuggestMethod(typeElement, provider);
             if (suggestMethod != null) {
                 int argCount = suggestMethod.getParameters().size();
                 if (argCount == 0) {
                     methodSpec.addStatement("return $T.filterSuggestions($L.$L(), $L)",
                             ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, "currentStr");
                 } else if (argCount == 1) {
-                    TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
+                    TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
                     if (!isStringArray(firstParamType)) {
                         methodSpec.addStatement("return $T.filterSuggestions($L.$L($L), $L)",
                                 ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar, "currentStr");
@@ -1102,7 +1076,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                                 ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
                     }
                 } else if (argCount == 2) {
-                    TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
+                    TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
                     if (!isStringArray(firstParamType)) {
                         methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, new String[]{currentStr}), currentStr)",
                                 ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar);
@@ -1114,7 +1088,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                     methodSpec.addStatement("return $T.filterSuggestions($L.$L($L, new String[]{currentStr}, $L), currentStr)",
                             ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider, senderCastVar, "args");
                 }
-            } else if (isField(typeElement, provider)) {
+            } else if (isField(classModel.getElement(), provider)) {
                 methodSpec.addStatement("return $T.filterSuggestions($L.$L, currentStr)",
                         ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, provider);
             } else {
@@ -1235,7 +1209,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         currentPath.add(model.getCommandName());
 
         if (model.getDefaultMethod() != null) {
-            String usage = getUsage(model.getDefaultMethod(), model);
+            String usage = getUsage(model.getDefaultMethod());
             String desc = model.getDescription();
             addDescription(adder, commandInfoClass, currentPath, usage, desc);
         }
@@ -1243,7 +1217,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         for (MethodModel sub : model.getSubcommands()) {
             List<String> subPath = new ArrayList<>(currentPath);
             subPath.add(sub.getSubcommandName());
-            String usage = getUsage(sub, model);
+            String usage = getUsage(sub);
             String desc = sub.getDescription();
             addDescription(adder, commandInfoClass, subPath, usage, desc);
         }
@@ -1288,20 +1262,8 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
 
     // ── Model and Lookup Utilities ──
 
-    public ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p, CommandModel rootModel) {
-        return ResolverLookup.findLocalResolver(classModel, p);
-    }
-
-    protected ExecutableElement findSuggestMethod(TypeElement typeElement, String name) {
-        return ResolverLookup.findSuggestMethod(typeElement, name);
-    }
-
     protected boolean isField(TypeElement typeElement, String name) {
         return ResolverLookup.isField(typeElement, name);
-    }
-
-    public CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
-        return ResolverLookup.findModelForClass(current, targetClass);
     }
 
     public int getBuiltInWidth(TypeName typeName) {
@@ -1346,21 +1308,21 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
         return isSenderParam(TypeName.get(resolverMethod.getParameters().get(0).asType()), commandMethod);
     }
 
-    public int getLocalResolverMinWidth(ExecutableElement resolverMethod, MethodModel commandMethod) {
+    public int getLocalResolverMinWidth(MethodModel resolverModel, MethodModel commandMethod) {
         int minWidth = 0;
-        List<? extends VariableElement> params = resolverMethod.getParameters();
-        int startIndex = firstParamIsSender(resolverMethod, commandMethod) ? 1 : 0;
+        List<ParameterModel> params = resolverModel.getParameters();
+        int startIndex = firstParamIsSender(resolverModel.getElement(), commandMethod) ? 1 : 0;
         for (int i = startIndex; i < params.size(); i++) {
-            if (params.get(i).getAnnotation(Default.class) == null) {
+            if (!params.get(i).isOptional()) {
                 minWidth++;
             }
         }
         return minWidth;
     }
 
-    public int getLocalResolverMaxWidth(ExecutableElement resolverMethod, MethodModel commandMethod) {
-        List<? extends VariableElement> params = resolverMethod.getParameters();
-        int startIndex = firstParamIsSender(resolverMethod, commandMethod) ? 1 : 0;
+    public int getLocalResolverMaxWidth(MethodModel resolverModel, MethodModel commandMethod) {
+        List<ParameterModel> params = resolverModel.getParameters();
+        int startIndex = firstParamIsSender(resolverModel.getElement(), commandMethod) ? 1 : 0;
         return params.size() - startIndex;
     }
 
@@ -1388,29 +1350,25 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     private void collectSenderTypesToCast(MethodModel method, Set<TypeName> types) {
         ParameterModel senderParam = method.getSenderParameter();
         TypeName typeName = TypeName.get(senderParam.getType());
-        if (!isSenderBaseType(typeName) && senderParam.getElement().getAnnotation(Resolve.class) == null) {
+        if (!isSenderBaseType(typeName) && senderParam.getResolveName() == null) {
             types.add(typeName);
         }
         for (ParameterModel p : method.getParameters()) {
             if (p == method.getSenderParameter()) continue;
-            Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-            if (resolveAnn != null) {
-                ExecutableElement resolver = ResolverLookup.findMethod((TypeElement) method.getElement().getEnclosingElement(), resolveAnn.value());
-                if (resolver != null && !resolver.getParameters().isEmpty()) {
-                    TypeName firstParamType = TypeName.get(resolver.getParameters().get(0).asType());
-                    if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
-                        types.add(firstParamType);
-                    }
+
+            MethodModel resolverModel = p.getResolverMethod();
+            if (resolverModel != null && !resolverModel.getParameters().isEmpty()) {
+                TypeName firstParamType = TypeName.get(resolverModel.getParameters().get(0).getType());
+                if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
+                    types.add(firstParamType);
                 }
             }
-            Suggest suggestAnn = p.getElement().getAnnotation(Suggest.class);
-            if (suggestAnn != null) {
-                ExecutableElement suggestMethod = findSuggestMethod((TypeElement) method.getElement().getEnclosingElement(), suggestAnn.value());
-                if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                    TypeName firstParamType = TypeName.get(suggestMethod.getParameters().get(0).asType());
-                    if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
-                        types.add(firstParamType);
-                    }
+
+            MethodModel suggestMethod = p.getSuggestMethod();
+            if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
+                TypeName firstParamType = TypeName.get(suggestMethod.getParameters().get(0).getType());
+                if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
+                    types.add(firstParamType);
                 }
             }
         }
@@ -1491,22 +1449,15 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
                 invokeMethodHandler(handler, ann, method, instanceVar, senderVarName, methodSpec);
             }
         }
-        runParameterAnnotationHandlers(senderParam.getElement(), senderVarName, instanceVar, "sender", methodSpec);
+        runParameterAnnotationHandlers(senderParam, senderVarName, instanceVar, "sender", methodSpec);
     }
 
-    public void runParameterAnnotationHandlers(VariableElement param, String varName, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
+    public void runParameterAnnotationHandlers(ParameterModel param, String varName, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
+        VariableElement element = param.getElement();
         for (ParameterAnnotationHandler<?> handler : parameterHandlers) {
-            Annotation ann = param.getAnnotation(handler.annotationType());
+            Annotation ann = element.getAnnotation(handler.annotationType());
             if (ann != null) {
-                invokeParameterHandler(handler, ann, new ParameterModel(
-                        param.getSimpleName().toString(),
-                        param.asType(),
-                        param.getAnnotation(Greedy.class) != null,
-                        param.getAnnotation(Default.class) != null,
-                        param.getAnnotation(Default.class) != null && !param.getAnnotation(Default.class).value().isEmpty() ? param.getAnnotation(Default.class).value() : null,
-                        param.getAnnotation(Suggest.class) != null ? param.getAnnotation(Suggest.class).value() : null,
-                        param
-                ), varName, instanceExpr, senderVar, methodSpec);
+                invokeParameterHandler(handler, ann, param.withName(element.getSimpleName().toString()), varName, instanceExpr, senderVar, methodSpec);
             }
         }
     }

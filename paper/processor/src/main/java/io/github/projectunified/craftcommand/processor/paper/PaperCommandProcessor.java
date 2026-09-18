@@ -1,31 +1,27 @@
 package io.github.projectunified.craftcommand.processor.paper;
 
-import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
-import io.github.projectunified.craftcommand.annotation.Default;
-import io.github.projectunified.craftcommand.annotation.Greedy;
-import io.github.projectunified.craftcommand.annotation.Resolve;
-import io.github.projectunified.craftcommand.annotation.Suggest;
-import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.CommandPrism;
 import io.github.projectunified.craftcommand.processor.ResolverLookup;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
-import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
-import javax.lang.model.element.*;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import java.util.*;
 import java.util.function.Function;
 
-@AutoService(Processor.class)
-@SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
+@SupportedAnnotationTypes(CommandPrism.PRISM_TYPE)
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class PaperCommandProcessor extends BaseCommandProcessor {
 
@@ -78,6 +74,16 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         brigadierRetrievals.put("org.bukkit.World", a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, worldClass));
         brigadierArgTypes.put("org.bukkit.Location", g -> CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.Location", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())", a, finePositionClass));
+    }
+
+    private static PermissionPrism findPermissionUp(Element element) {
+        Element current = element;
+        while (current != null) {
+            PermissionPrism permission = PermissionPrism.getInstanceOn(current);
+            if (permission != null) return permission;
+            current = current.getEnclosingElement();
+        }
+        return null;
     }
 
     private void registerBrigadierType(String primitive, String wrapper, ClassName argClass, String argMethod, String retrievalMethod) {
@@ -158,7 +164,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
-        Permission permission = findAnnotationUp(element, Permission.class);
+        PermissionPrism permission = findPermissionUp(element);
         if (permission != null) {
             methodSpec.beginControlFlow("if (!sender.getSender().hasPermission($S))", permission.value());
             String msg = permission.message();
@@ -255,34 +261,34 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
 
         List<NodeInfo> nodes = new ArrayList<>();
         for (ParameterModel p : cmdArgs) {
-            ExecutableElement localResolver = findLocalResolver(classModel, p, rootModel);
-            if (localResolver != null) {
-                List<? extends VariableElement> resolverParams = localResolver.getParameters();
+            MethodModel resolverModel = p.getResolverMethod();
+            if (resolverModel != null) {
+                ExecutableElement localResolver = resolverModel.getElement();
+                List<ParameterModel> resolverParams = resolverModel.getParameters();
                 int resolverStartIndex = firstParamIsSender(localResolver) ? 1 : 0;
                 int resolverWidth = resolverParams.size() - resolverStartIndex;
                 for (int i = 0; i < resolverWidth; i++) {
-                    VariableElement rp = resolverParams.get(resolverStartIndex + i);
-                    TypeName rpTypeName = TypeName.get(rp.asType());
+                    ParameterModel rp = resolverParams.get(resolverStartIndex + i);
+                    TypeName rpTypeName = TypeName.get(rp.getType());
                     if (isSenderParam(rpTypeName, method)) {
                         continue;
                     }
-                    String rpName = rp.getSimpleName().toString();
-                    CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp);
-                    boolean rpOptional = rp.getAnnotation(Default.class) != null;
-                    Suggest suggestAnn = rp.getAnnotation(Suggest.class);
-                    String rpSuggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rpOptional, rpSuggestProvider, rpTypeName));
+                    String rpName = rp.getElement().getSimpleName().toString();
+                    CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp.isGreedy());
+                    String rpSuggestProvider = rp.getSuggestProvider() != null ? rp.getSuggestProvider() : p.getSuggestProvider();
+                    MethodModel rpSuggestMethod = rp.getSuggestProvider() != null ? rp.getSuggestMethod() : p.getSuggestMethod();
+                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rp.isOptional(), rpSuggestProvider, rpTypeName, rpSuggestMethod));
                 }
             } else {
-                int width = getParameterWidth(classModel, p, rootModel, method);
-                CodeBlock typeBlock = getArgumentTypeExpression(classModel, p, rootModel);
+                int width = getParameterWidth(p, method);
+                CodeBlock typeBlock = getArgumentTypeExpression(p);
                 if (width <= 1) {
-                    nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false, p.getSuggestProvider()));
+                    nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false, p.getSuggestProvider(), null, p.getSuggestMethod()));
                 } else {
                     for (int i = 0; i < width; i++) {
                         nodes.add(new NodeInfo(p.getName() + "_" + i,
                                 CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType")),
-                                p, i, i == width - 1, false, p.getSuggestProvider()));
+                                p, i, i == width - 1, false, p.getSuggestProvider(), null, p.getSuggestMethod()));
                     }
                 }
             }
@@ -290,9 +296,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         buildNodeChainRecursive(spec, parentBuilderVar, classModel, method, instanceExpr, rootModel, nodes, 0);
     }
 
-    private int getParameterWidth(CommandModel classModel, ParameterModel param, CommandModel rootModel, MethodModel method) {
-        ExecutableElement localRes = findLocalResolver(classModel, param, rootModel);
-        if (localRes != null) return getLocalResolverMaxWidth(localRes, method);
+    private int getParameterWidth(ParameterModel param, MethodModel method) {
+        MethodModel resolverModel = param.getResolverMethod();
+        if (resolverModel != null) return getLocalResolverMaxWidth(resolverModel, method);
         TypeName typeName = TypeName.get(param.getType());
         if (isPlatformBuiltInType(typeName)) return getBuiltInWidth(typeName);
         return 1;
@@ -350,18 +356,18 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     } else {
                         // Method: invoke on command instance — get correct sender expression
                         String suggestSenderExpr = "ctx.getSource()";
-                        ExecutableElement suggestMethod = findSuggestMethod(typeElement, suggestProvider);
+                        MethodModel suggestMethod = node.suggestProvider != null ? node.suggestMethod : p.getSuggestMethod();
                         boolean needsCast = false;
                         if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                            VariableElement firstParam = suggestMethod.getParameters().get(0);
-                            TypeName firstParamType = TypeName.get(firstParam.asType());
+                            ParameterModel firstParam = suggestMethod.getParameters().get(0);
+                            TypeName firstParamType = TypeName.get(firstParam.getType());
                             if (!firstParamType.toString().equals(getSenderTypeName().toString())) {
                                 // Check if first param has @Resolve annotation - it's a custom sender
-                                Resolve resolveAnn = firstParam.getAnnotation(Resolve.class);
-                                if (resolveAnn != null) {
-                                    if (!resolveAnn.value().isEmpty()) {
+                                String firstParamResolve = firstParam.getResolveName();
+                                if (firstParamResolve != null) {
+                                    if (!firstParamResolve.isEmpty()) {
                                         // Local resolver method
-                                        ExecutableElement resolver = ResolverLookup.findMethod(typeElement, resolveAnn.value());
+                                        ExecutableElement resolver = ResolverLookup.findMethod(typeElement, firstParamResolve);
                                         if (resolver != null) {
                                             String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
                                             suggestSenderExpr = String.format("%s.%s(ctx.getSource())", resolverInstanceExpr, resolver.getSimpleName().toString());
@@ -376,8 +382,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                                 }
                             }
                         }
-                        int argCount = suggestMethod != null ? suggestMethod.getParameters().size() : 0;
-                        String callExpr = getSuggestCallExpr(argCount, suggestMethod, method, instanceExpr, suggestProvider, suggestSenderExpr);
+                        String callExpr = suggestMethod != null
+                                ? getSuggestCallExpr(suggestMethod, method, instanceExpr, suggestProvider, suggestSenderExpr)
+                                : String.format("%s.%s()", instanceExpr, suggestProvider);
                         if (needsCast) {
                             // Wrap in try-catch to handle non-player senders gracefully during tab completion
                             ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
@@ -395,9 +402,9 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     }
                 } else {
                     // Boolean or platform built-in — use standard suggestion helper
-                    Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-                    if (resolveAnn != null && !resolveAnn.value().isEmpty()) {
-                        String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveAnn.value(), node.resolverArgIndex);
+                    String resolveName = p.getResolveName();
+                    if (resolveName != null && !resolveName.isEmpty()) {
+                        String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveName, node.resolverArgIndex);
                         spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, helperName);
                     } else {
@@ -425,15 +432,14 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
     }
 
-    private CodeBlock getArgumentTypeExpression(CommandModel classModel, ParameterModel param, CommandModel rootModel) {
-        if (findLocalResolver(classModel, param, rootModel) != null) {
+    private CodeBlock getArgumentTypeExpression(ParameterModel param) {
+        if (param.getResolverMethod() != null) {
             return CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
         }
-        return getArgumentTypeExpressionFromTypeName(TypeName.get(param.getType()), param.getElement());
+        return getArgumentTypeExpressionFromTypeName(TypeName.get(param.getType()), param.isGreedy());
     }
 
-    private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, VariableElement element) {
-        boolean isGreedy = element.getAnnotation(Greedy.class) != null;
+    private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, boolean isGreedy) {
         if (isGreedy)
             return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
         Function<Boolean, CodeBlock> provider = brigadierArgTypes.get(typeName.toString());
@@ -445,11 +451,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         return provider != null ? provider.apply(argName) : CodeBlock.of("ctx.getArgument($S, $T.class)", argName, typeName);
     }
 
-    private String getSuggestCallExpr(int argCount, ExecutableElement suggestMethod, MethodModel method, String instanceExpr, String suggestProvider, String suggestSenderExpr) {
+    private String getSuggestCallExpr(MethodModel suggestMethod, MethodModel method, String instanceExpr, String suggestProvider, String suggestSenderExpr) {
+        int argCount = suggestMethod.getParameters().size();
         if (argCount == 0) {
             return String.format("%s.%s()", instanceExpr, suggestProvider);
         } else if (argCount == 1) {
-            TypeMirror firstParamType = suggestMethod.getParameters().get(0).asType();
+            TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
             if (isSenderParam(TypeName.get(firstParamType), method)) {
                 return String.format("%s.%s(%s)", instanceExpr, suggestProvider, suggestSenderExpr);
             } else {
@@ -475,6 +482,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         final boolean isLastForParameter;
         final boolean isResolverParamOptional;
         final String suggestProvider;
+        final MethodModel suggestMethod;
         final TypeName resolverParamType;
 
         NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider) {
@@ -482,6 +490,10 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         }
 
         NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider, TypeName resolverParamType) {
+            this(nodeName, typeExpression, parameter, resolverArgIndex, isLastForParameter, isResolverParamOptional, suggestProvider, resolverParamType, null);
+        }
+
+        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex, boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider, TypeName resolverParamType, MethodModel suggestMethod) {
             this.nodeName = nodeName;
             this.typeExpression = typeExpression;
             this.parameter = parameter;
@@ -490,6 +502,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
             this.isResolverParamOptional = isResolverParamOptional;
             this.suggestProvider = suggestProvider;
             this.resolverParamType = resolverParamType;
+            this.suggestMethod = suggestMethod;
         }
     }
 }

@@ -3,12 +3,15 @@ package io.github.projectunified.craftcommand.processor.model;
 import com.palantir.javapoet.ClassName;
 
 import javax.lang.model.element.TypeElement;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Model representing a parsed command or subcommand class.
+ *
+ * <p>Nested subcommand models are indexed by their class element on construction, so the model of any class in
+ * the command tree is resolved by a direct lookup instead of a tree walk.
  */
 public class CommandModel {
     private final ClassName className;
@@ -20,9 +23,9 @@ public class CommandModel {
     private final List<MethodModel> subcommands;
     private final List<CommandModel> nestedSubcommands;
     private final TypeElement element;
-    private final Map<String, MethodModel> resolverMethods;
+    private final Map<TypeElement, CommandModel> nestedIndex;
 
-    public CommandModel(ClassName className, String packageName, String commandName, List<String> aliases, String description, MethodModel defaultMethod, List<MethodModel> subcommands, List<CommandModel> nestedSubcommands, TypeElement element, Map<String, MethodModel> resolverMethods) {
+    public CommandModel(ClassName className, String packageName, String commandName, List<String> aliases, String description, MethodModel defaultMethod, List<MethodModel> subcommands, List<CommandModel> nestedSubcommands, TypeElement element) {
         this.className = className;
         this.packageName = packageName;
         this.commandName = commandName;
@@ -32,7 +35,13 @@ public class CommandModel {
         this.subcommands = subcommands;
         this.nestedSubcommands = nestedSubcommands;
         this.element = element;
-        this.resolverMethods = resolverMethods != null ? resolverMethods : Collections.emptyMap();
+
+        Map<TypeElement, CommandModel> index = new HashMap<>();
+        index.put(element, this);
+        for (CommandModel child : nestedSubcommands) {
+            index.putAll(child.getNestedIndex());
+        }
+        this.nestedIndex = index;
     }
 
     /**
@@ -117,21 +126,21 @@ public class CommandModel {
     }
 
     /**
-     * Gets the resolver method models (from @Resolve annotations).
+     * Gets this model and every nested subcommand model indexed by their class element.
      *
-     * @return map of resolver method name to MethodModel
+     * @return map of class element to command model
      */
-    public Map<String, MethodModel> getResolverMethods() {
-        return resolverMethods;
+    public Map<TypeElement, CommandModel> getNestedIndex() {
+        return nestedIndex;
     }
 
     /**
-     * Gets a resolver method by name.
+     * Finds the model of a class within this command tree.
      *
-     * @param name the resolver method name
-     * @return the MethodModel, or null if not found
+     * @param targetClass the class element to look up
+     * @return the matching model, or {@code null} if the class is not part of this tree
      */
-    public MethodModel getResolverMethod(String name) {
-        return resolverMethods.get(name);
+    public CommandModel findModel(TypeElement targetClass) {
+        return nestedIndex.get(targetClass);
     }
 }

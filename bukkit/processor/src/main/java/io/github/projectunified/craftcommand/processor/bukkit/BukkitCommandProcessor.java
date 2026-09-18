@@ -1,13 +1,11 @@
 package io.github.projectunified.craftcommand.processor.bukkit;
 
-import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
-import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.CommandPrism;
 import io.github.projectunified.craftcommand.processor.TypeSupport;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 
-import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
@@ -20,8 +18,7 @@ import java.util.List;
 /**
  * Annotation processor for Bukkit command wrapper generation.
  */
-@AutoService(Processor.class)
-@SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
+@SupportedAnnotationTypes(CommandPrism.PRISM_TYPE)
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class BukkitCommandProcessor extends BaseCommandProcessor {
 
@@ -34,6 +31,16 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
         senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
         senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
         senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
+    }
+
+    private static PermissionPrism findPermissionUp(Element element) {
+        Element current = element;
+        while (current != null) {
+            PermissionPrism permission = PermissionPrism.getInstanceOn(current);
+            if (permission != null) return permission;
+            current = current.getEnclosingElement();
+        }
+        return null;
     }
 
     @Override
@@ -142,13 +149,13 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
-        Permission permission = findAnnotationUp(element, Permission.class);
+        PermissionPrism permission = findPermissionUp(element);
         if (permission != null) {
             generatePermissionCheck(methodSpec, permission, returnStatement);
         }
     }
 
-    private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {
+    private void generatePermissionCheck(MethodSpec.Builder methodSpec, PermissionPrism permission, String returnStatement) {
         methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
         String msg = permission.message();
         if (isI18nKey(msg)) {

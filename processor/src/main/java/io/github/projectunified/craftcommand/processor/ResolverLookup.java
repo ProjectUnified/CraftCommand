@@ -1,9 +1,5 @@
 package io.github.projectunified.craftcommand.processor;
 
-import io.github.projectunified.craftcommand.annotation.Resolve;
-import io.github.projectunified.craftcommand.processor.model.CommandModel;
-import io.github.projectunified.craftcommand.processor.model.ParameterModel;
-
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
@@ -15,8 +11,7 @@ import javax.lang.model.type.TypeMirror;
 import java.util.List;
 
 /**
- * Compile-time lookups for local resolvers, suggest methods, fields, and
- * command-model class resolution.
+ * Compile-time element lookups for resolver methods, suggest methods, and fields.
  */
 public final class ResolverLookup {
 
@@ -42,60 +37,6 @@ public final class ResolverLookup {
             }
             Element enclosing = current.getEnclosingElement();
             current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
-        }
-        return null;
-    }
-
-    /**
-     * Find a local {@code @Resolve} method for the given parameter.
-     *
-     * <p>If the parameter carries an explicit {@code @Resolve("name")}, the
-     * method is matched by name. Implicit resolution by return type is no longer
-     * supported — use explicit {@code @Resolve("name")} instead.
-     *
-     * @param classModel the command class where resolution starts
-     * @param p          the parameter to resolve
-     * @return the matching resolver method, or {@code null} if none
-     */
-    public static ExecutableElement findLocalResolver(CommandModel classModel, ParameterModel p) {
-        Resolve resolveAnn = p.getElement().getAnnotation(Resolve.class);
-        if (resolveAnn == null || resolveAnn.value().isEmpty()) {
-            return null;
-        }
-
-        String explicitName = resolveAnn.value();
-        TypeElement current = classModel.getElement();
-        while (current != null) {
-            for (Element enclosed : current.getEnclosedElements()) {
-                if (!(enclosed instanceof ExecutableElement)) continue;
-                ExecutableElement method = (ExecutableElement) enclosed;
-                if (method.getSimpleName().toString().equals(explicitName)) {
-                    return method;
-                }
-            }
-            Element enclosing = current.getEnclosingElement();
-            current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
-        }
-        return null;
-    }
-
-    /**
-     * Walk the command tree to find the {@link CommandModel} whose element
-     * equals {@code targetClass}.
-     *
-     * @param current     the root or current command model to search from
-     * @param targetClass the target class element
-     * @return the matching CommandModel, or null if not found
-     */
-    public static CommandModel findModelForClass(CommandModel current, TypeElement targetClass) {
-        if (current.getElement().equals(targetClass)) {
-            return current;
-        }
-        for (CommandModel child : current.getNestedSubcommands()) {
-            CommandModel found = findModelForClass(child, targetClass);
-            if (found != null) {
-                return found;
-            }
         }
         return null;
     }

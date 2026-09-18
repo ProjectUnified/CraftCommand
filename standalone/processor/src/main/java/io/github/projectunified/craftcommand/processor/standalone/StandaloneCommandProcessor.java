@@ -1,11 +1,10 @@
 package io.github.projectunified.craftcommand.processor.standalone;
 
-import com.google.auto.service.AutoService;
 import com.palantir.javapoet.*;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
+import io.github.projectunified.craftcommand.processor.CommandPrism;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 
-import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
@@ -16,8 +15,7 @@ import java.util.List;
 /**
  * Annotation processor for standalone command wrapper generation.
  */
-@AutoService(Processor.class)
-@SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
+@SupportedAnnotationTypes(CommandPrism.PRISM_TYPE)
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 public class StandaloneCommandProcessor extends BaseCommandProcessor {
 
