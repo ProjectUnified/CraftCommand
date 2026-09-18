@@ -29,12 +29,12 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     final ClassName literalCommandNodeClass = ClassName.get("com.mojang.brigadier.tree", "LiteralCommandNode");
     final ClassName commandsClass = ClassName.get("io.papermc.paper.command.brigadier", "Commands");
     final ClassName commandClass = ClassName.get("com.mojang.brigadier", "Command");
-    final ClassName commandContextClass = ClassName.get("com.mojang.brigadier.context", "CommandContext");
     final ClassName requiredArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "RequiredArgumentBuilder");
     final ClassName literalArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "LiteralArgumentBuilder");
     final ClassName argumentTypesClass = ClassName.get("io.papermc.paper.command.brigadier.argument", "ArgumentTypes");
     final ClassName errorColorClass = ClassName.get("net.kyori.adventure.text.format", "NamedTextColor");
     final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
+    final ClassName paperSuggestionsClass = ClassName.get("io.github.projectunified.craftcommand.paper", "PaperSuggestions");
 
     private final Map<String, Function<Boolean, CodeBlock>> brigadierArgTypes = new HashMap<>();
     private final Map<String, Function<String, CodeBlock>> brigadierRetrievals = new HashMap<>();
@@ -159,7 +159,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     @Override
     protected void generateHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
         buildSenderCastHelpers(typeSpec, model);
-        generateSuggestionsHelper(typeSpec);
     }
 
     @Override
@@ -184,50 +183,6 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
     }
 
     // ── Brigadier tree generation (private helpers) ──
-
-    private void generateSuggestionsHelper(TypeSpec.Builder typeSpec) {
-        ClassName completableFutureClass = ClassName.get("java.util.concurrent", "CompletableFuture");
-        ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
-        ClassName suggestionsBuilderClass = ClassName.get("com.mojang.brigadier.suggestion", "SuggestionsBuilder");
-        ClassName functionClass = ClassName.get("java.util.function", "Function");
-        ClassName collectionClass = ClassName.get("java.util", "Collection");
-        ClassName listClass = ClassName.get("java.util", "List");
-        ClassName arrayListClass = ClassName.get("java.util", "ArrayList");
-
-        MethodSpec.Builder mb = MethodSpec.methodBuilder("getSuggestions")
-                .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(completableFutureClass, suggestionsClass))
-                .addParameter(ParameterizedTypeName.get(commandContextClass, commandSourceStackClass), "ctx")
-                .addParameter(suggestionsBuilderClass, "builder")
-                .addParameter(ParameterizedTypeName.get(functionClass, ArrayTypeName.of(String.class), ParameterizedTypeName.get(collectionClass, ClassName.get(String.class))), "provider");
-
-        mb.addStatement("$T input = ctx.getInput()", String.class)
-                .addStatement("$T remaining = builder.getRemaining()", String.class)
-                .addStatement("$T<String> argsList = new $T<>()", listClass, arrayListClass)
-                .addStatement("$T sb = new $T()", StringBuilder.class, StringBuilder.class)
-                .beginControlFlow("for (int i = 0; i < input.length(); i++)")
-                .addStatement("char c = input.charAt(i)")
-                .beginControlFlow("if (c == ' ')")
-                .addStatement("argsList.add(sb.toString())")
-                .addStatement("sb.setLength(0)")
-                .nextControlFlow("else")
-                .addStatement("sb.append(c)")
-                .endControlFlow()
-                .endControlFlow()
-                .addStatement("argsList.add(sb.toString())")
-                .beginControlFlow("if (!argsList.isEmpty() && (argsList.get(0).startsWith(\"/\") || argsList.get(0).equalsIgnoreCase(ctx.getRootNode().getName())))")
-                .addStatement("argsList.remove(0)")
-                .endControlFlow()
-                .addStatement("$T[] args = argsList.toArray(new $T[0])", String.class, String.class)
-                .addStatement("$T remainingLower = remaining.toLowerCase()", String.class)
-                .beginControlFlow("for ($T suggestion : provider.apply(args))", String.class)
-                .beginControlFlow("if (remainingLower.isEmpty() || suggestion.toLowerCase().startsWith(remainingLower))")
-                .addStatement("builder.suggest(suggestion)")
-                .endControlFlow()
-                .endControlFlow()
-                .addStatement("return builder.buildFuture()");
-        typeSpec.addMethod(mb.build());
-    }
 
     private void buildBrigadierTree(MethodSpec.Builder spec, CommandModel model, String builderVar, String instanceExpr, CommandModel rootModel) {
         for (CommandModel child : model.getNestedSubcommands()) {
@@ -322,7 +277,7 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
         if (canExecuteHere) {
             spec.beginControlFlow("$L.executes(ctx ->", currentBuilderVar);
             generateExecutionBlock(spec, classModel, method, instanceExpr, rootModel, nodes, index);
-            spec.endControlFlow(")");
+            spec.addCode("$<});\n");
         }
 
         if (index < nodes.size()) {
@@ -351,8 +306,8 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     TypeElement typeElement = classModel.getElement();
                     if (isField(typeElement, suggestProvider)) {
                         // Field: access directly on instance
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $T.filterSuggestions($L.$L, args[args.length - 1])))",
-                                nextBuilderVar, ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, suggestProvider);
+                        spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $T.filterSuggestions($L.$L, args[args.length - 1])))",
+                                nextBuilderVar, paperSuggestionsClass, ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, suggestProvider);
                     } else {
                         // Method: invoke on command instance — get correct sender expression
                         String suggestSenderExpr = "ctx.getSource()";
@@ -390,14 +345,14 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                             ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
                             spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar)
                                     .beginControlFlow("try")
-                                    .addStatement("return getSuggestions(ctx, sb, args -> $L)", callExpr)
+                                    .addStatement("return $T.suggestMatching(ctx, sb, args -> $L)", paperSuggestionsClass, callExpr)
                                     .nextControlFlow("catch ($T e)", CommandException.class)
                                     .addStatement("return $T.empty()", suggestionsClass)
                                     .endControlFlow()
-                                    .endControlFlow(")");
+                                    .addCode("$<});\n");
                         } else {
-                            spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L))",
-                                    nextBuilderVar, callExpr);
+                            spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L))",
+                                    nextBuilderVar, paperSuggestionsClass, callExpr);
                         }
                     }
                 } else {
@@ -405,13 +360,13 @@ public class PaperCommandProcessor extends BaseCommandProcessor {
                     String resolveName = p.getResolveName();
                     if (resolveName != null && !resolveName.isEmpty()) {
                         String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveName, node.resolverArgIndex);
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args)))",
-                                nextBuilderVar, helperName);
+                        spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L(ctx.getSource(), args)))",
+                                nextBuilderVar, paperSuggestionsClass, helperName);
                     } else {
                         int paramIndex = method.getParameters().indexOf(p);
                         String helperName = getParameterSuggestionMethodName(classModel, method, paramIndex);
-                        spec.addStatement("$L.suggests((ctx, sb) -> getSuggestions(ctx, sb, args -> $L(ctx.getSource(), args)))",
-                                nextBuilderVar, helperName);
+                        spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L(ctx.getSource(), args)))",
+                                nextBuilderVar, paperSuggestionsClass, helperName);
                     }
                 }
             }

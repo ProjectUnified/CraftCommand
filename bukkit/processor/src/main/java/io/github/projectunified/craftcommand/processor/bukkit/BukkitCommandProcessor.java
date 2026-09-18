@@ -53,19 +53,16 @@ public class BukkitCommandProcessor extends BaseCommandProcessor {
         types.register(TypeSupport.Entry.builder(playerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .parseExpr(arg -> CodeBlock.of("getPlayer($L)", arg))
-                .platformResolution((spec, p) -> spec.addStatement("$L = getPlayer($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
                 .build());
         types.register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .parseExpr(arg -> CodeBlock.of("getOfflinePlayer($L)", arg))
-                .platformResolution((spec, p) -> spec.addStatement("$L = getOfflinePlayer($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
                 .build());
         types.register(TypeSupport.Entry.builder(worldClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .parseExpr(arg -> CodeBlock.of("getWorld($L)", arg))
-                .platformResolution((spec, p) -> spec.addStatement("$L = getWorld($L)", p[0], p[1]))
                 .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p[2]))
                 .build());
         types.register(TypeSupport.Entry.builder(locationClass, 3)

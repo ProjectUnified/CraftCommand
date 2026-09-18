@@ -32,15 +32,6 @@ public class AllFeaturesCommandTest extends AbstractBukkitCommandTest {
         server.getCommandMap().getCommand("features").execute(player, "features", full);
     }
 
-    private PlayerMock executeAs(String sub, String... args) {
-        PlayerMock player = addPlayer("features.base");
-        String[] full = new String[args.length + 1];
-        full[0] = sub;
-        System.arraycopy(args, 0, full, 1, args.length);
-        server.getCommandMap().getCommand("features").execute(player, "features", full);
-        return player;
-    }
-
     private List<String> tabComplete(String... args) {
         PlayerMock player = addPlayer("features.base");
         return server.getCommandMap().getCommand("features").tabComplete(player, "features", args);

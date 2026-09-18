@@ -24,7 +24,8 @@ public interface ParameterAnnotationHandler<A extends Annotation> {
      *
      * @param annotation   the parameter annotation instance
      * @param parameter    the parameter model
-     * @param varName      the name of the generated parameter variable (e.g. "param_1")
+     * @param varName      the generated local holding the parameter value (for example {@code "amount"}, or
+     *                     {@code "param_1"} when the declared name would shadow a generated local)
      * @param instanceExpr the expression of the target command instance (e.g. "instance" or "this.subInstance_xxx")
      * @param senderVar    the variable name representing the command sender (e.g. "senderCast")
      * @param methodSpec   the method spec builder for the execute/onCommand method

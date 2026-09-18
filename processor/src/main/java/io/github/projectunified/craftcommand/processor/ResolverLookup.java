@@ -157,13 +157,6 @@ public final class ResolverLookup {
         return componentElement.getQualifiedName().toString().equals("java.lang.String");
     }
 
-    private static boolean isStringOrStringArray(TypeMirror type) {
-        if (type.getKind() == TypeKind.DECLARED) {
-            TypeElement typeElement = (TypeElement) ((DeclaredType) type).asElement();
-            return typeElement.getQualifiedName().toString().equals("java.lang.String");
-        }
-        return isStringArray(type);
-    }
 
     /**
      * Checks if a type element declares a field with the given name.

@@ -43,12 +43,15 @@ Step 6: buildCommandInfo()              → BaseCommand.getCommandInfo() metadat
 - **Minimum Argument Validation**: Computes required parameter count at compile time and checks
   `if (args.length < required) throw new CommandException(...)` before resolving parameters.
 - **Parameter Resolution**:
-    - Built-in types (primitives, strings, standard wrappers) use fast, inline `TypeSupport` parsing.
+    - Built-in types (primitives, strings, standard wrappers) use fast, inline `TypeSupport` parsing, reading
+      `args[1]`, `args[2]`, ... while the argument offset is known at compile time.
     - Local `@Resolve` methods call the resolver method directly on the command instance.
     - Custom types invoke `manager.resolveParameter(...)` via registered `ArgumentResolver`s.
-- **Dynamic Indexing**: If a parameter uses a multi-width or dynamic resolver, the processor uses an
-  `int[] argIdxHolder = { offset }` to let resolvers consume variable numbers of arguments; otherwise, a simple
-  `int argIdx = offset` is used.
+    - Locals are named after the parameters the user declared (`num1`, `num2`), falling back to `param_N` when a
+      declared name would shadow a generated local.
+- **Argument Cursor**: A parameter that may consume conditionally (optional, multi-width, or resolved by a runtime
+  resolver that can consume a variable number of arguments) makes the generator declare a cursor: `int argIdx` for
+  conditional consumption, or `int[] argIdxHolder = { offset }` when the runtime resolver must advance it.
 - **SPI Validation**: Runs `ParameterAnnotationHandler` (e.g. `@Min`, `@Max`, `@ValidateWith`) and
   `MethodAnnotationHandler` checks.
 

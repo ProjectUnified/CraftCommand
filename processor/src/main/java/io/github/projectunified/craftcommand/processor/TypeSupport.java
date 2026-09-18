@@ -269,22 +269,6 @@ public final class TypeSupport {
     }
 
     /**
-     * Emit platform-specific resolution code (e.g. {@code var = getPlayer(arg)}).
-     *
-     * @param spec   the method builder
-     * @param params [varName, argsVar, argIdxVar, senderVar, index]
-     */
-    public void emitPlatformResolution(MethodSpec.Builder spec, TypeName type, String... params) {
-        Entry e = entries.get(type.toString());
-        if (e == null) return;
-        if (e.parseExpr != null) {
-            spec.addStatement("$L = $L", params[0], e.parseExpr.apply(params[1]));
-        } else if (e.platformResolution != null) {
-            e.platformResolution.accept(spec, params);
-        }
-    }
-
-    /**
      * Emit platform-specific multi-arg resolution code (e.g. {@code var = getLocation(args, argIdx)}).
      *
      * @param params [varName, argsVar, argIdxVar, senderVar, index]
@@ -319,7 +303,6 @@ public final class TypeSupport {
         final String primitiveDefault;
         final Function<String, CodeBlock> literal;
         final Function<String, CodeBlock> parseExpr;
-        final BiConsumer<MethodSpec.Builder, String[]> platformResolution;
         final BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
         final BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
 
@@ -329,7 +312,6 @@ public final class TypeSupport {
             this.primitiveDefault = b.primitiveDefault;
             this.literal = b.literal;
             this.parseExpr = b.parseExpr;
-            this.platformResolution = b.platformResolution;
             this.platformMultiResolution = b.platformMultiResolution;
             this.platformSuggestions = b.platformSuggestions;
         }
@@ -347,7 +329,6 @@ public final class TypeSupport {
             String primitiveDefault;
             Function<String, CodeBlock> literal;
             Function<String, CodeBlock> parseExpr;
-            BiConsumer<MethodSpec.Builder, String[]> platformResolution;
             BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
             BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
 
@@ -368,11 +349,6 @@ public final class TypeSupport {
 
             public Builder parseExpr(Function<String, CodeBlock> f) {
                 this.parseExpr = f;
-                return this;
-            }
-
-            public Builder platformResolution(BiConsumer<MethodSpec.Builder, String[]> f) {
-                this.platformResolution = f;
                 return this;
             }
 

@@ -7,33 +7,35 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class NamingTest {
 
-    @Test
-    public void testClassPath() {
-        ClassName className = ClassName.get("com.example", "MyCommand");
-        String path = Naming.classPath(className);
-        assertEquals("mycommand", path);
-    }
+    private static final ClassName COMMAND = ClassName.get("com.example", "MyCommand");
 
     @Test
     public void testSuggestMethod() {
-        String result = Naming.suggestMethod("com.example.MyCommand", "add", 0);
-        assertNotNull(result);
-        assertTrue(result.contains("MyCommand"));
-        assertTrue(result.contains("add"));
+        assertEquals("suggestMyCommandAdd_0", Naming.suggestMethod(COMMAND, "add", 0));
     }
 
     @Test
-    public void testSuggestMethodDefault() {
-        String result = Naming.suggestMethod("com.example.MyCommand", "default", 0);
-        assertNotNull(result);
+    public void testSuggestMethodKeepsCommandAndSubcommand() {
+        String result = Naming.suggestMethod(COMMAND, "default", 0);
         assertTrue(result.contains("MyCommand"));
+        assertTrue(result.contains("Default"));
+    }
+
+    @Test
+    public void testSuggestMethodEscapesUnusableNames() {
+        assertEquals("suggestMyCommandStringWithDefault_1", Naming.suggestMethod(COMMAND, "string-with-default", 1));
     }
 
     @Test
     public void testSubcommandField() {
-        ClassName className = ClassName.get("com.example", "SubCommands");
-        String field = Naming.subcommandField(className);
-        assertNotNull(field);
-        assertTrue(field.contains("subcommand"));
+        ClassName nested = COMMAND.nestedClass("SubCommands");
+        assertEquals("subInstanceMyCommandSubCommands", Naming.subcommandField(nested));
+    }
+
+    @Test
+    public void testExecuteAndSuggestHelpers() {
+        ClassName nested = COMMAND.nestedClass("Panel").nestedClass("Commands");
+        assertEquals("executeMyCommandPanelCommands", Naming.executeHelper(nested));
+        assertEquals("suggestMyCommandPanelCommands", Naming.suggestHelper(nested));
     }
 }
