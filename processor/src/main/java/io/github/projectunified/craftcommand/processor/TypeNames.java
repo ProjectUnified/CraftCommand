@@ -18,7 +18,7 @@ public final class TypeNames {
      */
     public static boolean isStringArray(TypeMirror type) {
         TypeName typeName = TypeName.get(type);
-        return typeName instanceof ArrayTypeName
-                && ((ArrayTypeName) typeName).componentType().equals(ClassName.get(String.class));
+        return typeName instanceof ArrayTypeName array
+                && array.componentType().equals(ClassName.get(String.class));
     }
 }

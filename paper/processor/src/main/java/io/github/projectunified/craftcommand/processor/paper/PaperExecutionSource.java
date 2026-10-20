@@ -66,7 +66,7 @@ public class PaperExecutionSource {
 
         List<PaperCommandGenerator.NodeInfo> parsedSegments = new ArrayList<>();
         for (int i = 0; i < parsedNodeCount; i++) {
-            if (nodes.get(i).nodeName.equals(pm.getName())) {
+            if (nodes.get(i).nodeName().equals(pm.getName())) {
                 parsedSegments.add(nodes.get(i));
             }
         }

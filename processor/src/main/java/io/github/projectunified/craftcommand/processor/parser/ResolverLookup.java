@@ -31,13 +31,13 @@ public final class ResolverLookup {
         TypeElement current = typeElement;
         while (current != null) {
             for (Element enclosed : current.getEnclosedElements()) {
-                if (enclosed instanceof ExecutableElement
-                        && enclosed.getSimpleName().toString().equals(name)) {
-                    return (ExecutableElement) enclosed;
+                if (enclosed instanceof ExecutableElement method
+                        && method.getSimpleName().toString().equals(name)) {
+                    return method;
                 }
             }
             Element enclosing = current.getEnclosingElement();
-            current = (enclosing instanceof TypeElement) ? (TypeElement) enclosing : null;
+            current = enclosing instanceof TypeElement type ? type : null;
         }
         return null;
     }
@@ -82,52 +82,20 @@ public final class ResolverLookup {
      * </ul>
      */
     private static boolean isValidSuggestMethod(ExecutableElement method) {
-        TypeMirror returnType = method.getReturnType();
-        if (!isCollectionOfStrings(returnType)) {
-            return false;
-        }
+        if (!isCollectionOfStrings(method.getReturnType())) return false;
 
         List<? extends VariableElement> params = method.getParameters();
-        int paramCount = params.size();
-
-        if (paramCount > 3) {
-            return false;
-        }
-
-        if (paramCount == 0) {
-            // m() — no parameters
-            return true;
-        }
-
-        if (paramCount == 1) {
-            // m(String[] current), or m(SenderType): the generator passes the sender for anything else.
-            // The sender type is platform-specific and cannot be checked here.
-            return true;
-        }
-
-        if (paramCount == 2) {
-            // Can be m(SenderType, String[] current) or m(String[] current, String[] context)
-            VariableElement p0 = params.get(0);
-            VariableElement p1 = params.get(1);
-
-            // Case A: m(String[] current, String[] context)
-            if (TypeNames.isStringArray(p0.asType()) && TypeNames.isStringArray(p1.asType())) {
-                return true;
-            }
-
-            // Case B: m(SenderType, String[] current)
-            return TypeNames.isStringArray(p1.asType());
-        }
-
-        // paramCount == 3: m(SenderType, String[] current, String[] context)
-        VariableElement p1 = params.get(1);
-        VariableElement p2 = params.get(2);
-        return TypeNames.isStringArray(p1.asType()) && TypeNames.isStringArray(p2.asType());
+        return switch (params.size()) {
+            case 0, 1 -> true;
+            case 2 -> TypeNames.isStringArray(params.get(1).asType());
+            case 3 -> TypeNames.isStringArray(params.get(1).asType())
+                    && TypeNames.isStringArray(params.get(2).asType());
+            default -> false;
+        };
     }
 
     private static boolean isCollectionOfStrings(TypeMirror type) {
-        if (type.getKind() != TypeKind.DECLARED) return false;
-        DeclaredType declaredType = (DeclaredType) type;
+        if (!(type instanceof DeclaredType declaredType)) return false;
         TypeElement typeElement = (TypeElement) declaredType.asElement();
         String typeName = typeElement.getQualifiedName().toString();
 
@@ -146,8 +114,8 @@ public final class ResolverLookup {
         if (typeArgs.size() != 1) return false;
 
         TypeMirror typeArg = typeArgs.get(0);
-        if (typeArg.getKind() != TypeKind.DECLARED) return false;
-        TypeElement typeArgElement = (TypeElement) ((DeclaredType) typeArg).asElement();
+        if (!(typeArg instanceof DeclaredType declaredArg)) return false;
+        TypeElement typeArgElement = (TypeElement) declaredArg.asElement();
         return typeArgElement.getQualifiedName().toString().equals("java.lang.String");
     }
 

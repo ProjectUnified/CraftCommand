@@ -12,4 +12,8 @@
     <artifactId>craftcommand-annotations</artifactId>
     <name>CraftCommand Annotations</name>
     <description>Core annotations for CraftCommand</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
 </project>

@@ -12,4 +12,8 @@
     <artifactId>craftcommand-runtime</artifactId>
     <name>CraftCommand Runtime</name>
     <description>Core runtime implementation for CraftCommand</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
 </project>

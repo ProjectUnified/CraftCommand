@@ -170,17 +170,17 @@ final class SuggestionGenerator {
             // Every width is known, so the checked bound is a constant and no accumulator is needed.
             int bound = 0;
             for (SuggestionSlot slot : slots) {
-                bound += slot.staticWidth;
-                if (slot.helper != null) {
+                bound += slot.staticWidth();
+                if (slot.helper() != null) {
                     methodSpec.addStatement("if ($L.length <= $L) return $L(sender, $L)",
-                            argsVar, bound, slot.helper, argsVar);
+                            argsVar, bound, slot.helper(), argsVar);
                 }
             }
         } else if (slots.size() == 1) {
             SuggestionSlot slot = slots.get(0);
-            if (slot.helper != null) {
+            if (slot.helper() != null) {
                 methodSpec.addStatement("if ($L.length <= $L) return $L(sender, $L)",
-                        argsVar, slot.width, slot.helper, argsVar);
+                        argsVar, slot.width(), slot.helper(), argsVar);
             }
         } else {
             boolean needsAccumulator = false;
@@ -193,17 +193,17 @@ final class SuggestionGenerator {
             if (needsAccumulator) methodSpec.addStatement("int tempIdx = 0");
             for (int i = 0; i < slots.size(); i++) {
                 SuggestionSlot slot = slots.get(i);
-                if (slot.helper != null) {
+                if (slot.helper() != null) {
                     if (needsAccumulator) {
                         methodSpec.addStatement("if ($L.length <= tempIdx + $L) return $L(sender, $L)",
-                                argsVar, slot.width, slot.helper, argsVar);
+                                argsVar, slot.width(), slot.helper(), argsVar);
                     } else {
                         methodSpec.addStatement("if ($L.length <= $L) return $L(sender, $L)",
-                                argsVar, slot.width, slot.helper, argsVar);
+                                argsVar, slot.width(), slot.helper(), argsVar);
                     }
                 }
                 if (needsAccumulator && hasHelperAfter(slots, i)) {
-                    methodSpec.addStatement("tempIdx += $L", slot.width);
+                    methodSpec.addStatement("tempIdx += $L", slot.width());
                 }
             }
         }
@@ -261,17 +261,7 @@ final class SuggestionGenerator {
      * One completable argument slot of a command method: the suggestion helper to call, if the slot offers
      * suggestions at all, and the number of arguments it spans.
      */
-    private static final class SuggestionSlot {
-        private final String helper;
-        private final CodeBlock width;
-        private final int staticWidth;
-
-        private SuggestionSlot(String helper, CodeBlock width, int staticWidth) {
-            this.helper = helper;
-            this.width = width;
-            this.staticWidth = staticWidth;
-        }
-
+    private record SuggestionSlot(String helper, CodeBlock width, int staticWidth) {
         private static SuggestionSlot staticWidth(String helper, int width) {
             return new SuggestionSlot(helper, CodeBlock.of("$L", width), width);
         }

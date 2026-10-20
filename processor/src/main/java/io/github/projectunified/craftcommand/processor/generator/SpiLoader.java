@@ -3,7 +3,6 @@ package io.github.projectunified.craftcommand.processor.generator;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
 
@@ -24,18 +23,14 @@ public final class SpiLoader {
     }
 
     public static List<ParameterAnnotationHandler<?>> loadParameterHandlers(ClassLoader classLoader) {
-        List<ParameterAnnotationHandler<?>> handlers = new ArrayList<>();
-        for (ParameterAnnotationHandler<?> handler : ServiceLoader.load(ParameterAnnotationHandler.class, classLoader)) {
-            handlers.add(handler);
-        }
-        return handlers;
+        return ServiceLoader.load(ParameterAnnotationHandler.class, classLoader).stream()
+                .<ParameterAnnotationHandler<?>>map(ServiceLoader.Provider::get)
+                .toList();
     }
 
     public static List<MethodAnnotationHandler<?>> loadMethodHandlers(ClassLoader classLoader) {
-        List<MethodAnnotationHandler<?>> handlers = new ArrayList<>();
-        for (MethodAnnotationHandler<?> handler : ServiceLoader.load(MethodAnnotationHandler.class, classLoader)) {
-            handlers.add(handler);
-        }
-        return handlers;
+        return ServiceLoader.load(MethodAnnotationHandler.class, classLoader).stream()
+                .<MethodAnnotationHandler<?>>map(ServiceLoader.Provider::get)
+                .toList();
     }
 }

@@ -39,21 +39,21 @@ public final class BukkitCommandGenerator extends BaseCommandGenerator {
         typeSupport().register(TypeSupport.Entry.builder(playerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .parseExpr(arg -> CodeBlock.of("getPlayer($L)", arg))
-                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p.currentVar))
+                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p.currentVar()))
                 .build());
         typeSupport().register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .parseExpr(arg -> CodeBlock.of("getOfflinePlayer($L)", arg))
-                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p.currentVar))
+                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p.currentVar()))
                 .build());
         typeSupport().register(TypeSupport.Entry.builder(worldClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .parseExpr(arg -> CodeBlock.of("getWorld($L)", arg))
-                .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p.currentVar))
+                .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p.currentVar()))
                 .build());
         typeSupport().register(TypeSupport.Entry.builder(locationClass, 3)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
-                .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L, $L)", p.varName, p.argsVar, p.index, p.senderVar))
+                .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L, $L)", p.varName(), p.argsVar(), p.index(), p.senderVar()))
                 .build());
     }
 

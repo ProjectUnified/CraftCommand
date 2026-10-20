@@ -246,34 +246,13 @@ public final class TypeSupport {
      * Inputs available to a platform multi-argument resolver. The generated names are provided so the platform only
      * writes the statement body.
      */
-    public static final class Resolution {
-        /** Local receiving the resolved value. */
-        public final String varName;
-        /** Argument array. */
-        public final String argsVar;
-        /** Current argument index expression. */
-        public final CodeBlock index;
-        /** Sender variable. */
-        public final String senderVar;
-
-        Resolution(String varName, String argsVar, CodeBlock index, String senderVar) {
-            this.varName = varName;
-            this.argsVar = argsVar;
-            this.index = index;
-            this.senderVar = senderVar;
-        }
+    public record Resolution(String varName, String argsVar, CodeBlock index, String senderVar) {
     }
 
     /**
      * Inputs available to a platform suggestion provider.
      */
-    public static final class Suggestion {
-        /** Current input being completed. */
-        public final CodeBlock currentVar;
-
-        Suggestion(CodeBlock currentVar) {
-            this.currentVar = currentVar;
-        }
+    public record Suggestion(CodeBlock currentVar) {
     }
 
     /**

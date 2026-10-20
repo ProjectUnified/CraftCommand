@@ -14,6 +14,10 @@
     <name>CraftCommand Paper Runtime</name>
     <description>Runtime support for Paper plugin commands using Brigadier</description>
 
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>io.github.projectunified</groupId>

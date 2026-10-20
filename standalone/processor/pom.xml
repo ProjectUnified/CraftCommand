@@ -30,16 +30,4 @@
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <!-- JavaPoet 0.22 is compiled for Java 17 -->
-                    <release>17</release>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 </project>

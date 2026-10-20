@@ -160,8 +160,8 @@ final class ExecutionGenerator {
         }
 
         // 3. Greedy array
-        if (p.isGreedy() && pTypeName instanceof ArrayTypeName) {
-            TypeName componentType = ((ArrayTypeName) pTypeName).componentType();
+        if (p.isGreedy() && pTypeName instanceof ArrayTypeName array) {
+            TypeName componentType = array.componentType();
             TypeName boxedComponent = componentType.isPrimitive() ? componentType.box() : componentType;
 
             if (cursor.isDeclared() && !p.isOptional()) {

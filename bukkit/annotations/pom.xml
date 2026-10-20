@@ -13,4 +13,8 @@
     <artifactId>craftcommand-bukkit-annotations</artifactId>
     <name>CraftCommand Bukkit Annotations</name>
     <description>Bukkit platform annotations</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
 </project>

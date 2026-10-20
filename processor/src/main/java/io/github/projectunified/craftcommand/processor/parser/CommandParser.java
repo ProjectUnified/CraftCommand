@@ -22,7 +22,7 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,7 +48,7 @@ final class CommandParser {
      * @return the command model, or {@code null} when the class cannot be parsed
      */
     CommandModel parse(TypeElement typeElement) {
-        Command commandAnn = typeElement.getAnnotation(Command.class);
+        var commandAnn = typeElement.getAnnotation(Command.class);
         if (commandAnn == null) {
             messager.printMessage(Diagnostic.Kind.ERROR, "Class must be annotated with @Command", typeElement);
             return null;
@@ -57,154 +57,140 @@ final class CommandParser {
     }
 
     private CommandModel parseClass(TypeElement typeElement, Command commandAnn) {
-        ClassName className = ClassName.get(typeElement);
-        String packageName = className.packageName();
-
         MethodModel defaultMethod = null;
-        List<MethodModel> subcommands = new ArrayList<>();
-        List<CommandModel> nestedSubcommands = new ArrayList<>();
-
-        Resolvers resolvers = new Resolvers(typeElement, messager);
+        var subcommands = new ArrayList<MethodModel>();
+        var nestedSubcommands = new ArrayList<CommandModel>();
+        var resolvers = new Resolvers(typeElement, messager);
 
         for (Element enclosed : typeElement.getEnclosedElements()) {
-            if (enclosed instanceof ExecutableElement) {
-                ExecutableElement method = (ExecutableElement) enclosed;
-                Default defaultAnn = method.getAnnotation(Default.class);
-                Command methodCommandAnn = method.getAnnotation(Command.class);
-                boolean isSubcommandMethod = methodCommandAnn != null;
+            if (enclosed instanceof ExecutableElement executable) {
+                var method = parseMethod(executable, resolvers);
+                if (method == null) continue;
 
-                if (defaultAnn != null && isSubcommandMethod) {
-                    messager.printMessage(Diagnostic.Kind.ERROR, "A method cannot be annotated with both @Default and @Command", method);
-                    continue;
-                }
-
-                if (defaultAnn != null && !defaultAnn.value().isEmpty()) {
-                    messager.printMessage(Diagnostic.Kind.WARNING,
-                            "@Default(value) on a method is ignored. Use @Default (no value) on methods, or @Default(value) on parameters.", method);
-                }
-
-                if (defaultAnn == null && !isSubcommandMethod) {
-                    continue;
-                }
-
-                List<? extends VariableElement> parameters = method.getParameters();
-                if (parameters.isEmpty()) {
-                    messager.printMessage(Diagnostic.Kind.ERROR, "Command method must have at least one parameter (the sender)", method);
-                    continue;
-                }
-
-                VariableElement senderParam = parameters.get(0);
-                Name senderNameAnn = senderParam.getAnnotation(Name.class);
-                Resolve senderResolveAnn = senderParam.getAnnotation(Resolve.class);
-                String senderResolveName = senderResolveAnn != null ? senderResolveAnn.value() : null;
-                ParameterModel senderParamModel = new ParameterModel(
-                        senderNameAnn != null ? senderNameAnn.value() : senderParam.getSimpleName().toString(),
-                        senderParam.asType(),
-                        null,
-                        false,
-                        false,
-                        null,
-                        null,
-                        false,
-                        senderResolveName,
-                        resolvers.resolve(senderResolveName),
-                        null,
-                        senderParam
-                );
-
-                List<ParameterModel> paramModels = new ArrayList<>();
-                boolean hasOptional = false;
-                boolean hasGreedy = false;
-
-                for (int i = 1; i < parameters.size(); i++) {
-                    VariableElement param = parameters.get(i);
-                    ParameterModel paramModel = parseParameter(param, resolvers);
-
-                    if (paramModel.isGreedy() && hasGreedy) {
-                        messager.printMessage(Diagnostic.Kind.ERROR, "A command method can only have at most one @Greedy parameter", method);
-                    }
-                    if (paramModel.isGreedy() && i != parameters.size() - 1) {
-                        messager.printMessage(Diagnostic.Kind.ERROR, "The @Greedy parameter must be the last parameter in the method", param);
-                        continue;
-                    }
-
-                    if (paramModel.isOptional()) {
-                        hasOptional = true;
-                    } else if (hasOptional && !paramModel.isGreedy()) {
-                        messager.printMessage(Diagnostic.Kind.ERROR, "Required parameters cannot follow optional parameters", param);
-                    }
-
-                    if (paramModel.isGreedy()) {
-                        hasGreedy = true;
-                    }
-
-                    paramModels.add(paramModel);
-                }
-
-                String subName = methodCommandAnn != null ? methodCommandAnn.value() : null;
-                List<String> subAliases = methodCommandAnn != null ? new ArrayList<>(List.of(methodCommandAnn.aliases())) : new ArrayList<>();
-                String subDesc = methodCommandAnn != null ? methodCommandAnn.description() : "";
-
-                MethodModel methodModel = new MethodModel(
-                        method.getSimpleName().toString(),
-                        subName,
-                        subAliases,
-                        subDesc,
-                        senderParamModel,
-                        paramModels,
-                        defaultAnn != null,
-                        method
-                );
-
-                if (defaultAnn != null) {
+                if (method.isDefault()) {
                     if (defaultMethod != null) {
-                        messager.printMessage(Diagnostic.Kind.ERROR, "Multiple @Default methods are not allowed", method);
+                        messager.printMessage(Diagnostic.Kind.ERROR, "Multiple @Default methods are not allowed", method.getElement());
                     } else {
-                        defaultMethod = methodModel;
+                        defaultMethod = method;
                     }
                 } else {
-                    subcommands.add(methodModel);
+                    subcommands.add(method);
                 }
-            } else if (enclosed instanceof TypeElement) {
-                TypeElement innerClass = (TypeElement) enclosed;
-                Command innerCommand = innerClass.getAnnotation(Command.class);
+            } else if (enclosed instanceof TypeElement innerClass) {
+                var innerCommand = innerClass.getAnnotation(Command.class);
                 if (innerCommand != null) {
-                    CommandModel nestedModel = parseClass(innerClass, innerCommand);
-                    if (nestedModel != null) {
-                        nestedSubcommands.add(nestedModel);
-                    }
+                    nestedSubcommands.add(parseClass(innerClass, innerCommand));
                 }
             }
         }
 
-        resolvers.reportMissing();
+        var className = ClassName.get(typeElement);
+        return new CommandModel(className, className.packageName(),
+                commandAnn.value(), List.of(commandAnn.aliases()), commandAnn.description(),
+                defaultMethod, subcommands, nestedSubcommands, typeElement);
+    }
 
-        return new CommandModel(className, packageName, commandAnn.value(), new ArrayList<>(List.of(commandAnn.aliases())),
-                commandAnn.description(), defaultMethod, subcommands, nestedSubcommands, typeElement);
+    private MethodModel parseMethod(ExecutableElement method, Resolvers resolvers) {
+        var defaultAnn = method.getAnnotation(Default.class);
+        var commandAnn = method.getAnnotation(Command.class);
+        if (defaultAnn == null && commandAnn == null) return null;
+
+        if (defaultAnn != null && commandAnn != null) {
+            messager.printMessage(Diagnostic.Kind.ERROR, "A method cannot be annotated with both @Default and @Command", method);
+            return null;
+        }
+        if (defaultAnn != null && !defaultAnn.value().isEmpty()) {
+            messager.printMessage(Diagnostic.Kind.WARNING,
+                    "@Default(value) on a method is ignored. Use @Default (no value) on methods, or @Default(value) on parameters.", method);
+        }
+        var parameters = method.getParameters();
+        if (parameters.isEmpty()) {
+            messager.printMessage(Diagnostic.Kind.ERROR, "Command method must have at least one parameter (the sender)", method);
+            return null;
+        }
+
+        var aliases = commandAnn != null ? List.of(commandAnn.aliases()) : List.<String>of();
+        return new MethodModel(
+                method.getSimpleName().toString(),
+                commandAnn != null ? commandAnn.value() : null,
+                aliases,
+                commandAnn != null ? commandAnn.description() : "",
+                parseSender(parameters.get(0), resolvers),
+                parseParameters(method, resolvers),
+                defaultAnn != null,
+                method
+        );
+    }
+
+    private ParameterModel parseSender(VariableElement sender, Resolvers resolvers) {
+        var nameAnn = sender.getAnnotation(Name.class);
+        var resolveAnn = sender.getAnnotation(Resolve.class);
+        var resolveName = resolveAnn != null ? resolveAnn.value() : null;
+        return new ParameterModel(
+                nameAnn != null ? nameAnn.value() : sender.getSimpleName().toString(),
+                sender.asType(),
+                null,
+                false,
+                false,
+                null,
+                null,
+                false,
+                resolveName,
+                resolvers.resolve(resolveName),
+                null,
+                sender
+        );
+    }
+
+    private List<ParameterModel> parseParameters(ExecutableElement method, Resolvers resolvers) {
+        var parameters = method.getParameters();
+        var models = new ArrayList<ParameterModel>();
+        boolean hasOptional = false;
+        boolean hasGreedy = false;
+
+        for (int i = 1; i < parameters.size(); i++) {
+            var parameter = parseParameter(parameters.get(i), resolvers);
+
+            if (parameter.isGreedy() && hasGreedy) {
+                messager.printMessage(Diagnostic.Kind.ERROR, "A command method can only have at most one @Greedy parameter", method);
+            }
+            if (parameter.isGreedy() && i != parameters.size() - 1) {
+                messager.printMessage(Diagnostic.Kind.ERROR, "The @Greedy parameter must be the last parameter in the method", parameters.get(i));
+                continue;
+            }
+            if (parameter.isOptional()) {
+                hasOptional = true;
+            } else if (hasOptional && !parameter.isGreedy()) {
+                messager.printMessage(Diagnostic.Kind.ERROR, "Required parameters cannot follow optional parameters", parameters.get(i));
+            }
+            if (parameter.isGreedy()) {
+                hasGreedy = true;
+            }
+
+            models.add(parameter);
+        }
+        return models;
     }
 
     private static List<String> enumConstants(TypeMirror type) {
-        if (!(type instanceof DeclaredType)) return null;
-        Element element = ((DeclaredType) type).asElement();
+        if (!(type instanceof DeclaredType declaredType)) return null;
+        Element element = declaredType.asElement();
         if (element.getKind() != ElementKind.ENUM) return null;
 
-        List<String> constants = new ArrayList<>();
-        for (Element enclosed : element.getEnclosedElements()) {
-            if (enclosed.getKind() == ElementKind.ENUM_CONSTANT) {
-                constants.add(enclosed.getSimpleName().toString());
-            }
-        }
-        return constants;
+        return element.getEnclosedElements().stream()
+                .filter(enclosed -> enclosed.getKind() == ElementKind.ENUM_CONSTANT)
+                .map(enclosed -> enclosed.getSimpleName().toString())
+                .toList();
     }
 
     private ParameterModel parseParameter(VariableElement param, Resolvers resolvers) {
-        Default defaultAnn = param.getAnnotation(Default.class);
-        Name nameAnn = param.getAnnotation(Name.class);
-        Suggest suggestAnn = param.getAnnotation(Suggest.class);
-        Resolve resolveAnn = param.getAnnotation(Resolve.class);
+        var defaultAnn = param.getAnnotation(Default.class);
+        var nameAnn = param.getAnnotation(Name.class);
+        var suggestAnn = param.getAnnotation(Suggest.class);
+        var resolveAnn = param.getAnnotation(Resolve.class);
 
-        String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-        MethodModel suggestMethod = parseSuggestMethod(suggestProvider, resolvers);
+        var suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
+        var suggestMethod = parseSuggestMethod(suggestProvider, resolvers);
         boolean suggestField = suggestProvider != null && suggestMethod == null
                 && ResolverLookup.isField(resolvers.owner, suggestProvider);
         if (suggestProvider != null && suggestMethod == null && !suggestField) {
@@ -212,7 +198,7 @@ final class CommandParser {
                     "Could not find field or method '" + suggestProvider + "' for suggestions in " + resolvers.owner.getSimpleName(), param);
         }
 
-        String resolveName = resolveAnn != null ? resolveAnn.value() : null;
+        var resolveName = resolveAnn != null ? resolveAnn.value() : null;
         return new ParameterModel(
                 nameAnn != null ? nameAnn.value() : param.getSimpleName().toString(),
                 param.asType(),
@@ -230,9 +216,8 @@ final class CommandParser {
     }
 
     private MethodModel parseSuggestMethod(String suggestProvider, Resolvers resolvers) {
-        TypeElement owner = resolvers.owner;
-        if (suggestProvider == null || suggestProvider.isEmpty() || owner == null) return null;
-        ExecutableElement suggestMethod = ResolverLookup.findSuggestMethod(owner, suggestProvider);
+        if (suggestProvider == null || suggestProvider.isEmpty()) return null;
+        var suggestMethod = ResolverLookup.findSuggestMethod(resolvers.owner, suggestProvider);
         return suggestMethod != null ? parseResolverMethod(suggestMethod, resolvers) : null;
     }
 
@@ -241,11 +226,11 @@ final class CommandParser {
      * owning class resolver set.
      */
     private MethodModel parseResolverMethod(ExecutableElement method, Resolvers resolvers) {
-        List<ParameterModel> paramModels = new ArrayList<>();
-        for (VariableElement param : method.getParameters()) {
-            paramModels.add(parseParameter(param, resolvers));
+        var parameters = new ArrayList<ParameterModel>();
+        for (var parameter : method.getParameters()) {
+            parameters.add(parseParameter(parameter, resolvers));
         }
-        return new MethodModel(method.getSimpleName().toString(), null, null, null, null, paramModels, false, method);
+        return new MethodModel(method.getSimpleName().toString(), null, null, null, null, parameters, false, method);
     }
 
     /**
@@ -255,8 +240,7 @@ final class CommandParser {
         private final TypeElement owner;
         private final Messager messager;
         private final Map<String, MethodModel> methods = new HashMap<>();
-        private final Set<String> missing = new LinkedHashSet<>();
-        private final Set<String> resolving = new LinkedHashSet<>();
+        private final Set<String> resolving = new HashSet<>();
 
         private Resolvers(TypeElement owner, Messager messager) {
             this.owner = owner;
@@ -270,26 +254,24 @@ final class CommandParser {
          * @return the resolver method model, or {@code null} when absent or unresolvable
          */
         private MethodModel resolve(String name) {
-            if (name == null || name.isEmpty() || owner == null) return null;
-            MethodModel cached = methods.get(name);
-            if (cached != null) return cached;
+            if (name == null || name.isEmpty()) return null;
+            var cached = methods.get(name);
+            if (cached != null || methods.containsKey(name)) return cached;
             if (!resolving.add(name)) return null;
 
-            ExecutableElement method = ResolverLookup.findMethod(owner, name);
-            if (method == null) {
-                missing.add(name);
+            try {
+                var method = ResolverLookup.findMethod(owner, name);
+                if (method == null) {
+                    methods.put(name, null);
+                    messager.printMessage(Diagnostic.Kind.ERROR,
+                            "Resolver method '" + name + "' not found in " + owner.getSimpleName(), owner);
+                    return null;
+                }
+                var model = parseResolverMethod(method, this);
+                methods.put(name, model);
+                return model;
+            } finally {
                 resolving.remove(name);
-                return null;
-            }
-            MethodModel model = parseResolverMethod(method, this);
-            methods.put(name, model);
-            resolving.remove(name);
-            return model;
-        }
-
-        private void reportMissing() {
-            for (String name : missing) {
-                messager.printMessage(Diagnostic.Kind.ERROR, "Resolver method '" + name + "' not found in " + owner.getSimpleName(), owner);
             }
         }
     }

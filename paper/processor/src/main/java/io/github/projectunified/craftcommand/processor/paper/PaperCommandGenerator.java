@@ -102,12 +102,10 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         if (argumentTypes == null) return;
 
         for (Element enclosed : argumentTypes.getEnclosedElements()) {
-            if (!(enclosed instanceof ExecutableElement)) continue;
-            ExecutableElement method = (ExecutableElement) enclosed;
+            if (!(enclosed instanceof ExecutableElement method)) continue;
             if (!method.getParameters().isEmpty() || !method.getModifiers().contains(Modifier.STATIC)) continue;
-            if (!(method.getReturnType() instanceof DeclaredType)) continue;
+            if (!(method.getReturnType() instanceof DeclaredType returnType)) continue;
 
-            DeclaredType returnType = (DeclaredType) method.getReturnType();
             TypeElement returnElement = (TypeElement) returnType.asElement();
             if (!returnElement.getQualifiedName().contentEquals("com.mojang.brigadier.arguments.ArgumentType")
                     || returnType.getTypeArguments().size() != 1) {
@@ -117,9 +115,10 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
             TypeMirror valueType = returnType.getTypeArguments().get(0);
             CodeBlock argumentType = CodeBlock.of("$T.$L()", argumentTypesClass, method.getSimpleName());
             TypeMirror resolved = resolvedType(valueType, types);
-            if (resolved instanceof DeclaredType && ((DeclaredType) resolved).asElement().getSimpleName().contentEquals("List")
-                    && ((DeclaredType) resolved).getTypeArguments().size() == 1) {
-                TypeMirror elementType = ((DeclaredType) resolved).getTypeArguments().get(0);
+            if (resolved instanceof DeclaredType declaredResolved
+                    && declaredResolved.asElement().getSimpleName().contentEquals("List")
+                    && declaredResolved.getTypeArguments().size() == 1) {
+                TypeMirror elementType = declaredResolved.getTypeArguments().get(0);
                 registerPaperTypeIfAbsent(TypeName.get(resolved), argumentType,
                         a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource())", a, TypeName.get(valueType)));
                 registerPaperTypeIfAbsent(TypeName.get(elementType), argumentType,
@@ -140,12 +139,11 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
      * If the argument type is a resolver, returns the type it resolves to.
      */
     private TypeMirror resolvedType(TypeMirror valueType, Types types) {
-        if (!(valueType instanceof DeclaredType)) return null;
-        Deque<TypeMirror> queue = new ArrayDeque<>(types.directSupertypes(valueType));
+        if (!(valueType instanceof DeclaredType declaredValueType)) return null;
+        Deque<TypeMirror> queue = new ArrayDeque<>(types.directSupertypes(declaredValueType));
         while (!queue.isEmpty()) {
             TypeMirror superType = queue.removeFirst();
-            if (!(superType instanceof DeclaredType)) continue;
-            DeclaredType declared = (DeclaredType) superType;
+            if (!(superType instanceof DeclaredType declared)) continue;
             TypeElement element = (TypeElement) declared.asElement();
             if (element.getQualifiedName().contentEquals("io.papermc.paper.command.brigadier.argument.resolvers.ArgumentResolver")
                     && declared.getTypeArguments().size() == 1) {
@@ -365,12 +363,12 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         if (index == nodes.size()) {
             canExecuteHere = true;
         } else if (index == 0) {
-            if (nodes.get(0).parameter.isOptional() || nodes.get(0).isResolverParamOptional) {
+            if (nodes.get(0).parameter().isOptional() || nodes.get(0).isResolverParamOptional()) {
                 canExecuteHere = true;
             }
-        } else if (nodes.get(index - 1).isLastForParameter) {
-            if (nodes.get(index).parameter.isOptional()) canExecuteHere = true;
-        } else if (nodes.get(index).isResolverParamOptional) {
+        } else if (nodes.get(index - 1).isLastForParameter()) {
+            if (nodes.get(index).parameter().isOptional()) canExecuteHere = true;
+        } else if (nodes.get(index).isResolverParamOptional()) {
             canExecuteHere = true;
         }
 
@@ -382,17 +380,17 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
 
         if (index < nodes.size()) {
             NodeInfo node = nodes.get(index);
-            String nextBuilderVar = "argBuilder_" + Naming.sanitizeIdentifier(method.getMethodName()) + "_" + Naming.sanitizeIdentifier(node.nodeName);
+            String nextBuilderVar = "argBuilder_" + Naming.sanitizeIdentifier(method.getMethodName()) + "_" + Naming.sanitizeIdentifier(node.nodeName());
             spec.addStatement("$T $L = $T.argument($S, $L)",
                     ParameterizedTypeName.get(requiredArgumentBuilderClass, commandSourceStackClass, WildcardTypeName.subtypeOf(TypeName.get(Object.class))),
-                    nextBuilderVar, commandsClass, node.nodeName, node.typeExpression);
+                    nextBuilderVar, commandsClass, node.nodeName(), node.typeExpression());
 
-            ParameterModel p = node.parameter;
+            ParameterModel p = node.parameter();
             TypeName parameterType = TypeName.get(p.getType());
-            boolean needsSuggestions = node.suggestProvider != null
-                    || node.enumParam || TypeSupport.isBooleanType(parameterType);
-            if (!needsSuggestions && node.resolverParamType != null) {
-                TypeName rpType = node.resolverParamType;
+            boolean needsSuggestions = node.suggestProvider() != null
+                    || node.enumParam() || TypeSupport.isBooleanType(parameterType);
+            if (!needsSuggestions && node.resolverParamType() != null) {
+                TypeName rpType = node.resolverParamType();
                 if (TypeSupport.isBooleanType(rpType)) {
                     needsSuggestions = true;
                 } else if (typeSupport().hasPlatformSuggestions(rpType)) {
@@ -400,15 +398,15 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                 }
             }
 
-            if (needsSuggestions && (node.isLastForParameter || node.resolverParamType != null)) {
-                if (node.suggestProvider != null) {
-                    if (node.suggestField) {
+            if (needsSuggestions && (node.isLastForParameter() || node.resolverParamType() != null)) {
+                if (node.suggestProvider() != null) {
+                    if (node.suggestField()) {
                         spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $T.filterSuggestions($L.$L, args[args.length - 1])))",
-                                nextBuilderVar, paperSuggestionsClass, ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, node.suggestProvider);
+                                nextBuilderVar, paperSuggestionsClass, ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), instanceExpr, node.suggestProvider());
                     } else {
                         CodeBlock suggestSenderExpr = CodeBlock.of("ctx.getSource()");
                         boolean needsCast = false;
-                        MethodModel suggestMethod = node.suggestMethod;
+                        MethodModel suggestMethod = node.suggestMethod();
                         if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
                             ParameterModel firstParam = suggestMethod.getParameters().get(0);
                             TypeName firstParamType = TypeName.get(firstParam.getType());
@@ -432,8 +430,8 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                             }
                         }
                         CodeBlock callExpr = suggestMethod != null
-                                ? getSuggestCallExpr(suggestMethod, method, instanceExpr, node.suggestProvider, suggestSenderExpr)
-                                : BaseCommandGenerator.call(instanceExpr, node.suggestProvider);
+                                ? getSuggestCallExpr(suggestMethod, method, instanceExpr, node.suggestProvider(), suggestSenderExpr)
+                                : BaseCommandGenerator.call(instanceExpr, node.suggestProvider());
                         if (needsCast) {
                             ClassName suggestionsClass = ClassName.get("com.mojang.brigadier.suggestion", "Suggestions");
                             spec.beginControlFlow("$L.suggests((ctx, sb) ->", nextBuilderVar)
@@ -451,7 +449,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                 } else {
                     String resolveName = p.getResolveName();
                     if (resolveName != null && !resolveName.isEmpty()) {
-                        String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveName, node.resolverArgIndex);
+                        String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveName, node.resolverArgIndex());
                         spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, paperSuggestionsClass, helperName);
                     } else {
@@ -519,33 +517,8 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         return BaseCommandGenerator.call(instanceExpr, suggestProvider);
     }
 
-    static final class NodeInfo {
-        final String nodeName;
-        final CodeBlock typeExpression;
-        final ParameterModel parameter;
-        final int resolverArgIndex;
-        final boolean isLastForParameter;
-        final boolean isResolverParamOptional;
-        final String suggestProvider;
-        final TypeName resolverParamType;
-        final MethodModel suggestMethod;
-        final boolean suggestField;
-        final boolean enumParam;
-
-        NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex,
-                 boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider,
-                 TypeName resolverParamType, MethodModel suggestMethod, boolean suggestField, boolean enumParam) {
-            this.nodeName = nodeName;
-            this.typeExpression = typeExpression;
-            this.parameter = parameter;
-            this.resolverArgIndex = resolverArgIndex;
-            this.isLastForParameter = isLastForParameter;
-            this.isResolverParamOptional = isResolverParamOptional;
-            this.suggestProvider = suggestProvider;
-            this.resolverParamType = resolverParamType;
-            this.suggestMethod = suggestMethod;
-            this.suggestField = suggestField;
-            this.enumParam = enumParam;
-        }
+    record NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex,
+                    boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider,
+                    TypeName resolverParamType, MethodModel suggestMethod, boolean suggestField, boolean enumParam) {
     }
 }

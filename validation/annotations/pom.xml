@@ -14,6 +14,10 @@
     <name>CraftCommand Validation Annotations</name>
     <description>Validation annotations for CraftCommand</description>
 
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>io.github.projectunified</groupId>

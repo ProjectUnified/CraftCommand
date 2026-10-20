@@ -26,9 +26,9 @@ public final class Naming {
      * @return the simple name of a {@link TypeName} (text after the last dot).
      */
     public static String simpleName(TypeName typeName) {
-        if (typeName instanceof ClassName) return ((ClassName) typeName).simpleName();
-        if (typeName instanceof ParameterizedTypeName) return ((ParameterizedTypeName) typeName).rawType().simpleName();
-        if (typeName instanceof ArrayTypeName) return simpleName(((ArrayTypeName) typeName).componentType()) + "[]";
+        if (typeName instanceof ClassName className) return className.simpleName();
+        if (typeName instanceof ParameterizedTypeName parameterized) return parameterized.rawType().simpleName();
+        if (typeName instanceof ArrayTypeName array) return simpleName(array.componentType()) + "[]";
         return typeName.toString();
     }
 

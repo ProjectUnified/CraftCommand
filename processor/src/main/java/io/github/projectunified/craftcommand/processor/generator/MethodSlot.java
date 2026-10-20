@@ -12,48 +12,11 @@ import io.github.projectunified.craftcommand.processor.model.ParameterModel;
  * <p>Carrying this state together keeps the code generators to a model in, statements out shape instead of long
  * parameter lists.
  */
-final class MethodSlot {
-    private final MethodSpec.Builder methodSpec;
-    private final CommandModel classModel;
-    private final MethodModel method;
-    private final CommandModel rootModel;
-    private final String senderVarName;
-    private final LocalNames locals = new LocalNames();
-
-    /**
-     * @param methodSpec    the method being generated
-     * @param classModel    the command class whose method is generated
-     * @param method        the command method being generated
-     * @param rootModel     the root command model, used to reach instances of enclosing classes
-     * @param senderVarName the local holding the command sender
-     */
+record MethodSlot(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method,
+                  CommandModel rootModel, String senderVarName, LocalNames locals) {
     MethodSlot(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel,
                String senderVarName) {
-        this.methodSpec = methodSpec;
-        this.classModel = classModel;
-        this.method = method;
-        this.rootModel = rootModel;
-        this.senderVarName = senderVarName;
-    }
-
-    MethodSpec.Builder methodSpec() {
-        return methodSpec;
-    }
-
-    CommandModel classModel() {
-        return classModel;
-    }
-
-    MethodModel method() {
-        return method;
-    }
-
-    CommandModel rootModel() {
-        return rootModel;
-    }
-
-    String senderVarName() {
-        return senderVarName;
+        this(methodSpec, classModel, method, rootModel, senderVarName, new LocalNames());
     }
 
     /**
@@ -64,6 +27,6 @@ final class MethodSlot {
      * @return the local variable name
      */
     String localFor(ParameterModel parameter, String fallback) {
-        return locals.allocate(LocalNames.declaredName(parameter), fallback);
+        return locals().allocate(LocalNames.declaredName(parameter), fallback);
     }
 }

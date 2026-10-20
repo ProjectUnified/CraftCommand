@@ -41,14 +41,13 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getElementsAnnotatedWith(Command.class)) {
-            if (!(element instanceof TypeElement)) continue;
-            TypeElement typeElement = (TypeElement) element;
-            Element enclosing = typeElement.getEnclosingElement();
+            if (!(element instanceof TypeElement typeElement)) continue;
+            var enclosing = typeElement.getEnclosingElement();
             if (enclosing instanceof TypeElement && enclosing.getAnnotation(Command.class) != null) {
                 continue; // generated with the enclosing command tree
             }
 
-            CommandModel commandModel = parserFactory.parse(typeElement);
+            var commandModel = parserFactory.parse(typeElement);
             if (commandModel == null) continue;
 
             try {
