@@ -1,169 +1,23 @@
 package io.github.projectunified.craftcommand.processor.bukkit;
 
-import com.palantir.javapoet.*;
+import com.google.auto.service.AutoService;
 import io.github.projectunified.craftcommand.processor.BaseCommandProcessor;
-import io.github.projectunified.craftcommand.processor.CommandPrism;
-import io.github.projectunified.craftcommand.processor.TypeSupport;
-import io.github.projectunified.craftcommand.processor.model.CommandModel;
+import io.github.projectunified.craftcommand.processor.generator.CommandGeneratorFactory;
 
+import javax.annotation.processing.Processor;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
-import javax.lang.model.element.Element;
-import javax.lang.model.element.Modifier;
-import javax.lang.model.element.TypeElement;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Annotation processor for Bukkit command wrapper generation.
  */
-@SupportedAnnotationTypes(CommandPrism.PRISM_TYPE)
+@SupportedAnnotationTypes("io.github.projectunified.craftcommand.annotation.Command")
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
+@AutoService(Processor.class)
 public class BukkitCommandProcessor extends BaseCommandProcessor {
-
-    private final ClassName commandSenderClass = ClassName.get("org.bukkit.command", "CommandSender");
-    private final ClassName chatColorClass = ClassName.get("org.bukkit", "ChatColor");
-
-    {
-        senderTypeRegistry().registerSenderBaseType("java.lang.Object");
-        senderTypeRegistry().registerSenderBaseType("org.bukkit.command.CommandSender");
-        senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
-        senderTypeRegistry().registerSenderType("org.bukkit.command.ConsoleCommandSender");
-        senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
-    }
-
-    private static PermissionPrism findPermissionUp(Element element) {
-        Element current = element;
-        while (current != null) {
-            PermissionPrism permission = PermissionPrism.getInstanceOn(current);
-            if (permission != null) return permission;
-            current = current.getEnclosingElement();
-        }
-        return null;
-    }
-
     @Override
-    protected void registerTypes(TypeSupport types) {
-        ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
-        ClassName offlinePlayerClass = ClassName.get("org.bukkit", "OfflinePlayer");
-        ClassName worldClass = ClassName.get("org.bukkit", "World");
-        ClassName locationClass = ClassName.get("org.bukkit", "Location");
-
-        types.register(TypeSupport.Entry.builder(playerClass, 1)
-                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
-                .parseExpr(arg -> CodeBlock.of("getPlayer($L)", arg))
-                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
-                .build());
-        types.register(TypeSupport.Entry.builder(offlinePlayerClass, 1)
-                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
-                .parseExpr(arg -> CodeBlock.of("getOfflinePlayer($L)", arg))
-                .platformSuggestions((spec, p) -> spec.addStatement("return suggestPlayers($L)", p[2]))
-                .build());
-        types.register(TypeSupport.Entry.builder(worldClass, 1)
-                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
-                .parseExpr(arg -> CodeBlock.of("getWorld($L)", arg))
-                .platformSuggestions((spec, p) -> spec.addStatement("return suggestWorlds($L)", p[2]))
-                .build());
-        types.register(TypeSupport.Entry.builder(locationClass, 3)
-                .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
-                .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L, $L)", p[0], p[1], p[2], p[3]))
-                .platformSuggestions((spec, p) -> spec.addStatement("return $T.emptyList()", Collections.class))
-                .build());
-    }
-
-    @Override
-    protected String getWrapperClassSuffix() {
-        return "$BukkitCommand";
-    }
-
-    @Override
-    protected void configureClass(TypeSpec.Builder typeSpec, CommandModel model) {
-        typeSpec.superclass(ClassName.get("org.bukkit.command", "Command"));
-    }
-
-    @Override
-    protected ClassName getSenderTypeName() {
-        return commandSenderClass;
-    }
-
-    @Override
-    protected TypeName getManagerType() {
-        ClassName commandManagerClass = ClassName.get("io.github.projectunified.craftcommand", "CommandManager");
-        return ParameterizedTypeName.get(commandManagerClass, commandSenderClass);
-    }
-
-    @Override
-    protected void addConstructorStatements(MethodSpec.Builder constructorBuilder, CommandModel model) {
-        constructorBuilder.addStatement("super($S)", model.getCommandName());
-        constructorBuilder.addStatement("this.setDescription($S)", model.getDescription());
-        constructorBuilder.addStatement("this.setAliases($L)", buildAliasesExpression(model));
-    }
-
-    @Override
-    protected void generateEntryMethods(TypeSpec.Builder typeSpec, CommandModel model, TypeElement typeElement) {
-        MethodSpec.Builder executeSpec = MethodSpec.methodBuilder("execute")
-                .addJavadoc("Executes the Bukkit command.\n\n"
-                        + "@param sender the execution initiator\n"
-                        + "@param label the command label used\n"
-                        + "@param args command arguments\n"
-                        + "@return true if executed successfully\n")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(boolean.class)
-                .addParameter(commandSenderClass, "sender")
-                .addParameter(String.class, "label")
-                .addParameter(String[].class, "args");
-        generateExecuteMethodBody(executeSpec, model, "return true");
-        typeSpec.addMethod(executeSpec.build());
-
-        MethodSpec.Builder tabSpec = MethodSpec.methodBuilder("tabComplete")
-                .addJavadoc("Provides suggestions for Bukkit tab completion.\n\n"
-                        + "@param sender the execution initiator\n"
-                        + "@param alias the command alias used\n"
-                        + "@param args command arguments\n"
-                        + "@return suggestions list\n")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(ParameterizedTypeName.get(List.class, String.class))
-                .addParameter(commandSenderClass, "sender")
-                .addParameter(String.class, "alias")
-                .addParameter(String[].class, "args")
-                .addException(IllegalArgumentException.class);
-        buildSuggestionRouting(tabSpec, model, "args", "instance", model);
-        typeSpec.addMethod(tabSpec.build());
-    }
-
-    @Override
-    protected void generatePlatformHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
-        BukkitHelperMethods.generate(typeSpec, model);
-    }
-
-    @Override
-    protected void generateUnknownSubcommandMessage(MethodSpec.Builder methodSpec, CommandModel model) {
-        methodSpec.addStatement("sender.sendMessage($T.RED + $S)", chatColorClass, "Unknown subcommand. Available: " + getSubcommandNames(model));
-    }
-
-    @Override
-    protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
-        PermissionPrism permission = findPermissionUp(element);
-        if (permission != null) {
-            generatePermissionCheck(methodSpec, permission, returnStatement);
-        }
-    }
-
-    private void generatePermissionCheck(MethodSpec.Builder methodSpec, PermissionPrism permission, String returnStatement) {
-        methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
-        String msg = permission.message();
-        if (isI18nKey(msg)) {
-            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
-                    chatColorClass, i18nKey(msg), msg, permission.value());
-        } else if (!msg.isEmpty()) {
-            methodSpec.addStatement("sender.sendMessage($S)", msg);
-        } else {
-            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
-                    chatColorClass, "permission", "You do not have permission to execute this command.", permission.value());
-        }
-        methodSpec.addStatement(returnStatement).endControlFlow();
+    protected CommandGeneratorFactory getGeneratorFactory() {
+        return BukkitCommandGenerator::new;
     }
 }

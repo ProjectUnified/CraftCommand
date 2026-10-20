@@ -1,61 +1,60 @@
 package io.github.projectunified.craftcommand.processor.parser;
 
 import com.palantir.javapoet.ClassName;
-import io.github.projectunified.craftcommand.processor.*;
+import io.github.projectunified.craftcommand.annotation.Command;
+import io.github.projectunified.craftcommand.annotation.Default;
+import io.github.projectunified.craftcommand.annotation.Greedy;
+import io.github.projectunified.craftcommand.annotation.Name;
+import io.github.projectunified.craftcommand.annotation.Resolve;
+import io.github.projectunified.craftcommand.annotation.Suggest;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import io.github.projectunified.craftcommand.processor.model.MethodModel;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
 import javax.annotation.processing.Messager;
-import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * Parser utility to convert compile-time annotated class elements into structured command models.
+ * Reads the annotations of one command class into a {@link CommandModel} tree.
+ *
+ * <p>This is the only place that reads the core command annotations: generators consume the models and do not
+ * re-read them. Resolver methods are linked recursively at parse time, so
+ * {@link ParameterModel#getResolverMethod()} is already populated for nested resolver parameters.
  */
-public final class CommandParser {
+final class CommandParser {
+    private final Messager messager;
 
-    private CommandParser() {
+    CommandParser(Messager messager) {
+        this.messager = messager;
     }
 
     /**
-     * Parses the given TypeElement if annotated with {@code @Command}.
+     * Parses a class annotated with {@code @Command}.
      *
-     * @param typeElement the class element
-     * @param env         the processing environment
-     * @return the parsed CommandModel, or {@code null} if parsing failed
+     * @param typeElement the command class
+     * @return the command model, or {@code null} when the class cannot be parsed
      */
-    public static CommandModel parse(TypeElement typeElement, ProcessingEnvironment env) {
-        CommandPrism commandAnn = CommandPrism.getInstanceOn(typeElement);
-        if (commandAnn == null) {
-            env.getMessager().printMessage(Diagnostic.Kind.ERROR, "Class must be annotated with @Command", typeElement);
+    CommandModel parse(TypeElement typeElement) {
+        if (typeElement.getAnnotation(Command.class) == null) {
+            messager.printMessage(Diagnostic.Kind.ERROR, "Class must be annotated with @Command", typeElement);
             return null;
         }
-        return parseClass(typeElement, env);
+        return parseClass(typeElement);
     }
 
-    private static CommandModel parseClass(TypeElement typeElement, ProcessingEnvironment env) {
-        Messager messager = env.getMessager();
-
-        CommandPrism commandAnn = CommandPrism.getInstanceOn(typeElement);
-
-        String commandName;
-        List<String> aliases;
-        String description = "";
-
-        if (commandAnn != null) {
-            commandName = commandAnn.value();
-            aliases = new ArrayList<>(commandAnn.aliases());
-            description = commandAnn.description();
-        } else {
-            return null;
-        }
+    private CommandModel parseClass(TypeElement typeElement) {
+        Command commandAnn = typeElement.getAnnotation(Command.class);
+        if (commandAnn == null) return null;
 
         ClassName className = ClassName.get(typeElement);
         String packageName = className.packageName();
@@ -64,17 +63,13 @@ public final class CommandParser {
         List<MethodModel> subcommands = new ArrayList<>();
         List<CommandModel> nestedSubcommands = new ArrayList<>();
 
-        // Resolve the methods referenced by @Resolve before building parameters, so every parameter model
-        // links its resolver directly.
-        Resolvers resolvers = resolveReferencedResolvers(typeElement);
+        Resolvers resolvers = new Resolvers(typeElement, messager);
 
         for (Element enclosed : typeElement.getEnclosedElements()) {
             if (enclosed instanceof ExecutableElement) {
                 ExecutableElement method = (ExecutableElement) enclosed;
-                DefaultPrism defaultAnn = DefaultPrism.getInstanceOn(method);
-                CommandPrism methodCommandAnn = CommandPrism.getInstanceOn(method);
-
-                // @Command on method = subcommand method
+                Default defaultAnn = method.getAnnotation(Default.class);
+                Command methodCommandAnn = method.getAnnotation(Command.class);
                 boolean isSubcommandMethod = methodCommandAnn != null;
 
                 if (defaultAnn != null && isSubcommandMethod) {
@@ -97,33 +92,31 @@ public final class CommandParser {
                     continue;
                 }
 
-                // First parameter is the sender
                 VariableElement senderParam = parameters.get(0);
-                NamePrism senderNameAnn = NamePrism.getInstanceOn(senderParam);
-                String senderName = senderNameAnn != null ? senderNameAnn.value() : senderParam.getSimpleName().toString();
-                ResolvePrism senderResolveAnn = ResolvePrism.getInstanceOn(senderParam);
+                Name senderNameAnn = senderParam.getAnnotation(Name.class);
+                Resolve senderResolveAnn = senderParam.getAnnotation(Resolve.class);
                 String senderResolveName = senderResolveAnn != null ? senderResolveAnn.value() : null;
                 ParameterModel senderParamModel = new ParameterModel(
-                        senderName,
+                        senderNameAnn != null ? senderNameAnn.value() : senderParam.getSimpleName().toString(),
                         senderParam.asType(),
                         false,
                         false,
                         null,
                         null,
+                        false,
                         senderResolveName,
-                        resolveSenderMethod(typeElement, senderResolveName),
+                        resolvers.resolve(senderResolveName),
                         null,
                         senderParam
                 );
 
                 List<ParameterModel> paramModels = new ArrayList<>();
-
                 boolean hasOptional = false;
                 boolean hasGreedy = false;
 
                 for (int i = 1; i < parameters.size(); i++) {
                     VariableElement param = parameters.get(i);
-                    ParameterModel paramModel = parseParameter(param, typeElement, resolvers);
+                    ParameterModel paramModel = parseParameter(param, resolvers);
 
                     if (paramModel.isGreedy() && hasGreedy) {
                         messager.printMessage(Diagnostic.Kind.ERROR, "A command method can only have at most one @Greedy parameter", method);
@@ -146,16 +139,9 @@ public final class CommandParser {
                     paramModels.add(paramModel);
                 }
 
-                // Determine subcommand name, aliases, description from @Command
-                String subName = null;
-                List<String> subAliases = new ArrayList<>();
-                String subDesc = "";
-
-                if (methodCommandAnn != null) {
-                    subName = methodCommandAnn.value();
-                    subAliases = new ArrayList<>(methodCommandAnn.aliases());
-                    subDesc = methodCommandAnn.description();
-                }
+                String subName = methodCommandAnn != null ? methodCommandAnn.value() : null;
+                List<String> subAliases = methodCommandAnn != null ? new ArrayList<>(List.of(methodCommandAnn.aliases())) : new ArrayList<>();
+                String subDesc = methodCommandAnn != null ? methodCommandAnn.description() : "";
 
                 MethodModel methodModel = new MethodModel(
                         method.getSimpleName().toString(),
@@ -179,9 +165,8 @@ public final class CommandParser {
                 }
             } else if (enclosed instanceof TypeElement) {
                 TypeElement innerClass = (TypeElement) enclosed;
-                // @Command on nested class = subcommand class
-                if (CommandPrism.isPresent(innerClass)) {
-                    CommandModel nestedModel = parseClass(innerClass, env);
+                if (innerClass.getAnnotation(Command.class) != null) {
+                    CommandModel nestedModel = parseClass(innerClass);
                     if (nestedModel != null) {
                         nestedSubcommands.add(nestedModel);
                     }
@@ -189,101 +174,58 @@ public final class CommandParser {
             }
         }
 
-        // Report resolvers referenced by this class that could not be found.
-        for (String missing : resolvers.missing) {
-            messager.printMessage(Diagnostic.Kind.ERROR, "Resolver method '" + missing + "' not found in " + typeElement.getSimpleName(), typeElement);
-        }
+        resolvers.reportMissing();
 
-        return new CommandModel(className, packageName, commandName, aliases, description, defaultMethod, subcommands, nestedSubcommands, typeElement);
+        return new CommandModel(className, packageName, commandAnn.value(), new ArrayList<>(List.of(commandAnn.aliases())),
+                commandAnn.description(), defaultMethod, subcommands, nestedSubcommands, typeElement);
     }
 
-    /**
-     * Resolves every resolver method referenced by a {@code @Resolve} name on the command methods of this class.
-     *
-     * <p>Names that cannot be resolved are collected separately so the caller can report them once, after the
-     * per-method diagnostics.
-     */
-    private static Resolvers resolveReferencedResolvers(TypeElement typeElement) {
-        Map<String, MethodModel> methods = new LinkedHashMap<>();
-        List<String> missing = new ArrayList<>();
+    private ParameterModel parseParameter(VariableElement param, Resolvers resolvers) {
+        Default defaultAnn = param.getAnnotation(Default.class);
+        Name nameAnn = param.getAnnotation(Name.class);
+        Suggest suggestAnn = param.getAnnotation(Suggest.class);
+        Resolve resolveAnn = param.getAnnotation(Resolve.class);
 
-        for (Element enclosed : typeElement.getEnclosedElements()) {
-            if (!(enclosed instanceof ExecutableElement)) continue;
-            ExecutableElement method = (ExecutableElement) enclosed;
-            if (DefaultPrism.getInstanceOn(method) == null && CommandPrism.getInstanceOn(method) == null) continue;
-
-            List<? extends VariableElement> parameters = method.getParameters();
-            for (int i = 1; i < parameters.size(); i++) {
-                ResolvePrism resolveAnn = ResolvePrism.getInstanceOn(parameters.get(i));
-                if (resolveAnn == null || resolveAnn.value().isEmpty()) continue;
-
-                String resolveName = resolveAnn.value();
-                if (methods.containsKey(resolveName) || missing.contains(resolveName)) continue;
-
-                ExecutableElement resolverMethod = ResolverLookup.findMethod(typeElement, resolveName);
-                if (resolverMethod == null) {
-                    missing.add(resolveName);
-                } else {
-                    methods.put(resolveName, parseResolverMethod(resolverMethod));
-                }
-            }
-        }
-        return new Resolvers(methods, missing);
-    }
-
-    /**
-     * Resolves the resolver declared by a command method's sender parameter.
-     *
-     * <p>Senders are resolved independently of {@link Resolvers}, which covers the remaining parameters.
-     */
-    private static MethodModel resolveSenderMethod(TypeElement typeElement, String resolveName) {
-        if (resolveName == null || resolveName.isEmpty()) return null;
-        ExecutableElement resolverMethod = ResolverLookup.findMethod(typeElement, resolveName);
-        return resolverMethod != null ? parseResolverMethod(resolverMethod) : null;
-    }
-
-    private static ParameterModel parseParameter(VariableElement param, TypeElement owner, Resolvers resolvers) {
-        DefaultPrism paramDefaultAnn = DefaultPrism.getInstanceOn(param);
-        NamePrism nameAnn = NamePrism.getInstanceOn(param);
-        SuggestPrism suggestAnn = SuggestPrism.getInstanceOn(param);
-        ResolvePrism resolveAnn = ResolvePrism.getInstanceOn(param);
-
-        String paramName = nameAnn != null ? nameAnn.value() : param.getSimpleName().toString();
-        TypeMirror paramType = param.asType();
-        boolean isOptional = paramDefaultAnn != null;
-        String defaultValue = (paramDefaultAnn != null && !paramDefaultAnn.value().isEmpty()) ? paramDefaultAnn.value() : null;
-        boolean isGreedy = GreedyPrism.isPresent(param);
         String suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-        String resolveName = resolveAnn != null ? resolveAnn.value() : null;
+        MethodModel suggestMethod = parseSuggestMethod(suggestProvider, resolvers);
+        boolean suggestField = suggestProvider != null && suggestMethod == null
+                && ResolverLookup.isField(resolvers.owner, suggestProvider);
+        if (suggestProvider != null && suggestMethod == null && !suggestField) {
+            messager.printMessage(Diagnostic.Kind.ERROR,
+                    "Could not find field or method '" + suggestProvider + "' for suggestions in " + resolvers.owner.getSimpleName(), param);
+        }
 
-        return new ParameterModel(paramName, paramType, isGreedy, isOptional, defaultValue, suggestProvider,
-                resolveName, resolvers.methodFor(resolveName), parseSuggestMethod(owner, suggestProvider), param);
+        String resolveName = resolveAnn != null ? resolveAnn.value() : null;
+        return new ParameterModel(
+                nameAnn != null ? nameAnn.value() : param.getSimpleName().toString(),
+                param.asType(),
+                param.getAnnotation(Greedy.class) != null,
+                defaultAnn != null,
+                (defaultAnn != null && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null,
+                suggestProvider,
+                suggestField,
+                resolveName,
+                resolvers.resolve(resolveName),
+                suggestMethod,
+                param
+        );
     }
 
-    /**
-     * Parses the suggestion provider method named by {@code @Suggest}, when that name is a valid method.
-     */
-    private static MethodModel parseSuggestMethod(TypeElement owner, String suggestProvider) {
+    private MethodModel parseSuggestMethod(String suggestProvider, Resolvers resolvers) {
+        TypeElement owner = resolvers.owner;
         if (suggestProvider == null || suggestProvider.isEmpty() || owner == null) return null;
         ExecutableElement suggestMethod = ResolverLookup.findSuggestMethod(owner, suggestProvider);
-        return suggestMethod != null ? parseResolverMethod(suggestMethod) : null;
+        return suggestMethod != null ? parseResolverMethod(suggestMethod, resolvers) : null;
     }
 
     /**
-     * Parses a resolver or suggestion provider method into a model.
-     *
-     * <p>Annotation reads stay inside the parser: generators call this instead of inspecting annotations
-     * themselves.
-     *
-     * @param method the method element
-     * @return the method model
+     * Parses a resolver or suggestion provider method. Nested {@code @Resolve} parameters are linked through the
+     * owning class resolver set.
      */
-    public static MethodModel parseResolverMethod(ExecutableElement method) {
-        List<? extends VariableElement> parameters = method.getParameters();
-        TypeElement owner = method.getEnclosingElement() instanceof TypeElement ? (TypeElement) method.getEnclosingElement() : null;
+    private MethodModel parseResolverMethod(ExecutableElement method, Resolvers resolvers) {
         List<ParameterModel> paramModels = new ArrayList<>();
-        for (VariableElement param : parameters) {
-            paramModels.add(parseParameter(param, owner, Resolvers.NONE));
+        for (VariableElement param : method.getParameters()) {
+            paramModels.add(parseParameter(param, resolvers));
         }
         return new MethodModel(method.getSimpleName().toString(), null, null, null, null, paramModels, false, method);
     }
@@ -291,26 +233,46 @@ public final class CommandParser {
     /**
      * Resolver methods referenced by {@code @Resolve} names within one command class.
      */
-    private static final class Resolvers {
-        private static final Resolvers NONE = new Resolvers(Collections.emptyMap(), Collections.emptyList());
+    private final class Resolvers {
+        private final TypeElement owner;
+        private final Messager messager;
+        private final Map<String, MethodModel> methods = new HashMap<>();
+        private final Set<String> missing = new LinkedHashSet<>();
+        private final Set<String> resolving = new LinkedHashSet<>();
 
-        private final Map<String, MethodModel> methods;
-        private final List<String> missing;
-
-        private Resolvers(Map<String, MethodModel> methods, List<String> missing) {
-            this.methods = methods;
-            this.missing = missing;
+        private Resolvers(TypeElement owner, Messager messager) {
+            this.owner = owner;
+            this.messager = messager;
         }
 
         /**
-         * Gets the resolver model for a raw {@code @Resolve} value.
+         * Links the resolver named by an {@code @Resolve} value, parsing it on first use.
          *
-         * @param resolveName the raw {@code @Resolve} value, {@code null} when absent
-         * @return the resolver method model, or {@code null} when there is no named or resolvable resolver
+         * @param name the raw {@code @Resolve} value, {@code null} when absent
+         * @return the resolver method model, or {@code null} when absent or unresolvable
          */
-        private MethodModel methodFor(String resolveName) {
-            if (resolveName == null || resolveName.isEmpty()) return null;
-            return methods.get(resolveName);
+        private MethodModel resolve(String name) {
+            if (name == null || name.isEmpty() || owner == null) return null;
+            MethodModel cached = methods.get(name);
+            if (cached != null) return cached;
+            if (!resolving.add(name)) return null;
+
+            ExecutableElement method = ResolverLookup.findMethod(owner, name);
+            if (method == null) {
+                missing.add(name);
+                resolving.remove(name);
+                return null;
+            }
+            MethodModel model = parseResolverMethod(method, this);
+            methods.put(name, model);
+            resolving.remove(name);
+            return model;
+        }
+
+        private void reportMissing() {
+            for (String name : missing) {
+                messager.printMessage(Diagnostic.Kind.ERROR, "Resolver method '" + name + "' not found in " + owner.getSimpleName(), owner);
+            }
         }
     }
 }

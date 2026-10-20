@@ -6,6 +6,7 @@ import io.github.projectunified.craftcommand.validation.annotation.Max;
 import io.github.projectunified.craftcommand.validation.annotation.Min;
 import io.github.projectunified.craftcommand.validation.annotation.ValidateWith;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
@@ -175,6 +176,12 @@ public class AllFeaturesCommand {
     @Command("sameSender")
     public void sameSender(CommandSender sender, @Resolve("resolvePointWithSender") Point pt) {
         sender.sendMessage("sameSender=" + pt.x + "," + pt.y);
+    }
+
+    @Command("optlocation")
+    public void optionalLocation(CommandSender sender, @Default Location location) {
+        sender.sendMessage("loc=" + (location == null ? "null"
+                : location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ()));
     }
 
     // ── Multi-Param Cross-Parameter Interactions ──

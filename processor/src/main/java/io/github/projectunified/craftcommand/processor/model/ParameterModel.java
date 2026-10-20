@@ -8,7 +8,7 @@ import javax.lang.model.type.TypeMirror;
  *
  * <p>All annotation-derived facts are resolved once at parse time: the resolver declared by
  * {@code @Resolve} and the suggestion provider declared by {@code @Suggest} are linked here, so
- * code generation never re-reads annotations from the parameter element.
+ * code generation never re-reads the core command annotations. SPI handlers still read their own annotations.
  */
 public class ParameterModel {
     private final String name;
@@ -17,6 +17,7 @@ public class ParameterModel {
     private final boolean optional;
     private final String defaultValue;
     private final String suggestProvider;
+    private final boolean suggestField;
     private final String resolveName;
     private final MethodModel resolverMethod;
     private final MethodModel suggestMethod;
@@ -31,6 +32,7 @@ public class ParameterModel {
      * @param optional        {@code true} if marked with {@code @Default}
      * @param defaultValue    the default value string when optional, or {@code null}
      * @param suggestProvider the custom suggest provider name, or {@code null}
+     * @param suggestField    {@code true} when the suggest provider names a field of the command class
      * @param resolveName     the raw {@code @Resolve} value, {@code null} when {@code @Resolve} is absent and
      *                        empty when it is present without a resolver name
      * @param resolverMethod  the resolver method model referenced by a named {@code @Resolve}, or {@code null}
@@ -38,13 +40,16 @@ public class ParameterModel {
      *                        {@code null} when absent, a field, or an invalid signature
      * @param element         the underlying VariableElement
      */
-    public ParameterModel(String name, TypeMirror type, boolean greedy, boolean optional, String defaultValue, String suggestProvider, String resolveName, MethodModel resolverMethod, MethodModel suggestMethod, VariableElement element) {
+    public ParameterModel(String name, TypeMirror type, boolean greedy, boolean optional, String defaultValue,
+                          String suggestProvider, boolean suggestField, String resolveName,
+                          MethodModel resolverMethod, MethodModel suggestMethod, VariableElement element) {
         this.name = name;
         this.type = type;
         this.greedy = greedy;
         this.optional = optional;
         this.defaultValue = defaultValue;
         this.suggestProvider = suggestProvider;
+        this.suggestField = suggestField;
         this.resolveName = resolveName;
         this.resolverMethod = resolverMethod;
         this.suggestMethod = suggestMethod;
@@ -106,6 +111,15 @@ public class ParameterModel {
     }
 
     /**
+     * Checks whether the suggestion provider is a field of the command class.
+     *
+     * @return {@code true} when {@code @Suggest} names a field
+     */
+    public boolean isSuggestField() {
+        return suggestField;
+    }
+
+    /**
      * Gets the raw {@code @Resolve} value of this parameter.
      *
      * @return the resolver name, {@code null} when {@code @Resolve} is absent, empty when present without a name
@@ -150,7 +164,7 @@ public class ParameterModel {
      * @return a parameter model with the given name
      */
     public ParameterModel withName(String name) {
-        return new ParameterModel(name, type, greedy, optional, defaultValue, suggestProvider, resolveName, resolverMethod, suggestMethod, element);
+        return new ParameterModel(name, type, greedy, optional, defaultValue, suggestProvider, suggestField, resolveName, resolverMethod, suggestMethod, element);
     }
 
     /**
@@ -160,6 +174,6 @@ public class ParameterModel {
      * @return a parameter model marked optional with the inherited default
      */
     public ParameterModel asOptional(String inheritedDefault) {
-        return new ParameterModel(name, type, greedy, true, inheritedDefault, suggestProvider, resolveName, resolverMethod, suggestMethod, element);
+        return new ParameterModel(name, type, greedy, true, inheritedDefault, suggestProvider, suggestField, resolveName, resolverMethod, suggestMethod, element);
     }
 }

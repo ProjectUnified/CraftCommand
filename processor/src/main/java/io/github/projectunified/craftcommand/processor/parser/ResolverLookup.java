@@ -1,4 +1,4 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.parser;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
@@ -19,8 +19,8 @@ public final class ResolverLookup {
     }
 
     /**
-     * Find a no-arg/instance method by name on the given type element.
-     * Searches the current class and all parent classes.
+     * Find a method by name on the given type element.
+     * Searches the current class and all enclosing classes.
      *
      * @param typeElement the type element to search
      * @param name        the method name
@@ -48,6 +48,8 @@ public final class ResolverLookup {
      * <ul>
      *   <li>{@code Collection<String> m()}</li>
      *   <li>{@code Collection<String> m(String[] current)}</li>
+     *   <li>{@code Collection<String> m(SenderType sender)} — a single non-{@code String[]} argument is treated
+     *       as the sender by the generators</li>
      *   <li>{@code Collection<String> m(String[] current, String[] context)}</li>
      *   <li>{@code Collection<String> m(S sender, String[] current)}</li>
      *   <li>{@code Collection<String> m(S sender, String[] current, String[] context)}</li>
@@ -87,8 +89,7 @@ public final class ResolverLookup {
         List<? extends VariableElement> params = method.getParameters();
         int paramCount = params.size();
 
-        // Valid param counts: 0, 1, 2, or 3
-        if (paramCount < 0 || paramCount > 3) {
+        if (paramCount > 3) {
             return false;
         }
 
@@ -98,8 +99,9 @@ public final class ResolverLookup {
         }
 
         if (paramCount == 1) {
-            // Can be m(SenderType) or m(String[] current)
-            return !isStringArray(params.get(0).asType()) || true; // Valid either way
+            // m(String[] current), or m(SenderType): the generator passes the sender for anything else.
+            // The sender type is platform-specific and cannot be checked here.
+            return true;
         }
 
         if (paramCount == 2) {

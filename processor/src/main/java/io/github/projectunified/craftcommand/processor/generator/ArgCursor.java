@@ -1,5 +1,6 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
+import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 
 /**
@@ -49,11 +50,11 @@ final class ArgCursor {
      *
      * @return the argument expression
      */
-    String take() {
+    CodeBlock take() {
         if (declared) {
-            return argsVar + "[" + cursorRef() + "++]";
+            return CodeBlock.of("$L[$L++]", argsVar, cursorRef());
         }
-        return argsVar + "[" + offset++ + "]";
+        return CodeBlock.of("$L[$L]", argsVar, offset++);
     }
 
     /**
@@ -61,8 +62,8 @@ final class ArgCursor {
      *
      * @return the slice expression
      */
-    String sliceFromHere() {
-        return "Arrays.copyOfRange(" + argsVar + ", " + index() + ", " + argsVar + ".length)";
+    CodeBlock sliceFromHere() {
+        return CodeBlock.of("$T.copyOfRange($L, $L, $L.length)", java.util.Arrays.class, argsVar, index(), argsVar);
     }
 
     /**
@@ -71,11 +72,11 @@ final class ArgCursor {
      * @param width the number of arguments the parameter consumes
      * @return an expression that is true when too few arguments remain
      */
-    String notEnoughArguments(int width) {
+    CodeBlock notEnoughArguments(int width) {
         if (declared) {
-            return cursorRef() + " + " + width + " > " + argsVar + ".length";
+            return CodeBlock.of("$L + $L > $L.length", cursorRef(), width, argsVar);
         }
-        return argsVar + ".length < " + (offset + width);
+        return CodeBlock.of("$L.length < $L", argsVar, offset + width);
     }
 
     /**
@@ -83,8 +84,8 @@ final class ArgCursor {
      *
      * @return a constant index, or the local cursor expression
      */
-    String index() {
-        return declared ? cursorRef() : String.valueOf(offset);
+    CodeBlock index() {
+        return declared ? CodeBlock.of("$L", cursorRef()) : CodeBlock.of("$L", offset);
     }
 
     /**
@@ -120,12 +121,12 @@ final class ArgCursor {
      *
      * @return the cursor expression
      */
-    String runtimeCursor() {
+    CodeBlock runtimeCursor() {
         if (!shared) {
-            return "new int[] { " + index() + " }";
+            return CodeBlock.of("new int[] { $L }", index());
         }
         requireIndex();
-        return SHARED_VARIABLE;
+        return CodeBlock.of("$L", SHARED_VARIABLE);
     }
 
     /**

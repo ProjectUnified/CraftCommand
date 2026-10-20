@@ -2,7 +2,7 @@ package io.github.projectunified.craftcommand.validation.processor.extension;
 
 import com.palantir.javapoet.MethodSpec;
 import io.github.projectunified.craftcommand.exception.CommandException;
-import io.github.projectunified.craftcommand.processor.TypeSupport;
+import io.github.projectunified.craftcommand.processor.generator.TypeSupport;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 import io.github.projectunified.craftcommand.validation.annotation.Max;

@@ -58,6 +58,10 @@ public class SuggestCommand {
         return new CustomColor(name);
     }
 
+    public CustomColor resolveColorWithSender(Object sender, @Suggest("colors") String name) {
+        return new CustomColor(name);
+    }
+
     @Command("field")
     public void suggestField(Object sender, @Suggest("colors") String color) {
         ((TestSender) sender).sendMessage("color=" + color);
@@ -111,6 +115,11 @@ public class SuggestCommand {
     @Command("resolvesug")
     public void resolveSuggest(Object sender, @Resolve("resolveColor") CustomColor color) {
         ((TestSender) sender).sendMessage("resolvesug=" + color.name);
+    }
+
+    @Command("resolvesender")
+    public void resolveSenderSuggest(Object sender, @Resolve("resolveColorWithSender") CustomColor color) {
+        ((TestSender) sender).sendMessage("resolvesender=" + color.name);
     }
 
     @Command("greedyname")

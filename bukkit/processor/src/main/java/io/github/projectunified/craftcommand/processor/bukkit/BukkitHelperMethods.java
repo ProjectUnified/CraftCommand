@@ -45,7 +45,7 @@ public final class BukkitHelperMethods {
         if (hasPlayer || hasOfflinePlayer) {
             typeSpec.addMethod(suggestPlayers());
         }
-        if (hasWorld || hasLocation) {
+        if (hasWorld) {
             typeSpec.addMethod(suggestWorlds());
         }
         if (hasPlayer) {
@@ -54,7 +54,7 @@ public final class BukkitHelperMethods {
         if (hasOfflinePlayer) {
             typeSpec.addMethod(getOfflinePlayer());
         }
-        if (hasWorld || hasLocation) {
+        if (hasWorld) {
             typeSpec.addMethod(getWorld());
         }
         if (hasLocation) {
@@ -77,8 +77,11 @@ public final class BukkitHelperMethods {
     }
 
     private static boolean hasParameterType(MethodModel method, String typeName) {
+        // Includes resolver sender parameters on purpose: over-generating a helper is safe, missing one is not.
         for (ParameterModel p : method.getParameters()) {
             if (TypeName.get(p.getType()).toString().equals(typeName)) return true;
+            MethodModel resolver = p.getResolverMethod();
+            if (resolver != null && hasParameterType(resolver, typeName)) return true;
         }
         return false;
     }

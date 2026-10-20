@@ -207,7 +207,7 @@ public class AllFeaturesCommandTest extends AbstractPaperCommandTest {
     public void testResolveNamed() throws Exception {
         PlayerMock player = addPlayer();
         dispatcher.execute("features resolveNamed 10.0 20.0", source(player));
-        assertNotNull(player.nextMessage());
+        assertEquals("resolveNamed=10.0,20.0", player.nextMessage());
     }
 
     @Test

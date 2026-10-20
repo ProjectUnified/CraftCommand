@@ -1,4 +1,4 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
 import com.palantir.javapoet.ClassName;
 import org.junit.jupiter.api.BeforeEach;

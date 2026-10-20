@@ -1,4 +1,4 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
 import com.palantir.javapoet.TypeName;
 
@@ -8,9 +8,8 @@ import java.util.Set;
 /**
  * Registry for sender types supported by a platform.
  *
- * <p>Replaces the scattered {@code isSenderType()} and {@code isSenderBaseType()} overrides
- * across platform processors. Each platform registers its supported sender types once,
- * and the base processor delegates to this registry.
+ * <p>Each platform generator registers its supported sender types once, and
+ * {@link BaseCommandGenerator} answers sender questions from this registry.
  */
 public class SenderTypeRegistry {
     private final Set<String> senderTypes = new HashSet<>();

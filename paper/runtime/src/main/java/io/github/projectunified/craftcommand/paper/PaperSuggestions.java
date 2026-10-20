@@ -5,9 +5,8 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
@@ -32,8 +31,8 @@ public final class PaperSuggestions {
     public static CompletableFuture<Suggestions> suggestMatching(CommandContext<CommandSourceStack> ctx,
                                                                 SuggestionsBuilder builder,
                                                                 Function<String[], Collection<String>> provider) {
-        String remainingLower = builder.getRemaining().toLowerCase();
-        for (String suggestion : provider.apply(splitArgs(ctx.getInput(), ctx.getRootNode().getName()))) {
+        String remainingLower = builder.getRemainingLowerCase();
+        for (String suggestion : provider.apply(splitArgs(builder.getInput(), ctx.getRootNode().getName()))) {
             if (remainingLower.isEmpty() || suggestion.toLowerCase().startsWith(remainingLower)) {
                 builder.suggest(suggestion);
             }
@@ -48,22 +47,9 @@ public final class PaperSuggestions {
      * @param rootName the root command name, used to recognise an explicit label
      * @return the command arguments
      */
-    public static String[] splitArgs(String input, String rootName) {
-        List<String> args = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if (c == ' ') {
-                args.add(current.toString());
-                current.setLength(0);
-            } else {
-                current.append(c);
-            }
-        }
-        args.add(current.toString());
-        if (!args.isEmpty() && (args.get(0).startsWith("/") || args.get(0).equalsIgnoreCase(rootName))) {
-            args.remove(0);
-        }
-        return args.toArray(new String[0]);
+    private static String[] splitArgs(String input, String rootName) {
+        String[] args = input.split(" ", -1);
+        boolean hasLabel = args.length > 0 && (args[0].startsWith("/") || args[0].equalsIgnoreCase(rootName));
+        return Arrays.copyOfRange(args, hasLabel ? 1 : 0, args.length);
     }
 }

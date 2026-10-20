@@ -1,20 +1,11 @@
 /**
  * Base annotation processor for CraftCommand.
  *
- * <p>Contains {@link io.github.projectunified.craftcommand.processor.BaseCommandProcessor}
- * which generates platform-specific command wrappers from {@code @Command} annotations.
- * Platform processors extend this class to customize output per server type.
+ * <p>{@link io.github.projectunified.craftcommand.processor.BaseCommandProcessor} is a thin dispatcher: it hands
+ * annotated classes to the parser factory and the resulting models to a platform generator factory. The two
+ * halves live in {@code parser} and {@code generator}.
  *
- * <p>Prisms generated in this package give all platform processors typed, mirror-based access to
- * the CraftCommand annotations without reflective {@code Element#getAnnotation(Class)} calls.
+ * <p>Annotations are read with the standard {@code Element#getAnnotation(Class)} API, so no prism generation step
+ * or extra annotation-processing dependency is needed.
  */
-@GeneratePrism(value = Command.class, publicAccess = true)
-@GeneratePrism(value = Default.class, publicAccess = true)
-@GeneratePrism(value = Resolve.class, publicAccess = true)
-@GeneratePrism(value = Name.class, publicAccess = true)
-@GeneratePrism(value = Greedy.class, publicAccess = true)
-@GeneratePrism(value = Suggest.class, publicAccess = true)
 package io.github.projectunified.craftcommand.processor;
-
-import io.avaje.prism.GeneratePrism;
-import io.github.projectunified.craftcommand.annotation.*;

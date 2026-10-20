@@ -1,4 +1,4 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.CodeBlock;
@@ -13,11 +13,9 @@ import java.util.function.Function;
 /**
  * Single source of truth for built-in and platform parameter types.
  *
- * <p>Replaces the four scattered {@code if (name.equals("int") || name.equals("java.lang.Integer"))}
- * chains that previously lived in {@link BaseCommandProcessor} and the platform processors.
- * Each registered type carries all its compile-time behaviors (literal rendering, parsing codegen,
+ * <p>Each registered type carries all its compile-time behaviors (literal rendering, parsing codegen,
  * Brigadier argument/retrieval expressions, suggestion codegen) so a beginner reads one table
- * instead of hunting through four methods.
+ * instead of hunting through several scattered methods.
  *
  * <p>The base instance ({@link #builtins()}) covers {@code String}, the eight primitives, and their
  * wrappers. Platform processors call {@link #register(Entry)} for platform types
@@ -66,33 +64,6 @@ public final class TypeSupport {
                 return true;
             default:
                 return false;
-        }
-    }
-
-    /**
-     * Returns the fully qualified wrapper class name for a primitive type name.
-     * If the input is not a primitive, it is returned unchanged.
-     */
-    public static String getWrapperName(String primitiveType) {
-        switch (primitiveType) {
-            case "int":
-                return "java.lang.Integer";
-            case "long":
-                return "java.lang.Long";
-            case "double":
-                return "java.lang.Double";
-            case "float":
-                return "java.lang.Float";
-            case "short":
-                return "java.lang.Short";
-            case "byte":
-                return "java.lang.Byte";
-            case "char":
-                return "java.lang.Character";
-            case "boolean":
-                return "java.lang.Boolean";
-            default:
-                return primitiveType;
         }
     }
 
@@ -166,6 +137,13 @@ public final class TypeSupport {
      * @return an expression CodeBlock that parses the given argument string expression, or null.
      */
     public CodeBlock parseExpr(TypeName type, String argExpr) {
+        return parseExpr(type, CodeBlock.of("$L", argExpr));
+    }
+
+    /**
+     * @return an expression CodeBlock that parses the given argument expression, or null.
+     */
+    public CodeBlock parseExpr(TypeName type, CodeBlock argExpr) {
         Entry e = entries.get(type.toString());
         if (e != null && e.parseExpr != null) {
             return e.parseExpr.apply(argExpr);
@@ -180,7 +158,7 @@ public final class TypeSupport {
         Entry e = entries.get(type.toString());
         if (e == null) return;
         if (e.parseExpr != null) {
-            spec.addStatement("$L = $L", var, e.parseExpr.apply(arg));
+            spec.addStatement("$L = $L", var, e.parseExpr.apply(CodeBlock.of("$L", arg)));
         }
     }
 
@@ -193,105 +171,120 @@ public final class TypeSupport {
         ClassName byt = ClassName.get(Byte.class);
         ClassName chr = ClassName.get(Character.class);
         ClassName bool = ClassName.get(Boolean.class);
-        ClassName str = ClassName.get(String.class);
 
-        // java.lang.String
-        register(entry(str, 1)
+        register(entry(ClassName.get(String.class), 1)
                 .primitiveDefault("null")
                 .literal(d -> CodeBlock.of("$S", d == null ? "" : d))
                 .parseExpr(arg -> CodeBlock.of("$L", arg))
                 .build());
 
-        // int / Integer
-        register(integerEntry(TypeName.INT, integer, "0", "parseInt").build());
-        register(integerEntry(integer, integer, "0", "parseInt").build());
-        // long / Long
-        register(integerEntry(TypeName.LONG, longC, "0", "parseLong")
-                .literal(d -> CodeBlock.of("$LL", defaultTo(d, "0"))).build());
-        register(integerEntry(longC, longC, "0", "parseLong")
-                .literal(d -> CodeBlock.of("$LL", defaultTo(d, "0"))).build());
-        // double / Double
-        register(integerEntry(TypeName.DOUBLE, dbl, "0.0", "parseDouble").build());
-        register(integerEntry(dbl, dbl, "0.0", "parseDouble").build());
-        // float / Float
-        Entry.Builder floatPrim = integerEntry(TypeName.FLOAT, flt, "0.0", "parseFloat");
-        register(floatPrim.literal(d -> CodeBlock.of("$Lf", defaultTo(d, "0.0"))).build());
-        Entry.Builder floatWrap = integerEntry(flt, flt, "0.0", "parseFloat");
-        register(floatWrap.literal(d -> CodeBlock.of("$Lf", defaultTo(d, "0.0"))).build());
-        // short / Short
-        Entry.Builder shortPrim = integerEntry(TypeName.SHORT, shrt, "0", "parseShort");
-        register(shortPrim.literal(d -> CodeBlock.of("(short) $L", defaultTo(d, "0"))).build());
-        Entry.Builder shortWrap = integerEntry(shrt, shrt, "0", "parseShort");
-        register(shortWrap.literal(d -> CodeBlock.of("(short) $L", defaultTo(d, "0"))).build());
-        // byte / Byte
-        Entry.Builder bytePrim = integerEntry(TypeName.BYTE, byt, "0", "parseByte");
-        register(bytePrim.literal(d -> CodeBlock.of("(byte) $L", defaultTo(d, "0"))).build());
-        Entry.Builder byteWrap = integerEntry(byt, byt, "0", "parseByte");
-        register(byteWrap.literal(d -> CodeBlock.of("(byte) $L", defaultTo(d, "0"))).build());
-        // char / Character
-        register(entry(chr, 1)
+        registerPair(TypeName.INT, integer, "0", "parseInt", d -> CodeBlock.of("$L", defaultTo(d, "0")));
+        registerPair(TypeName.LONG, longC, "0", "parseLong", d -> CodeBlock.of("$LL", defaultTo(d, "0")));
+        registerPair(TypeName.DOUBLE, dbl, "0.0", "parseDouble", d -> CodeBlock.of("$L", defaultTo(d, "0.0")));
+        registerPair(TypeName.FLOAT, flt, "0.0", "parseFloat", d -> CodeBlock.of("$Lf", defaultTo(d, "0.0")));
+        registerPair(TypeName.SHORT, shrt, "0", "parseShort", d -> CodeBlock.of("(short) $L", defaultTo(d, "0")));
+        registerPair(TypeName.BYTE, byt, "0", "parseByte", d -> CodeBlock.of("(byte) $L", defaultTo(d, "0")));
+
+        Entry charEntry = entry(chr, 1)
                 .primitiveDefault("'\\0'")
                 .literal(d -> {
                     char c = (d == null || d.isEmpty()) ? ' ' : d.charAt(0);
                     return CodeBlock.of("'$L'", c);
                 })
                 .parseExpr(arg -> CodeBlock.of("$L.charAt(0)", arg))
-                .build());
-        register(entry(TypeName.CHAR, 1)
-                .primitiveDefault("'\\0'")
-                .literal(d -> {
-                    char c = (d == null || d.isEmpty()) ? ' ' : d.charAt(0);
-                    return CodeBlock.of("'$L'", c);
-                })
-                .parseExpr(arg -> CodeBlock.of("$L.charAt(0)", arg))
-                .build());
-        // boolean / Boolean
-        register(entry(bool, 1)
+                .build();
+        register(charEntry);
+        alias(TypeName.CHAR, charEntry);
+
+        Entry booleanEntry = entry(bool, 1)
                 .primitiveDefault("false")
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, "false")))
                 .parseExpr(arg -> CodeBlock.of("$T.parseBoolean($L)", Boolean.class, arg))
-                .build());
-        register(entry(TypeName.BOOLEAN, 1)
-                .primitiveDefault("false")
-                .literal(d -> CodeBlock.of("$L", defaultTo(d, "false")))
-                .parseExpr(arg -> CodeBlock.of("$T.parseBoolean($L)", Boolean.class, arg))
-                .build());
+                .build();
+        register(booleanEntry);
+        alias(TypeName.BOOLEAN, booleanEntry);
     }
 
     /**
-     * Builder for the int/long/double/float/short/byte family.
+     * Registers a wrapper type and aliases its primitive to the same entry.
      */
-    private Entry.Builder integerEntry(TypeName keyType, ClassName wrapper, String defaultVal, String parseMethod) {
-        return entry(keyType, 1)
+    private void registerPair(TypeName primitive, ClassName wrapper, String defaultVal, String parseMethod,
+                              Function<String, CodeBlock> literal) {
+        Entry entry = entry(wrapper, 1)
                 .primitiveDefault(defaultVal)
-                .literal(d -> CodeBlock.of("$L", defaultTo(d, defaultVal)))
-                .parseExpr(arg -> CodeBlock.of("$T.$L($L)", wrapper, parseMethod, arg));
+                .literal(literal)
+                .parseExpr(arg -> CodeBlock.of("$T.$L($L)", wrapper, parseMethod, arg))
+                .build();
+        register(entry);
+        alias(primitive, entry);
+    }
+
+    private void alias(TypeName type, Entry entry) {
+        entries.putIfAbsent(type.toString(), entry);
     }
 
     /**
-     * Emit platform-specific multi-arg resolution code (e.g. {@code var = getLocation(args, argIdx)}).
-     *
-     * @param params [varName, argsVar, argIdxVar, senderVar, index]
+     * Emit platform-specific multi-arg resolution code, for example {@code location = getLocation(args, argIdx)}.
      */
-    public void emitPlatformMultiResolution(MethodSpec.Builder spec, TypeName type, String... params) {
+    public void emitPlatformMultiResolution(MethodSpec.Builder spec, TypeName type,
+                                            String varName, String argsVar, CodeBlock index, String senderVar) {
         Entry e = entries.get(type.toString());
         if (e == null || e.platformMultiResolution == null) {
             return;
         }
-        e.platformMultiResolution.accept(spec, params);
+        e.platformMultiResolution.accept(spec, new Resolution(varName, argsVar, index, senderVar));
     }
 
     /**
-     * Emit platform-specific suggestion code.
-     *
-     * @param params [senderCastVar, argsVar, currentVar, tempIdx]
+     * Emit platform-specific suggestion code for a type.
      */
-    public void emitPlatformSuggestions(MethodSpec.Builder spec, TypeName type, String... params) {
+    public void emitPlatformSuggestions(MethodSpec.Builder spec, TypeName type,
+                                        String senderVar, String argsVar, String currentVar) {
         Entry e = entries.get(type.toString());
         if (e == null || e.platformSuggestions == null) {
             return;
         }
-        e.platformSuggestions.accept(spec, params);
+        e.platformSuggestions.accept(spec, new Suggestion(senderVar, argsVar, currentVar));
+    }
+
+    /**
+     * Inputs available to a platform multi-argument resolver. The generated names are provided so the platform only
+     * writes the statement body.
+     */
+    public static final class Resolution {
+        /** Local receiving the resolved value. */
+        public final String varName;
+        /** Argument array. */
+        public final String argsVar;
+        /** Current argument index expression. */
+        public final CodeBlock index;
+        /** Sender variable. */
+        public final String senderVar;
+
+        Resolution(String varName, String argsVar, CodeBlock index, String senderVar) {
+            this.varName = varName;
+            this.argsVar = argsVar;
+            this.index = index;
+            this.senderVar = senderVar;
+        }
+    }
+
+    /**
+     * Inputs available to a platform suggestion provider.
+     */
+    public static final class Suggestion {
+        /** Sender variable. */
+        public final String senderVar;
+        /** Argument array. */
+        public final String argsVar;
+        /** Current input being completed. */
+        public final String currentVar;
+
+        Suggestion(String senderVar, String argsVar, String currentVar) {
+            this.senderVar = senderVar;
+            this.argsVar = argsVar;
+            this.currentVar = currentVar;
+        }
     }
 
     /**
@@ -302,9 +295,9 @@ public final class TypeSupport {
         public final int width;
         final String primitiveDefault;
         final Function<String, CodeBlock> literal;
-        final Function<String, CodeBlock> parseExpr;
-        final BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
-        final BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
+        final Function<CodeBlock, CodeBlock> parseExpr;
+        final BiConsumer<MethodSpec.Builder, Resolution> platformMultiResolution;
+        final BiConsumer<MethodSpec.Builder, Suggestion> platformSuggestions;
 
         private Entry(Builder b) {
             this.type = b.type;
@@ -328,9 +321,9 @@ public final class TypeSupport {
             private final int width;
             String primitiveDefault;
             Function<String, CodeBlock> literal;
-            Function<String, CodeBlock> parseExpr;
-            BiConsumer<MethodSpec.Builder, String[]> platformMultiResolution;
-            BiConsumer<MethodSpec.Builder, String[]> platformSuggestions;
+            Function<CodeBlock, CodeBlock> parseExpr;
+            BiConsumer<MethodSpec.Builder, Resolution> platformMultiResolution;
+            BiConsumer<MethodSpec.Builder, Suggestion> platformSuggestions;
 
             Builder(TypeName type, int width) {
                 this.type = type;
@@ -347,17 +340,17 @@ public final class TypeSupport {
                 return this;
             }
 
-            public Builder parseExpr(Function<String, CodeBlock> f) {
+            public Builder parseExpr(Function<CodeBlock, CodeBlock> f) {
                 this.parseExpr = f;
                 return this;
             }
 
-            public Builder platformMultiResolution(BiConsumer<MethodSpec.Builder, String[]> f) {
+            public Builder platformMultiResolution(BiConsumer<MethodSpec.Builder, Resolution> f) {
                 this.platformMultiResolution = f;
                 return this;
             }
 
-            public Builder platformSuggestions(BiConsumer<MethodSpec.Builder, String[]> f) {
+            public Builder platformSuggestions(BiConsumer<MethodSpec.Builder, Suggestion> f) {
                 this.platformSuggestions = f;
                 return this;
             }

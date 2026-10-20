@@ -1,4 +1,4 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
 import com.palantir.javapoet.MethodSpec;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -75,13 +75,6 @@ final class MethodSlot {
      * @return the local variable name
      */
     String localFor(ParameterModel parameter, String fallback) {
-        return locals.allocate(declaredName(parameter), fallback);
-    }
-
-    /**
-     * @return the identifier the user declared for a parameter, or {@code null} when unavailable
-     */
-    static String declaredName(ParameterModel parameter) {
-        return LocalNames.declaredName(parameter);
+        return locals.allocate(LocalNames.declaredName(parameter), fallback);
     }
 }

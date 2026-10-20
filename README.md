@@ -53,6 +53,8 @@ Add annotations + runtime + processor:
 </plugin>
 ```
 
+Annotation processors require JDK 17+ (Palantir JavaPoet 0.22); generated wrappers target Java 8.
+
 ## Quick Start
 
 ```java

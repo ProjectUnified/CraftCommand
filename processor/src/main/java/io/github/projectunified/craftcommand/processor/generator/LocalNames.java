@@ -1,8 +1,7 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
 import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -14,10 +13,9 @@ import java.util.Set;
  * code itself relies on are given a unique suffix instead.
  */
 public final class LocalNames {
-    private static final Set<String> RESERVED = new HashSet<>(Arrays.asList(
+    private static final Set<String> RESERVED = Set.of(
             "sender", "senderCast", "args", "sub", "subArgs", "argIdx", "argIdxHolder",
-            "instance", "manager", "e", "list", "current", "currentStr", "index", "tempIdx",
-            "ctx", "sb", "i", "j"));
+            "instance", "manager", "ctx", "e", "j");
 
     private final Set<String> used = new HashSet<>(RESERVED);
 

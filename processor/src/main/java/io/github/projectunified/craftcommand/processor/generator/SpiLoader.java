@@ -1,4 +1,4 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
@@ -16,7 +16,7 @@ import java.util.ServiceLoader;
  *   <li>{@link MethodAnnotationHandler} — method-level annotation injection</li>
  * </ul>
  *
- * <p>Type registration: override {@link BaseCommandProcessor#registerTypes}.
+ * <p>Type registration happens in the generator constructor through {@code typeSupport().register(...)}.
  */
 public final class SpiLoader {
 

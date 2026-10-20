@@ -218,6 +218,13 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
     }
 
     @Test
+    public void testResolveSenderSuggest() {
+        assertTrue(execute("resolvesender", "red"));
+        assertEquals(List.of("resolvesender=red"), sender.getMessages());
+        assertSuggestionsContain(tabComplete("resolvesender", ""), "red", "green", "blue");
+    }
+
+    @Test
     public void testGreedyNameSuggest() {
         assertTrue(execute("greedyname", "red green blue"));
         assertEquals(List.of("greedyname=red green blue"), sender.getMessages());
@@ -232,6 +239,6 @@ public class SuggestCommandTest extends AbstractStandaloneCommandTest {
         List<String> suggestions = tabComplete("");
         assertSuggestionsContain(suggestions, "field", "method", "methodnoarg", "methodcontext", "methodsender",
                 "methodsendercurrent", "methodfull", "greedysug", "namesug", "defaultsug",
-                "resolvesug", "greedyname");
+                "resolvesug", "resolvesender", "greedyname");
     }
 }

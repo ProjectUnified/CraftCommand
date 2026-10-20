@@ -168,23 +168,6 @@ public abstract class CommandManager<S> {
     }
 
     /**
-     * Checks if a resolver is registered or provided for the given type.
-     *
-     * @param type the type to check
-     * @return {@code true} if a resolver is available
-     */
-    public boolean hasResolver(Class<?> type) {
-        if (resolvers.containsKey(type)) return true;
-        for (Class<?> key : resolvers.keySet()) {
-            if (key.isAssignableFrom(type)) return true;
-        }
-        for (Function<Class<?>, ArgumentResolver<S, ?>> provider : providers) {
-            if (provider.apply(type) != null) return true;
-        }
-        return false;
-    }
-
-    /**
      * Gets the resolver for a type. Checks exact match, hierarchy, and providers.
      *
      * @throws IllegalArgumentException if no resolver is registered for the type

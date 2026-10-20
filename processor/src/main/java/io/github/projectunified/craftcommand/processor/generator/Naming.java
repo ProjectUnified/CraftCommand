@@ -1,7 +1,11 @@
-package io.github.projectunified.craftcommand.processor;
+package io.github.projectunified.craftcommand.processor.generator;
 
+import com.palantir.javapoet.ArrayTypeName;
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
+
+import java.util.stream.Collectors;
 
 /**
  * Pure naming utilities for generated fields, methods, and identifiers.
@@ -22,9 +26,10 @@ public final class Naming {
      * @return the simple name of a {@link TypeName} (text after the last dot).
      */
     public static String simpleName(TypeName typeName) {
-        String name = typeName.toString();
-        int lastDot = name.lastIndexOf('.');
-        return lastDot == -1 ? name : name.substring(lastDot + 1);
+        if (typeName instanceof ClassName) return ((ClassName) typeName).simpleName();
+        if (typeName instanceof ParameterizedTypeName) return ((ParameterizedTypeName) typeName).rawType().simpleName();
+        if (typeName instanceof ArrayTypeName) return simpleName(((ArrayTypeName) typeName).componentType()) + "[]";
+        return typeName.toString();
     }
 
     /**
@@ -88,11 +93,7 @@ public final class Naming {
      * @return the class path as a single upper camel case identifier
      */
     private static String typePath(ClassName className) {
-        StringBuilder path = new StringBuilder();
-        for (String simpleName : className.simpleNames()) {
-            path.append(camelCase(simpleName));
-        }
-        return path.toString();
+        return className.simpleNames().stream().map(Naming::camelCase).collect(Collectors.joining());
     }
 
     /**

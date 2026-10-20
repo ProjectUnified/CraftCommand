@@ -25,10 +25,6 @@
         </dependency>
         <dependency>
             <groupId>io.github.projectunified</groupId>
-            <artifactId>craftcommand-paper-runtime</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.projectunified</groupId>
             <artifactId>craftcommand-bukkit-annotations</artifactId>
         </dependency>
         <dependency>
@@ -36,14 +32,8 @@
             <artifactId>javapoet</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.avaje</groupId>
-            <artifactId>avaje-prisms</artifactId>
-            <scope>provided</scope>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>io.papermc.paper</groupId>
-            <artifactId>paper-api</artifactId>
+            <groupId>com.google.auto.service</groupId>
+            <artifactId>auto-service</artifactId>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -54,14 +44,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <release>11</release>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>io.avaje</groupId>
-                            <artifactId>avaje-prisms</artifactId>
-                            <version>${avaje.prism.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
+                    <!-- JavaPoet 0.22 is compiled for Java 17 -->
+                    <release>17</release>
                 </configuration>
             </plugin>
         </plugins>

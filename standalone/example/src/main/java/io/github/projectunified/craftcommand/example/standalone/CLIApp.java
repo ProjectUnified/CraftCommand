@@ -15,28 +15,26 @@ public class CLIApp {
         // Register a dynamic provider for Java Enums
         manager.registerProvider(type -> {
             if (type.isEnum()) {
-                return (sender, current, context) -> {
-                    @SuppressWarnings("unchecked")
-                    Class<Enum> enumType = (Class<Enum>) type;
-                    return new ArgumentResolver<Object, Object>() {
-                        @Override
-                        public Object resolve(Object sender, String[] current, String[] context) throws Exception {
-                            if (current.length == 0) return null;
-                            return Enum.valueOf(enumType, current[0]);
-                        }
+                @SuppressWarnings("unchecked")
+                Class<Enum> enumType = (Class<Enum>) type;
+                return new ArgumentResolver<Object, Object>() {
+                    @Override
+                    public Object resolve(Object sender, String[] current, String[] context) {
+                        if (current.length == 0) return null;
+                        return Enum.valueOf(enumType, current[0]);
+                    }
 
-                        @Override
-                        public List<String> suggest(Object sender, String[] current, String[] context) {
-                            String prefix = current.length > 0 ? current[0].toUpperCase() : "";
-                            List<String> result = new ArrayList<>();
-                            for (Enum e : enumType.getEnumConstants()) {
-                                if (e.name().startsWith(prefix)) {
-                                    result.add(e.name());
-                                }
+                    @Override
+                    public List<String> suggest(Object sender, String[] current, String[] context) {
+                        String prefix = current.length > 0 ? current[0].toUpperCase() : "";
+                        List<String> result = new ArrayList<>();
+                        for (Enum e : enumType.getEnumConstants()) {
+                            if (e.name().startsWith(prefix)) {
+                                result.add(e.name());
                             }
-                            return result;
                         }
-                    };
+                        return result;
+                    }
                 };
             }
             return null;
@@ -73,8 +71,8 @@ public class CLIApp {
         executeLine(manager, "calc advanced power 2 10");
         System.out.println("Executing: calc advanced sqrt 16");
         executeLine(manager, "calc advanced sqrt 16");
-        System.out.println("Executing: calc enumop multiply 7 8");
-        executeLine(manager, "calc enumop multiply 7 8");
+        System.out.println("Executing: calc enumop MULTIPLY 7 8");
+        executeLine(manager, "calc enumop MULTIPLY 7 8");
         System.out.println("Suggesting: calc op ");
         suggestLine(manager, "calc op ");
         System.out.println("Suggesting: calc advanced ");
@@ -90,7 +88,7 @@ public class CLIApp {
             System.out.println("Unknown command: " + label);
         } else {
             String[] cmdArgs = Arrays.copyOfRange(parts, 1, parts.length);
-            cmd.execute("Console", cmdArgs);
+            cmd.execute(new TestSender("Console"), cmdArgs);
         }
     }
 
@@ -102,7 +100,7 @@ public class CLIApp {
             System.out.println("Unknown command: " + label);
         } else {
             String[] cmdArgs = Arrays.copyOfRange(parts, 1, parts.length);
-            List<String> suggestions = cmd.tabComplete("Console", cmdArgs);
+            List<String> suggestions = cmd.tabComplete(new TestSender("Console"), cmdArgs);
             System.out.println("Suggestions: " + suggestions);
         }
     }

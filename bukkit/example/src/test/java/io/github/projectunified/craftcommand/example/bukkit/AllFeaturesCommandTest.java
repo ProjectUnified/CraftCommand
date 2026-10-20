@@ -695,6 +695,20 @@ public class AllFeaturesCommandTest extends AbstractBukkitCommandTest {
     }
 
     @Test
+    public void testOptionalLocationOmitted() {
+        PlayerMock player = addPlayer("features.base");
+        server.getCommandMap().getCommand("features").execute(player, "features", new String[]{"optlocation"});
+        assertEquals("loc=null", player.nextMessage());
+    }
+
+    @Test
+    public void testOptionalLocationProvided() {
+        PlayerMock player = addPlayer("features.base");
+        server.getCommandMap().getCommand("features").execute(player, "features", new String[]{"optlocation", "10", "64", "20"});
+        assertEquals("loc=10,64,20", player.nextMessage());
+    }
+
+    @Test
     public void testAddMissingSecondArg() {
         execute("add", "10");
         PlayerMock player = addPlayer("features.base");
