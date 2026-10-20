@@ -10,6 +10,7 @@ io.github.projectunified.craftcommand.paper
 io.github.projectunified.craftcommand.processor
 io.github.projectunified.craftcommand.processor.bukkit
 io.github.projectunified.craftcommand.processor.extension
+io.github.projectunified.craftcommand.processor.generator
 io.github.projectunified.craftcommand.processor.model
 io.github.projectunified.craftcommand.processor.paper
 io.github.projectunified.craftcommand.processor.parser
