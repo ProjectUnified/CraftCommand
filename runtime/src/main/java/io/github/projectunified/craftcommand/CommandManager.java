@@ -40,18 +40,20 @@ public abstract class CommandManager<S> {
     public abstract void register(Object command);
 
     /**
-     * Helper to instantiate a generated command wrapper using MethodHandles.
+     * Instantiates a generated wrapper through the command class's own class loader.
+     *
+     * <p>Resolving the wrapper with that loader keeps addon commands and wrappers in the same class-loader scope.
      *
      * @param commandInstance  the original command instance
      * @param suffix           the wrapper class suffix (e.g. "$StandaloneCommand")
      * @param wrapperClassType the expected wrapper class or interface
      * @param <W>              the wrapper type
      * @return the instantiated wrapper
-     * @throws Throwable if reflection or instantiation fails
+     * @throws Throwable if the wrapper cannot be loaded or constructed
      */
     protected <W> W instantiateWrapper(Object commandInstance, String suffix, Class<W> wrapperClassType) throws Throwable {
         Class<?> commandClass = commandInstance.getClass();
-        Class<?> wrapperClass = Class.forName(commandClass.getName() + suffix);
+        Class<?> wrapperClass = Class.forName(commandClass.getName() + suffix, true, commandClass.getClassLoader());
         MethodHandle handle = MethodHandles.lookup().findConstructor(
                 wrapperClass,
                 MethodType.methodType(void.class, commandClass, CommandManager.class)

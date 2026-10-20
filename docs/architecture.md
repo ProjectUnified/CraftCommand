@@ -98,12 +98,13 @@ to `@Permission(message = ...)` (or their `i18n:` suffix).
 
 ```
 manager.register(new MyCommand())
-  → Class.forName(suffix)
+  → Class.forName(wrapper name, commandClass.getClassLoader())
   → MethodHandle constructor lookup
   → Platform registration (CommandMap / LifecycleEvents / HashMap)
 ```
 
-The runtime modules depend on the JDK only. `bukkit-runtime` and `paper-runtime` also need the server API, which
+The wrapper is resolved with the command class's own class loader, so addon classes and their generated wrappers stay
+in the same class-loader scope. The runtime modules depend on the JDK only. `bukkit-runtime` and `paper-runtime` also need the server API, which
 is `provided`; there are no third-party runtime libraries.
 
 ## Extension Points
@@ -132,7 +133,7 @@ only.
 
 1. **Parse once, generate from models** — core annotations are read in `parser/` only
 2. **Generate, not reflect** — wrappers are plain Java
-3. **MethodHandle instantiation** — no constructor reflection at runtime
+3. **Classloader-aware wrapper lookup** — addon class loaders work; wrapper construction uses a MethodHandle
 4. **Java 8 generated code, JDK 17 processor** — generated wrappers avoid records and var; the processor modules
    compile at Java 17 because Palantir JavaPoet 0.22 is compiled for Java 17
 5. **Minimal generated code** — named locals, no unused helpers, no generated narration

@@ -55,6 +55,9 @@ Add annotations + runtime + processor:
 
 Annotation processors require JDK 17+ (Palantir JavaPoet 0.22); generated wrappers target Java 8.
 
+Generated wrappers are resolved with the command class's own class loader, so commands shipped by addon class loaders
+stay in the same class-loader scope.
+
 ## Quick Start
 
 ```java
