@@ -23,21 +23,19 @@ public final class SpiLoader {
     private SpiLoader() {
     }
 
-    @SuppressWarnings("unchecked")
     public static List<ParameterAnnotationHandler<?>> loadParameterHandlers(ClassLoader classLoader) {
-        List<ParameterAnnotationHandler<?>> list = new ArrayList<>();
-        for (Object o : ServiceLoader.load(ParameterAnnotationHandler.class, classLoader)) {
-            list.add((ParameterAnnotationHandler<?>) o);
+        List<ParameterAnnotationHandler<?>> handlers = new ArrayList<>();
+        for (ParameterAnnotationHandler<?> handler : ServiceLoader.load(ParameterAnnotationHandler.class, classLoader)) {
+            handlers.add(handler);
         }
-        return list;
+        return handlers;
     }
 
-    @SuppressWarnings("unchecked")
     public static List<MethodAnnotationHandler<?>> loadMethodHandlers(ClassLoader classLoader) {
-        List<MethodAnnotationHandler<?>> list = new ArrayList<>();
-        for (Object o : ServiceLoader.load(MethodAnnotationHandler.class, classLoader)) {
-            list.add((MethodAnnotationHandler<?>) o);
+        List<MethodAnnotationHandler<?>> handlers = new ArrayList<>();
+        for (MethodAnnotationHandler<?> handler : ServiceLoader.load(MethodAnnotationHandler.class, classLoader)) {
+            handlers.add(handler);
         }
-        return list;
+        return handlers;
     }
 }

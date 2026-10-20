@@ -52,6 +52,13 @@ public class CalculatorCommandTest extends AbstractStandaloneCommandTest {
     // ═══════════════════════════════════════════════════════════════
 
     @Test
+    public void testSenderResolveWithArgs() {
+        assertTrue(execute("senderargs"));
+        assertEquals("senderargs=args:0", sender.getMessages().get(0));
+        sender.getMessages().clear();
+    }
+
+    @Test
     public void testDefaultAction() {
         assertTrue(execute("5", "10"));
         assertEquals("Result: 15", sender.getMessages().get(0));

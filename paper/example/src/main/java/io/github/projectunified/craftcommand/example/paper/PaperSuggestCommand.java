@@ -23,6 +23,11 @@ public class PaperSuggestCommand {
         return Arrays.asList("circle", "square", "triangle");
     }
 
+    // Signature 2: m(String[] current, String[] context)
+    public Collection<String> getShapesWithContext(String[] current, String[] context) {
+        return Arrays.asList("circle", "square", "triangle", "current=" + current[0], "context=" + context.length);
+    }
+
     // Signature 3: m(CommandSourceStack sender)
     public Collection<String> getShapesWithCSS(CommandSourceStack sender) {
         return Arrays.asList("circle", "square", "triangle");
@@ -39,6 +44,14 @@ public class PaperSuggestCommand {
     }
 
     // Custom sender resolver
+    public List<String> getModes() {
+        return Arrays.asList("basic", "advanced");
+    }
+
+    public String resolveMode(@Suggest("getModes") String mode, double x) {
+        return mode;
+    }
+
     public CustomSender resolveSender(CommandSourceStack sender) {
         return new CustomSender(sender.getSender().getName(), sender.getSender());
     }
@@ -56,6 +69,16 @@ public class PaperSuggestCommand {
     @Command("method")
     public void suggestMethod(CommandSourceStack sender, @Suggest("getShapes") String shape) {
         sender.getSender().sendMessage("method=" + shape);
+    }
+
+    @Command("methodcontext")
+    public void suggestMethodContext(CommandSourceStack sender, @Suggest("getShapesWithContext") String shape) {
+        sender.getSender().sendMessage("methodcontext=" + shape);
+    }
+
+    @Command("resolveparam")
+    public void resolveParam(CommandSourceStack sender, @Resolve("resolveMode") String value) {
+        sender.getSender().sendMessage("resolveparam=" + value);
     }
 
     @Command("methodcss")

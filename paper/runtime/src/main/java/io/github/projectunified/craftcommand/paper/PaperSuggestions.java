@@ -3,6 +3,7 @@ package io.github.projectunified.craftcommand.paper;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import io.github.projectunified.craftcommand.CommandManager;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 
 import java.util.Arrays;
@@ -31,25 +32,21 @@ public final class PaperSuggestions {
     public static CompletableFuture<Suggestions> suggestMatching(CommandContext<CommandSourceStack> ctx,
                                                                 SuggestionsBuilder builder,
                                                                 Function<String[], Collection<String>> provider) {
-        String remainingLower = builder.getRemainingLowerCase();
-        for (String suggestion : provider.apply(splitArgs(builder.getInput(), ctx.getRootNode().getName()))) {
-            if (remainingLower.isEmpty() || suggestion.toLowerCase().startsWith(remainingLower)) {
-                builder.suggest(suggestion);
-            }
+        for (String suggestion : CommandManager.filterSuggestions(
+                provider.apply(arguments(ctx)), builder.getRemaining())) {
+            builder.suggest(suggestion);
         }
         return builder.buildFuture();
     }
 
     /**
-     * Splits raw command input into arguments, dropping the leading command label when present.
+     * The parsed command arguments, dropping the leading command label when present.
      *
-     * @param input    the raw input line
-     * @param rootName the root command name, used to recognise an explicit label
+     * @param ctx the Brigadier command context
      * @return the command arguments
      */
-    private static String[] splitArgs(String input, String rootName) {
-        String[] args = input.split(" ", -1);
-        boolean hasLabel = args.length > 0 && (args[0].startsWith("/") || args[0].equalsIgnoreCase(rootName));
-        return Arrays.copyOfRange(args, hasLabel ? 1 : 0, args.length);
+    public static String[] arguments(CommandContext<CommandSourceStack> ctx) {
+        String[] args = ctx.getInput().split(" ", -1);
+        return Arrays.copyOfRange(args, 1, args.length);
     }
 }

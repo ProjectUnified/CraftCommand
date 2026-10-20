@@ -48,6 +48,25 @@ public class PaperSuggestCommandTest extends AbstractPaperCommandTest {
         assertFalse(suggestions.contains("circle"));
     }
 
+    @Test
+    public void testSignature2_ContextAndCurrent() throws Exception {
+        PlayerMock player = server.addPlayer();
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        List<String> suggestions = getSuggestions(dispatcher, source(player), "psugsug methodcontext ");
+        assertTrue(suggestions.contains("circle"));
+        assertTrue(suggestions.contains("current="));
+        assertTrue(suggestions.contains("context=2"));
+    }
+
+    @Test
+    public void testResolverParamSuggestions() throws Exception {
+        PlayerMock player = server.addPlayer();
+        CommandDispatcher<CommandSourceStack> dispatcher = register(PaperSuggestCommand.class);
+        assertTrue(getSuggestions(dispatcher, source(player), "psugsug resolveparam ").contains("basic"));
+        dispatcher.execute("psugsug resolveparam basic 1.0", source(player));
+        assertEquals("resolveparam=basic", player.nextMessage());
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // Signature 3: m(CommandSourceStack sender)
     // ═══════════════════════════════════════════════════════════════

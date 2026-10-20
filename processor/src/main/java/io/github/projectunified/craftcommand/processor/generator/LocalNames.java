@@ -14,7 +14,7 @@ import java.util.Set;
  */
 public final class LocalNames {
     private static final Set<String> RESERVED = Set.of(
-            "sender", "senderCast", "args", "sub", "subArgs", "argIdx", "argIdxHolder",
+            "sender", "senderCast", "args", "subArgs", "argIdx", "argIdxHolder",
             "instance", "manager", "ctx", "e", "j");
 
     private final Set<String> used = new HashSet<>(RESERVED);

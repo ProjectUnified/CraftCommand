@@ -65,6 +65,10 @@ public class CalculatorCommand {
         return new CustomSender(sender.toString(), sender);
     }
 
+    public CustomSender resolveSenderWithArgs(Object sender, String[] args) {
+        return new CustomSender("args:" + args.length, sender);
+    }
+
     /**
      * Local resolver for Point type (multi-arg, width=2).
      */
@@ -251,6 +255,11 @@ public class CalculatorCommand {
     @Command("whoami")
     public void whoAmI(@Resolve("resolveSender") CustomSender sender) {
         sender.sendMessage("You are: " + sender.getName());
+    }
+
+    @Command("senderargs")
+    public void senderArgs(@Resolve("resolveSenderWithArgs") CustomSender sender) {
+        sender.sendMessage("senderargs=" + sender.getName());
     }
 
     // ── @ValidateWith Feature Demo ──

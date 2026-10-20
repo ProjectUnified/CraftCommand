@@ -6,7 +6,6 @@ import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.TypeName;
 import java.util.Arrays;
-import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -35,19 +34,20 @@ final class ExecutionGenerator {
         this.processor = processor;
     }
 
-
     protected void buildExecutionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, String instanceVar, CommandModel rootModel, String returnStatement) {
         if (!model.getSubcommands().isEmpty() || !model.getNestedSubcommands().isEmpty()) {
             methodSpec.beginControlFlow("if ($L.length >= 1)", argsVar);
-            methodSpec.addStatement("String sub = $L[0].toLowerCase()", argsVar);
-            methodSpec.beginControlFlow("switch (sub)");
+            if (!model.getNestedSubcommands().isEmpty()) {
+                methodSpec.addStatement("$T[] subArgs = $T.copyOfRange($L, 1, $L.length)",
+                        String.class, Arrays.class, argsVar, argsVar);
+            }
+            methodSpec.beginControlFlow("switch ($L[0].toLowerCase())", argsVar);
 
             // 1. Nested subcommand classes
             for (CommandModel child : model.getNestedSubcommands()) {
-                BaseCommandGenerator.beginCaseBlock(methodSpec, processor.collectLoweredNames(child));
+                BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(child));
                 processor.onBeforeExecute(methodSpec, child.getElement(), returnStatement);
                 String helperMethodName = Naming.executeHelper(child.getClassName());
-                methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
                 methodSpec.addStatement("$L(sender, subArgs)", helperMethodName);
                 methodSpec.addStatement("$L", returnStatement);
                 methodSpec.endControlFlow();
@@ -55,7 +55,7 @@ final class ExecutionGenerator {
 
             // 2. Subcommand methods
             for (MethodModel sub : model.getSubcommands()) {
-                BaseCommandGenerator.beginCaseBlock(methodSpec, processor.collectLoweredNames(sub));
+                BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(sub));
                 processor.onBeforeExecute(methodSpec, sub.getElement(), returnStatement);
                 buildMethodExecution(methodSpec, model, sub, argsVar, 1, instanceVar, rootModel);
                 methodSpec.addStatement("$L", returnStatement);
@@ -75,15 +75,14 @@ final class ExecutionGenerator {
         }
     }
 
-
     protected void buildMethodExecution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar, int initialOffset, String instanceVar, CommandModel rootModel) {
         // 1. Resolve and Cast Sender Parameter
         ParameterModel senderParam = method.getSenderParameter();
         TypeName senderParamTypeName = TypeName.get(senderParam.getType());
-        String senderVarName = senderParamTypeName.toString().equals(processor.getSenderTypeName().toString()) ? "sender" : "senderCast";
-        MethodSlot slot = new MethodSlot(methodSpec, classModel, method, rootModel, instanceVar, senderVarName);
+        String senderVarName = senderParamTypeName.equals(processor.getSenderTypeName()) ? "sender" : "senderCast";
+        MethodSlot slot = new MethodSlot(methodSpec, classModel, method, rootModel, senderVarName);
 
-        resolveSender(slot, senderParam, senderParamTypeName);
+        processor.generateSenderResolution(methodSpec, rootModel, senderParam, senderParamTypeName, senderVarName);
         runSPIHandlers(methodSpec, method, instanceVar, senderVarName, senderParam);
 
         // 2. Minimum Argument Count Check
@@ -106,10 +105,9 @@ final class ExecutionGenerator {
 
         int totalRequired = staticRequiredCount + initialOffset;
         if (staticRequiredCount > 0) {
-            methodSpec.beginControlFlow("if ($L.length < $L)", argsVar, totalRequired)
-                    .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
-                            CommandException.class, "usage", "Usage: %s", processor.getUsage(method))
-                    .endControlFlow();
+            methodSpec.beginControlFlow("if ($L.length < $L)", argsVar, totalRequired);
+            BaseCommandGenerator.addCommandError(methodSpec, "usage", "Usage: %s", processor.getUsage(method));
+            methodSpec.endControlFlow();
         }
 
         // 3. Resolve Parameters
@@ -131,61 +129,6 @@ final class ExecutionGenerator {
         methodSpec.addStatement("$L", BaseCommandGenerator.call(instanceVar, method.getMethodName(), callArgs));
     }
 
-
-    void resolveSender(MethodSlot slot, ParameterModel senderParam, TypeName senderParamTypeName) {
-        String resolveName = senderParam.getResolveName();
-
-        if (resolveName != null && !resolveName.isEmpty()) {
-            MethodModel senderResolver = senderParam.getResolverMethod();
-            if (senderResolver != null) {
-                String resolverInstanceExpr = processor.getResolverInstanceExpr(senderResolver, slot.rootModel());
-                if (resolverInstanceExpr == null) {
-                    slot.methodSpec().addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                            senderParamTypeName, slot.senderVarName(), senderParamTypeName, senderParamTypeName);
-                } else {
-                    String resolverMethodName = senderResolver.getElement().getSimpleName().toString();
-                    int resolverParamCount = senderResolver.getParameters().size();
-                    List<CodeBlock> resolveArgs = new ArrayList<>();
-                    if (resolverParamCount >= 1) resolveArgs.add(CodeBlock.of("sender"));
-                    if (resolverParamCount == 2) resolveArgs.add(CodeBlock.of("sender"));
-                    if (resolverParamCount >= 3) {
-                        resolveArgs.add(CodeBlock.of("new String[0]"));
-                        resolveArgs.add(CodeBlock.of("sender"));
-                    }
-                    CodeBlock resolveExpr = BaseCommandGenerator.call(resolverInstanceExpr, resolverMethodName,
-                            resolveArgs.toArray(new CodeBlock[0]));
-                    TypeName resolverReturnType = TypeName.get(senderResolver.getElement().getReturnType());
-                    if (resolverReturnType.equals(senderParamTypeName)) {
-                        slot.methodSpec().addStatement("$T $L = $L", senderParamTypeName, slot.senderVarName(), resolveExpr);
-                    } else {
-                        slot.methodSpec().addStatement("$T $L = ($T) $L", senderParamTypeName, slot.senderVarName(), senderParamTypeName, resolveExpr);
-                    }
-                }
-            } else {
-                slot.methodSpec().addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                        senderParamTypeName, slot.senderVarName(), senderParamTypeName, senderParamTypeName);
-            }
-        } else if (resolveName != null) {
-            slot.methodSpec().addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                    senderParamTypeName, slot.senderVarName(), senderParamTypeName, senderParamTypeName);
-        } else {
-            if (!slot.senderVarName().equals("sender")) {
-                if (!processor.isSenderBaseType(senderParamTypeName)) {
-                    if (processor.isSenderType(senderParamTypeName)) {
-                        String castMethodName = "as" + Naming.simpleName(senderParamTypeName);
-                        slot.methodSpec().addStatement("$T $L = $L(sender)", senderParamTypeName, slot.senderVarName(), castMethodName);
-                    } else {
-                        slot.methodSpec().addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                                senderParamTypeName, slot.senderVarName(), senderParamTypeName, senderParamTypeName);
-                    }
-                } else {
-                    slot.methodSpec().addStatement("$T $L = sender", processor.getSenderTypeName(), slot.senderVarName());
-                }
-            }
-        }
-    }
-
-
     void resolveParameter(MethodSlot slot, ArgCursor cursor, ParameterModel p, String varName, int paramIndex) {
         TypeName pTypeName = TypeName.get(p.getType());
 
@@ -202,10 +145,10 @@ final class ExecutionGenerator {
             TypeName boxedComponent = componentType.isPrimitive() ? componentType.box() : componentType;
 
             if (cursor.isDeclared() && !p.isOptional()) {
-                slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(1))
-                        .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
-                                CommandException.class, "missing-argument", "Missing arguments for parameter: %s", p.getName())
-                        .endControlFlow();
+                slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(1));
+                BaseCommandGenerator.addCommandError(slot.methodSpec(), "missing-argument",
+                        "Missing arguments for parameter: %s", p.getName());
+                slot.methodSpec().endControlFlow();
             }
 
             slot.methodSpec().addStatement("$T[] $L_raw = $T.copyOfRange($L, $L, $L.length)", String.class, varName, Arrays.class, cursor.argsVariable(), cursor.index(), cursor.argsVariable());
@@ -223,7 +166,7 @@ final class ExecutionGenerator {
 
         // 4. Greedy String or Object
         if (p.isGreedy()) {
-            if (pTypeName.toString().equals("java.lang.String")) {
+            if (pTypeName.equals(ClassName.get(String.class))) {
                 if (p.isOptional()) {
                     String defVal = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
                     slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : String.join($S, $L)",
@@ -249,10 +192,10 @@ final class ExecutionGenerator {
         if (processor.typeSupport().isBuiltIn(pTypeName)) {
             int width = processor.typeSupport().getWidth(pTypeName);
             if (cursor.isDeclared() && !p.isOptional()) {
-                slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(width))
-                        .addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
-                                CommandException.class, "missing-argument", "Missing arguments for parameter: %s", p.getName())
-                        .endControlFlow();
+                slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(width));
+                BaseCommandGenerator.addCommandError(slot.methodSpec(), "missing-argument",
+                        "Missing arguments for parameter: %s", p.getName());
+                slot.methodSpec().endControlFlow();
             }
 
             if (width > 1) {
@@ -294,7 +237,6 @@ final class ExecutionGenerator {
                 cursor.argsVariable(), cursor.runtimeCursor(), p.getName(), p.isOptional(), defValLiteral);
     }
 
-
     /**
      * Emits the resolution of a platform type that spans several arguments, then consumes them.
      */
@@ -303,7 +245,6 @@ final class ExecutionGenerator {
         processor.typeSupport().emitPlatformMultiResolution(methodSpec, pTypeName, varName, argsVar, cursor.index(),
                 senderVarName);
     }
-
 
     void resolveResolverParameters(MethodSlot slot, ArgCursor cursor, MethodModel resolverModel, String varName, ParameterModel parentParam) {
         ExecutableElement resolverElement = resolverModel.getElement();
@@ -331,7 +272,6 @@ final class ExecutionGenerator {
         generateResolverInvocation(slot.methodSpec(), resolverModel, slot.rootModel(), returnType, varName, resolverSenderExpr, argNames, includeSender);
     }
 
-
     // ── Tab Completion & Suggestions ──
 
     void generateResolverInvocation(MethodSpec.Builder methodSpec, MethodModel resolverModel, CommandModel rootModel, TypeName pTypeName, String varName, CodeBlock senderExpr, List<String> resolverArgVarNames, boolean includeSender) {
@@ -354,7 +294,6 @@ final class ExecutionGenerator {
         }
     }
 
-
     // ── SPI Invocation Helpers ──
 
     private void runSPIHandlers(MethodSpec.Builder methodSpec, MethodModel method, String instanceVar, String senderVarName, ParameterModel senderParam) {
@@ -367,7 +306,6 @@ final class ExecutionGenerator {
         runParameterAnnotationHandlers(senderParam, senderVarName, instanceVar, "sender", methodSpec);
     }
 
-
     void runParameterAnnotationHandlers(ParameterModel param, String varName, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
         VariableElement element = param.getElement();
         for (ParameterAnnotationHandler<?> handler : processor.parameterHandlers()) {
@@ -378,10 +316,12 @@ final class ExecutionGenerator {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private <A extends Annotation> void invokeParameterHandler(ParameterAnnotationHandler<A> handler, Annotation annotation, ParameterModel parameter, String varName, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
         handler.handle((A) annotation, parameter, varName, instanceExpr, senderVar, methodSpec);
     }
 
+    @SuppressWarnings("unchecked")
     private <A extends Annotation> void invokeMethodHandler(MethodAnnotationHandler<A> handler, Annotation annotation, MethodModel method, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
         handler.handle((A) annotation, method, instanceExpr, senderVar, methodSpec);
     }

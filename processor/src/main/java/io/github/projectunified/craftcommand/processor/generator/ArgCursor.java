@@ -3,6 +3,8 @@ package io.github.projectunified.craftcommand.processor.generator;
 import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 
+import java.util.Arrays;
+
 /**
  * Emits the argument access expressions of one generated command slot.
  *
@@ -63,7 +65,7 @@ final class ArgCursor {
      * @return the slice expression
      */
     CodeBlock sliceFromHere() {
-        return CodeBlock.of("$T.copyOfRange($L, $L, $L.length)", java.util.Arrays.class, argsVar, index(), argsVar);
+        return CodeBlock.of("$T.copyOfRange($L, $L, $L.length)", Arrays.class, argsVar, index(), argsVar);
     }
 
     /**

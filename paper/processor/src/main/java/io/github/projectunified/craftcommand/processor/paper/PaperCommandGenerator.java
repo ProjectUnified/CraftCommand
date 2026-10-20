@@ -9,6 +9,7 @@ import com.palantir.javapoet.TypeSpec;
 import io.github.projectunified.craftcommand.bukkit.annotation.Permission;
 import com.palantir.javapoet.WildcardTypeName;
 import io.github.projectunified.craftcommand.exception.CommandException;
+import io.github.projectunified.craftcommand.processor.TypeNames;
 import io.github.projectunified.craftcommand.processor.generator.BaseCommandGenerator;
 import io.github.projectunified.craftcommand.processor.generator.Naming;
 import io.github.projectunified.craftcommand.processor.generator.TypeSupport;
@@ -43,7 +44,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
     final ClassName paperSuggestionsClass = ClassName.get("io.github.projectunified.craftcommand.paper", "PaperSuggestions");
 
-    private final Map<String, Function<Boolean, CodeBlock>> brigadierArgTypes = new HashMap<>();
+    private final Map<String, CodeBlock> brigadierArgTypes = new HashMap<>();
     private final Map<String, Function<String, CodeBlock>> brigadierRetrievals = new HashMap<>();
 
     public PaperCommandGenerator(ProcessingEnvironment processingEnvironment) {
@@ -74,7 +75,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         ClassName playerResolverClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver");
         ClassName finePositionClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver");
 
-        brigadierArgTypes.put("java.lang.String", g -> CodeBlock.of("$T.$L()", strArgClass, g ? "greedyString" : "string"));
+        brigadierArgTypes.put("java.lang.String", CodeBlock.of("$T.string()", strArgClass));
         brigadierRetrievals.put("java.lang.String", a -> CodeBlock.of("$T.getString(ctx, $S)", strArgClass, a));
 
         registerBrigadierType("int", "java.lang.Integer", intArgClass, "integer", "getInteger");
@@ -83,11 +84,11 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         registerBrigadierType("float", "java.lang.Float", fltArgClass, "floatArg", "getFloat");
         registerBrigadierType("boolean", "java.lang.Boolean", boolArgClass, "bool", "getBool");
 
-        brigadierArgTypes.put("org.bukkit.entity.Player", g -> CodeBlock.of("$L.player()", argumentTypesClass));
+        brigadierArgTypes.put("org.bukkit.entity.Player", CodeBlock.of("$L.player()", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.entity.Player", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()", a, playerResolverClass));
-        brigadierArgTypes.put("org.bukkit.World", g -> CodeBlock.of("$L.world()", argumentTypesClass));
+        brigadierArgTypes.put("org.bukkit.World", CodeBlock.of("$L.world()", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.World", a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, worldClass));
-        brigadierArgTypes.put("org.bukkit.Location", g -> CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
+        brigadierArgTypes.put("org.bukkit.Location", CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.Location", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())", a, finePositionClass));
     }
 
@@ -102,7 +103,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     }
 
     private void registerBrigadierType(String primitive, String wrapper, ClassName argClass, String argMethod, String retrievalMethod) {
-        Function<Boolean, CodeBlock> argType = g -> CodeBlock.of("$T.$L()", argClass, argMethod);
+        CodeBlock argType = CodeBlock.of("$T.$L()", argClass, argMethod);
         Function<String, CodeBlock> retrieval = a -> CodeBlock.of("$T.$L(ctx, $S)", argClass, retrievalMethod, a);
         brigadierArgTypes.put(primitive, argType);
         brigadierArgTypes.put(wrapper, argType);
@@ -255,9 +256,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     private int getParameterWidth(ParameterModel param, MethodModel method) {
         MethodModel resolverModel = param.getResolverMethod();
         if (resolverModel != null) return getLocalResolverMaxWidth(resolverModel, method);
-        TypeName typeName = TypeName.get(param.getType());
-        if (isPlatformBuiltInType(typeName)) return getBuiltInWidth(typeName);
-        return 1;
+        return getBuiltInWidth(TypeName.get(param.getType()));
     }
 
     private void buildNodeChainRecursive(MethodSpec.Builder spec, String currentBuilderVar, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int index) {
@@ -288,17 +287,18 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                     nextBuilderVar, commandsClass, node.nodeName, node.typeExpression);
 
             ParameterModel p = node.parameter;
-            boolean needsSuggestions = node.suggestProvider != null || TypeName.get(p.getType()).toString().equals("boolean") || TypeName.get(p.getType()).toString().equals("java.lang.Boolean");
+            TypeName parameterType = TypeName.get(p.getType());
+            boolean needsSuggestions = node.suggestProvider != null || TypeSupport.isBooleanType(parameterType);
             if (!needsSuggestions && node.resolverParamType != null) {
                 TypeName rpType = node.resolverParamType;
-                if (rpType.toString().equals("boolean") || rpType.toString().equals("java.lang.Boolean")) {
+                if (TypeSupport.isBooleanType(rpType)) {
                     needsSuggestions = true;
-                } else if (isPlatformBuiltInType(rpType)) {
+                } else if (typeSupport().hasPlatformSuggestions(rpType)) {
                     needsSuggestions = true;
                 }
             }
 
-            if (needsSuggestions && node.isLastForParameter) {
+            if (needsSuggestions && (node.isLastForParameter || node.resolverParamType != null)) {
                 if (node.suggestProvider != null) {
                     if (node.suggestField) {
                         spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $T.filterSuggestions($L.$L, args[args.length - 1])))",
@@ -310,7 +310,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                         if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
                             ParameterModel firstParam = suggestMethod.getParameters().get(0);
                             TypeName firstParamType = TypeName.get(firstParam.getType());
-                            if (!firstParamType.toString().equals(getSenderTypeName().toString())) {
+                            if (!firstParamType.equals(getSenderTypeName())) {
                                 String firstParamResolve = firstParam.getResolveName();
                                 if (firstParamResolve != null) {
                                     if (!firstParamResolve.isEmpty()) {
@@ -382,9 +382,9 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
 
     private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, boolean isGreedy) {
         if (isGreedy) return CodeBlock.of("$T.greedyString()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
-        Function<Boolean, CodeBlock> provider = brigadierArgTypes.get(typeName.toString());
-        return provider != null
-                ? provider.apply(false)
+        CodeBlock argType = brigadierArgTypes.get(typeName.toString());
+        return argType != null
+                ? argType
                 : CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"));
     }
 
@@ -397,17 +397,22 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         int argCount = suggestMethod.getParameters().size();
         if (argCount == 0) {
             return BaseCommandGenerator.call(instanceExpr, suggestProvider);
-        } else if (argCount == 1) {
+        }
+        CodeBlock current = CodeBlock.of("new String[]{args[args.length - 1]}");
+        if (argCount == 1) {
             TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
-            if (isSenderParam(TypeName.get(firstParamType), method)) {
-                return BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr);
-            } else {
-                return BaseCommandGenerator.call(instanceExpr, suggestProvider, CodeBlock.of("args"));
-            }
-        } else if (argCount == 2) {
-            return BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr, CodeBlock.of("args"));
-        } else if (argCount == 3) {
-            return BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr, CodeBlock.of("args"), CodeBlock.of("args"));
+            return TypeNames.isStringArray(firstParamType)
+                    ? BaseCommandGenerator.call(instanceExpr, suggestProvider, current)
+                    : BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr);
+        }
+        if (argCount == 2) {
+            TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
+            return TypeNames.isStringArray(firstParamType)
+                    ? BaseCommandGenerator.call(instanceExpr, suggestProvider, current, CodeBlock.of("args"))
+                    : BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr, current);
+        }
+        if (argCount == 3) {
+            return BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr, current, CodeBlock.of("args"));
         }
         return BaseCommandGenerator.call(instanceExpr, suggestProvider);
     }

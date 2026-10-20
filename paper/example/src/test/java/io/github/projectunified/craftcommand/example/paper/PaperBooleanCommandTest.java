@@ -31,6 +31,13 @@ public class PaperBooleanCommandTest extends AbstractPaperCommandTest {
     }
 
     @Test
+    public void testCustomManagerResolver() throws Exception {
+        PlayerMock player = server.addPlayer();
+        register(PaperBooleanCommand.class).execute("pbool custom hello", source(player));
+        assertEquals("custom=hello,ctx=2", player.nextMessage());
+    }
+
+    @Test
     public void testResolvedSenderSuggestions() throws Exception {
         PlayerMock player = server.addPlayer();
         CommandDispatcher<CommandSourceStack> dispatcher = register(PaperBooleanCommand.class);

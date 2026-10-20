@@ -73,7 +73,9 @@ public void msg(Player sender, @Greedy String message) { ...}
 
 Binds parameter to a suggestion provider for tab-completion.
 
-Can reference a **field** (returns `List<String>`) or a **method** (accepts 0-3 params: sender, args, current).
+Can reference a **field** (returns `List<String>`) or a **method**. A provider method may take no parameters,
+`(String[] current)`, `(sender)`, `(sender, String[] current)`, `(String[] current, String[] context)`, or
+`(sender, String[] current, String[] context)`.
 
 ```java
 // Field-based suggestions
@@ -82,7 +84,7 @@ public final List<String> modes = Arrays.asList("normal", "silent", "instant");
 public void setMode(Player sender, @Suggest("modes") String mode) { ...}
 
 // Method-based suggestions
-public List<String> getNearPlayers(Player sender, String[] args, String current) { ...}
+public List<String> getNearPlayers(Player sender, String[] current, String[] context) { ...}
 
 public void tpNear(Player sender, @Suggest("getNearPlayers") Player target) { ...}
 ```

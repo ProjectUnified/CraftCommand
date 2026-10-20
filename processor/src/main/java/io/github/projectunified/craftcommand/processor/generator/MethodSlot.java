@@ -17,7 +17,6 @@ final class MethodSlot {
     private final CommandModel classModel;
     private final MethodModel method;
     private final CommandModel rootModel;
-    private final String instanceVar;
     private final String senderVarName;
     private final LocalNames locals = new LocalNames();
 
@@ -26,16 +25,14 @@ final class MethodSlot {
      * @param classModel    the command class whose method is generated
      * @param method        the command method being generated
      * @param rootModel     the root command model, used to reach instances of enclosing classes
-     * @param instanceVar   the expression referring to the command instance
      * @param senderVarName the local holding the command sender
      */
     MethodSlot(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel,
-               String instanceVar, String senderVarName) {
+               String senderVarName) {
         this.methodSpec = methodSpec;
         this.classModel = classModel;
         this.method = method;
         this.rootModel = rootModel;
-        this.instanceVar = instanceVar;
         this.senderVarName = senderVarName;
     }
 
@@ -55,16 +52,8 @@ final class MethodSlot {
         return rootModel;
     }
 
-    String instanceVar() {
-        return instanceVar;
-    }
-
     String senderVarName() {
         return senderVarName;
-    }
-
-    LocalNames locals() {
-        return locals;
     }
 
     /**

@@ -45,17 +45,15 @@ final class CommandParser {
      * @return the command model, or {@code null} when the class cannot be parsed
      */
     CommandModel parse(TypeElement typeElement) {
-        if (typeElement.getAnnotation(Command.class) == null) {
+        Command commandAnn = typeElement.getAnnotation(Command.class);
+        if (commandAnn == null) {
             messager.printMessage(Diagnostic.Kind.ERROR, "Class must be annotated with @Command", typeElement);
             return null;
         }
-        return parseClass(typeElement);
+        return parseClass(typeElement, commandAnn);
     }
 
-    private CommandModel parseClass(TypeElement typeElement) {
-        Command commandAnn = typeElement.getAnnotation(Command.class);
-        if (commandAnn == null) return null;
-
+    private CommandModel parseClass(TypeElement typeElement, Command commandAnn) {
         ClassName className = ClassName.get(typeElement);
         String packageName = className.packageName();
 
@@ -165,8 +163,9 @@ final class CommandParser {
                 }
             } else if (enclosed instanceof TypeElement) {
                 TypeElement innerClass = (TypeElement) enclosed;
-                if (innerClass.getAnnotation(Command.class) != null) {
-                    CommandModel nestedModel = parseClass(innerClass);
+                Command innerCommand = innerClass.getAnnotation(Command.class);
+                if (innerCommand != null) {
+                    CommandModel nestedModel = parseClass(innerClass, innerCommand);
                     if (nestedModel != null) {
                         nestedSubcommands.add(nestedModel);
                     }

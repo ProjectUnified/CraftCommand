@@ -7,7 +7,9 @@ import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
+import io.github.projectunified.craftcommand.processor.TypeNames;
 import com.palantir.javapoet.TypeSpec;
+import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.extension.MethodAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.extension.ParameterAnnotationHandler;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -18,10 +20,6 @@ import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.ArrayType;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
-import javax.lang.model.type.TypeMirror;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -164,7 +162,6 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         generateSubcommandClassExecutors(typeSpec, model, model);
         suggestions.buildParameterSuggestions(typeSpec, model, model);
         buildSenderCastHelpers(typeSpec, model);
-        suggestions.buildBooleanSuggestionHelper(typeSpec, model);
         generatePlatformHelpers(typeSpec, model);
     }
 
@@ -201,6 +198,47 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         return null;
     }
 
+    /**
+     * Emits the resolution of the command sender: a named {@code @Resolve} method, a registered sender resolver,
+     * or a platform cast.
+     */
+    public void generateSenderResolution(MethodSpec.Builder spec, CommandModel rootModel, ParameterModel senderParam,
+                                         TypeName senderType, String senderVar) {
+        String resolveName = senderParam.getResolveName();
+        MethodModel resolver = resolveName != null && !resolveName.isEmpty() ? senderParam.getResolverMethod() : null;
+        String resolverInstance = resolver != null ? getResolverInstanceExpr(resolver, rootModel) : null;
+
+        if (resolverInstance != null) {
+            List<CodeBlock> args = new ArrayList<>();
+            for (ParameterModel p : resolver.getParameters()) {
+                args.add(TypeNames.isStringArray(p.getType()) ? CodeBlock.of("new String[0]") : CodeBlock.of("sender"));
+            }
+            CodeBlock invocation = call(resolverInstance, resolver.getElement().getSimpleName().toString(),
+                    args.toArray(new CodeBlock[0]));
+            TypeName returnType = TypeName.get(resolver.getElement().getReturnType());
+            if (returnType.equals(senderType)) {
+                spec.addStatement("$T $L = $L", senderType, senderVar, invocation);
+            } else {
+                spec.addStatement("$T $L = ($T) $L", senderType, senderVar, senderType, invocation);
+            }
+        } else if (resolveName != null) {
+            generateManagerSenderResolution(spec, senderType, senderVar);
+        } else if (!senderVar.equals("sender")) {
+            if (isSenderBaseType(senderType)) {
+                spec.addStatement("$T $L = sender", getSenderTypeName(), senderVar);
+            } else if (isSenderType(senderType)) {
+                spec.addStatement("$T $L = $L(sender)", senderType, senderVar, "as" + Naming.simpleName(senderType));
+            } else {
+                generateManagerSenderResolution(spec, senderType, senderVar);
+            }
+        }
+    }
+
+    private static void generateManagerSenderResolution(MethodSpec.Builder spec, TypeName senderType, String senderVar) {
+        spec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
+                senderType, senderVar, senderType, senderType);
+    }
+
     public void generateExecuteMethodBody(MethodSpec.Builder executeSpec, CommandModel model, String returnStatement) {
         executeSpec.beginControlFlow("try");
         execution.buildExecutionRouting(executeSpec, model, "args", "instance", model, returnStatement);
@@ -227,7 +265,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
                     .returns(ParameterizedTypeName.get(List.class, String.class))
                     .addParameter(getSenderTypeName(), "sender")
                     .addParameter(String[].class, "args");
-            buildSuggestionRouting(suggestMethodSpec, child, "args", childInstanceVar, rootModel);
+            buildSuggestionRouting(suggestMethodSpec, child, "args", rootModel);
             typeSpec.addMethod(suggestMethodSpec.build());
 
             generateSubcommandClassExecutors(typeSpec, child, rootModel);
@@ -237,8 +275,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     /**
      * Generates tab completion routing for a command class, delegating to the suggestion generator.
      */
-    protected void buildSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, String instanceVar, CommandModel rootModel) {
-        suggestions.buildSuggestionRouting(methodSpec, model, argsVar, instanceVar, rootModel);
+    protected void buildSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, CommandModel rootModel) {
+        suggestions.buildSuggestionRouting(methodSpec, model, argsVar, rootModel);
     }
 
     /**
@@ -249,12 +287,11 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     /**
-     * Generates the suggestion helpers of type-driven suggestions (boolean / platform built-ins) and the boolean
-     * helper. Platforms that inline custom providers call this from their helper step.
+     * Generates the suggestion helpers of type-driven suggestions (boolean / platform built-ins). Platforms that
+     * inline custom providers call this from their helper step.
      */
     protected void buildTypeSuggestionHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
         suggestions.buildTypeSuggestionHelpers(typeSpec, model, model);
-        suggestions.buildBooleanSuggestionHelper(typeSpec, model);
     }
 
     protected String getParameterSuggestionMethodName(CommandModel classModel, MethodModel method, int index) {
@@ -365,11 +402,6 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         return typeSupport.getWidth(typeName);
     }
 
-    public boolean isPlatformBuiltInType(TypeName typeName) {
-        TypeSupport.Entry e = typeSupport.get(typeName);
-        return e != null && (e.platformMultiResolution != null || e.platformSuggestions != null);
-    }
-
     public boolean isSenderType(TypeName typeName) {
         return senderTypeRegistry.isSenderType(typeName);
     }
@@ -379,7 +411,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     public boolean isSenderParam(TypeName typeName, MethodModel method) {
-        if (method != null && typeName.toString().equals(TypeName.get(method.getSenderType()).toString())) return true;
+        if (method != null && typeName.equals(TypeName.get(method.getSenderType()))) return true;
         if (isSenderBaseType(typeName)) return true;
         return isSenderType(typeName);
     }
@@ -398,7 +430,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         if (commandMethod != null) {
             TypeName firstParamType = TypeName.get(resolverMethod.getParameters().get(0).asType());
             TypeName commandSenderType = TypeName.get(commandMethod.getSenderType());
-            if (firstParamType.toString().equals(commandSenderType.toString())) return true;
+            if (firstParamType.equals(commandSenderType)) return true;
         }
         return isSenderParam(TypeName.get(resolverMethod.getParameters().get(0).asType()), commandMethod);
     }
@@ -424,7 +456,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     public CodeBlock getResolverSenderExpression(ExecutableElement localResolver, String rawSourceExpr, String castSenderVar, TypeName commandSenderType) {
         if (localResolver.getParameters().isEmpty()) return CodeBlock.of("$L", castSenderVar);
         TypeName firstParamType = TypeName.get(localResolver.getParameters().get(0).asType());
-        if (firstParamType.toString().equals(commandSenderType.toString())) return CodeBlock.of("$L", castSenderVar);
+        if (firstParamType.equals(commandSenderType)) return CodeBlock.of("$L", castSenderVar);
         if (isSenderBaseType(firstParamType)) return CodeBlock.of("$L", rawSourceExpr);
         if (isSenderType(firstParamType)) {
             return CodeBlock.of("$L($L)", "as" + Naming.simpleName(firstParamType), rawSourceExpr);
@@ -471,29 +503,6 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         }
     }
 
-    boolean hasBooleanParameter(CommandModel model) {
-        if (model.getDefaultMethod() != null && hasBooleanParameter(model.getDefaultMethod())) return true;
-        for (MethodModel sub : model.getSubcommands()) {
-            if (hasBooleanParameter(sub)) return true;
-        }
-        for (CommandModel child : model.getNestedSubcommands()) {
-            if (hasBooleanParameter(child)) return true;
-        }
-        return false;
-    }
-
-    boolean hasBooleanParameter(MethodModel method) {
-        for (ParameterModel p : method.getParameters()) {
-            TypeName typeName = TypeName.get(p.getType());
-            if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) {
-                return true;
-            }
-            MethodModel resolver = p.getResolverMethod();
-            if (resolver != null && hasBooleanParameter(resolver)) return true;
-        }
-        return false;
-    }
-
     protected CodeBlock buildAliasesExpression(CommandModel model) {
         if (model.getAliases().isEmpty()) {
             return CodeBlock.of("$T.emptyList()", Collections.class);
@@ -504,7 +513,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         return stringList(model.getAliases());
     }
 
-    List<String> collectLoweredNames(CommandModel child) {
+    static List<String> collectLoweredNames(CommandModel child) {
         List<String> names = new ArrayList<>();
         names.add(child.getCommandName().toLowerCase());
         for (String alias : child.getAliases()) {
@@ -558,15 +567,6 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         methodSpec.beginControlFlow("case $S:", names.get(names.size() - 1));
     }
 
-    boolean isStringArray(TypeMirror type) {
-        if (type.getKind() != TypeKind.ARRAY) return false;
-        ArrayType arrayType = (ArrayType) type;
-        TypeMirror componentType = arrayType.getComponentType();
-        if (componentType.getKind() != TypeKind.DECLARED) return false;
-        TypeElement componentElement = (TypeElement) ((DeclaredType) componentType).asElement();
-        return componentElement.getQualifiedName().toString().equals("java.lang.String");
-    }
-
     // ── Shared helpers ──
 
     String getUsage(MethodModel method) {
@@ -599,6 +599,14 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
             list.add(sub.getSubcommandName());
         }
         return list.toString();
+    }
+
+    /**
+     * Emits a {@code throw new CommandException(manager.formatMessage(...))} statement.
+     */
+    static void addCommandError(MethodSpec.Builder spec, String key, String defaultMessage, String argument) {
+        spec.addStatement("throw new $T(manager.formatMessage($S, $S, $S))",
+                CommandException.class, key, defaultMessage, argument);
     }
 
     protected static boolean isI18nKey(String message) {

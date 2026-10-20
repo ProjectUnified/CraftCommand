@@ -79,7 +79,7 @@ public final class StandaloneCommandGenerator extends BaseCommandGenerator {
                 .returns(ParameterizedTypeName.get(List.class, String.class))
                 .addParameter(Object.class, "sender")
                 .addParameter(String[].class, "args");
-        buildSuggestionRouting(tabSpec, model, "args", "instance", model);
+        buildSuggestionRouting(tabSpec, model, "args", model);
         typeSpec.addMethod(tabSpec.build());
     }
 }

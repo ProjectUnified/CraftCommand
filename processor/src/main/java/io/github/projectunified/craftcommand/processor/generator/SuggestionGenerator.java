@@ -5,6 +5,7 @@ import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
+import io.github.projectunified.craftcommand.processor.TypeNames;
 import com.palantir.javapoet.TypeSpec;
 import io.github.projectunified.craftcommand.exception.CommandException;
 import io.github.projectunified.craftcommand.processor.model.CommandModel;
@@ -37,31 +38,29 @@ final class SuggestionGenerator {
 
     public boolean isParamDirectSuggestionAvailable(ParameterModel p) {
         if (p.getSuggestProvider() != null) return true;
-        TypeName typeName = TypeName.get(p.getType());
-        if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) return true;
-        if (processor.isPlatformBuiltInType(typeName)) return true;
-
         String resolveName = p.getResolveName();
         if (resolveName != null && !resolveName.isEmpty()) {
             return false; // Resolver params generate their own suggestions
         }
-
-        return !processor.typeSupport().isBuiltIn(typeName);
+        return hasTypeSuggestionSource(p);
     }
 
-    public boolean isResolverParamSuggestionAvailable(ParameterModel rp) {
-        if (rp.getSuggestProvider() != null) return true;
-        TypeName typeName = TypeName.get(rp.getType());
-        if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) return true;
-        if (processor.isPlatformBuiltInType(typeName)) return true;
-        return !processor.typeSupport().isBuiltIn(typeName);
+    public boolean isResolverParamSuggestionAvailable(ParameterModel p) {
+        return p.getSuggestProvider() != null || hasTypeSuggestionSource(p);
+    }
+
+    private boolean hasTypeSuggestionSource(ParameterModel p) {
+        TypeName typeName = TypeName.get(p.getType());
+        return TypeSupport.isBooleanType(typeName)
+                || processor.typeSupport().hasPlatformSuggestions(typeName)
+                || !processor.typeSupport().isBuiltIn(typeName);
     }
 
     public boolean isParamSuggestionAvailable(ParameterModel p, MethodModel commandMethod) {
         if (p.getSuggestProvider() != null) return true;
         TypeName typeName = TypeName.get(p.getType());
-        if (typeName.toString().equals("boolean") || typeName.toString().equals("java.lang.Boolean")) return true;
-        if (processor.isPlatformBuiltInType(typeName)) return true;
+        if (TypeSupport.isBooleanType(typeName)) return true;
+        if (processor.typeSupport().hasPlatformSuggestions(typeName)) return true;
 
         MethodModel resolverModel = p.getResolverMethod();
         if (resolverModel != null) {
@@ -83,31 +82,27 @@ final class SuggestionGenerator {
         return false;
     }
 
-    public void buildSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, String instanceVar, CommandModel rootModel) {
+    public void buildSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, CommandModel rootModel) {
         boolean hasChildren = !model.getSubcommands().isEmpty() || !model.getNestedSubcommands().isEmpty();
 
         if (hasChildren) {
-            List<String> names = processor.subcommandNames(model);
+            List<String> names = BaseCommandGenerator.subcommandNames(model);
             String helperCall = null;
             MethodModel defaultMethod = model.getDefaultMethod();
             if (defaultMethod != null && !defaultMethod.getParameters().isEmpty()
-                    && isParamSuggestionAvailable(defaultMethod.getParameters().get(0), defaultMethod)) {
+                    && isParamDirectSuggestionAvailable(defaultMethod.getParameters().get(0))) {
                 helperCall = getParameterSuggestionMethodName(model, defaultMethod, 0);
             }
 
+            CodeBlock current = CodeBlock.of("$L[0]", argsVar);
             methodSpec.beginControlFlow("if ($L.length == 1)", argsVar);
-            methodSpec.addStatement("String current = $L[0]", argsVar);
             if (helperCall == null) {
-                methodSpec.addStatement("return $T.filterSuggestions($L, current)",
-                        ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), processor.stringList(names));
-            } else if (names.isEmpty()) {
-                methodSpec.addStatement("return $T.filterSuggestions($L(sender, $L), current)",
-                        ClassName.get("io.github.projectunified.craftcommand", "CommandManager"), helperCall, argsVar);
+                methodSpec.addStatement("return $T.filterSuggestions($L, $L)",
+                        COMMAND_MANAGER, BaseCommandGenerator.stringList(names), current);
             } else {
-                methodSpec.addStatement("$T<String> suggestions = new $T<>($L)", List.class, ArrayList.class, processor.stringList(names));
+                methodSpec.addStatement("$T<String> suggestions = new $T<>($L)", List.class, ArrayList.class, BaseCommandGenerator.stringList(names));
                 methodSpec.addStatement("suggestions.addAll($L(sender, $L))", helperCall, argsVar);
-                methodSpec.addStatement("return $T.filterSuggestions(suggestions, current)",
-                        ClassName.get("io.github.projectunified.craftcommand", "CommandManager"));
+                methodSpec.addStatement("return $T.filterSuggestions(suggestions, $L)", COMMAND_MANAGER, current);
             }
             methodSpec.endControlFlow();
 
@@ -117,14 +112,13 @@ final class SuggestionGenerator {
 
             if (hasSubSuggestions) {
                 methodSpec.beginControlFlow("if ($L.length > 1)", argsVar);
-                methodSpec.addStatement("String sub = $L[0].toLowerCase()", argsVar);
-                methodSpec.beginControlFlow("switch (sub)");
+                methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
+                methodSpec.beginControlFlow("switch ($L[0].toLowerCase())", argsVar);
 
                 // Route to nested subcommand classes
                 for (CommandModel child : model.getNestedSubcommands()) {
-                    processor.beginCaseBlock(methodSpec, processor.collectLoweredNames(child));
+                    BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(child));
                     String childHelperName = Naming.suggestHelper(child.getClassName());
-                    methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
                     methodSpec.addStatement("return $L(sender, subArgs)", childHelperName);
                     methodSpec.endControlFlow();
                 }
@@ -134,9 +128,8 @@ final class SuggestionGenerator {
                     if (!hasAnySuggestions(sub)) {
                         continue;
                     }
-                    processor.beginCaseBlock(methodSpec, processor.collectLoweredNames(sub));
-                    methodSpec.addStatement("$T subArgs = $T.copyOfRange($L, 1, $L.length)", String[].class, Arrays.class, argsVar, argsVar);
-                    buildSubcommandSuggestionRouting(methodSpec, model, sub, "subArgs");
+                    BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(sub));
+                    buildSubcommandSuggestionRouting(methodSpec, model, sub, "subArgs", false);
                     methodSpec.endControlFlow();
                 }
 
@@ -147,21 +140,22 @@ final class SuggestionGenerator {
 
         // Default command tab complete
         if (model.getDefaultMethod() != null && hasAnySuggestions(model.getDefaultMethod())) {
-            buildSubcommandSuggestionRouting(methodSpec, model, model.getDefaultMethod(), argsVar);
+            buildSubcommandSuggestionRouting(methodSpec, model, model.getDefaultMethod(), argsVar, model == rootModel);
         } else {
             methodSpec.addStatement("return $T.emptyList()", Collections.class);
         }
     }
 
-    protected void buildSubcommandSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar) {
+    private void buildSubcommandSuggestionRouting(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar, boolean argsMayBeEmpty) {
         List<SuggestionSlot> slots = suggestionSlots(classModel, method);
         if (slots.isEmpty()) {
             methodSpec.addStatement("return $T.emptyList()", Collections.class);
             return;
         }
 
-        methodSpec.addStatement("if ($L.length == 0) return $T.emptyList()", argsVar, Collections.class);
-        methodSpec.addStatement("int index = $L.length - 1", argsVar);
+        if (argsMayBeEmpty) {
+            methodSpec.addStatement("if ($L.length == 0) return $T.emptyList()", argsVar, Collections.class);
+        }
 
         if (slots.stream().allMatch(SuggestionSlot::hasStaticWidth)) {
             // Every width is known, so the checked bound is a constant and no accumulator is needed.
@@ -169,17 +163,15 @@ final class SuggestionGenerator {
             for (SuggestionSlot slot : slots) {
                 bound += slot.staticWidth;
                 if (slot.helper != null) {
-                    methodSpec.beginControlFlow("if (index < $L)", bound)
-                            .addStatement("return $L(sender, $L)", slot.helper, argsVar)
-                            .endControlFlow();
+                    methodSpec.addStatement("if ($L.length <= $L) return $L(sender, $L)",
+                            argsVar, bound, slot.helper, argsVar);
                 }
             }
         } else if (slots.size() == 1) {
             SuggestionSlot slot = slots.get(0);
             if (slot.helper != null) {
-                methodSpec.beginControlFlow("if (index < $L)", slot.width)
-                        .addStatement("return $L(sender, $L)", slot.helper, argsVar)
-                        .endControlFlow();
+                methodSpec.addStatement("if ($L.length <= $L) return $L(sender, $L)",
+                        argsVar, slot.width, slot.helper, argsVar);
             }
         } else {
             boolean needsAccumulator = false;
@@ -194,11 +186,12 @@ final class SuggestionGenerator {
                 SuggestionSlot slot = slots.get(i);
                 if (slot.helper != null) {
                     if (needsAccumulator) {
-                        methodSpec.beginControlFlow("if (index < tempIdx + $L)", slot.width);
+                        methodSpec.addStatement("if ($L.length <= tempIdx + $L) return $L(sender, $L)",
+                                argsVar, slot.width, slot.helper, argsVar);
                     } else {
-                        methodSpec.beginControlFlow("if (index < $L)", slot.width);
+                        methodSpec.addStatement("if ($L.length <= $L) return $L(sender, $L)",
+                                argsVar, slot.width, slot.helper, argsVar);
                     }
-                    methodSpec.addStatement("return $L(sender, $L)", slot.helper, argsVar).endControlFlow();
                 }
                 if (needsAccumulator && hasHelperAfter(slots, i)) {
                     methodSpec.addStatement("tempIdx += $L", slot.width);
@@ -207,7 +200,6 @@ final class SuggestionGenerator {
         }
         methodSpec.addStatement("return $T.emptyList()", Collections.class);
     }
-
 
     private static boolean hasHelperAfter(List<SuggestionSlot> slots, int index) {
         for (int i = index + 1; i < slots.size(); i++) {
@@ -253,7 +245,6 @@ final class SuggestionGenerator {
         }
         return slots;
     }
-
 
     /**
      * One completable argument slot of a command method: the suggestion helper to call, if the slot offers
@@ -360,9 +351,7 @@ final class SuggestionGenerator {
     private boolean hasTypeSuggestions(ParameterModel p) {
         if (p.getSuggestProvider() != null || p.getResolverMethod() != null) return false;
         TypeName typeName = TypeName.get(p.getType());
-        return typeName.toString().equals("boolean")
-                || typeName.toString().equals("java.lang.Boolean")
-                || processor.isPlatformBuiltInType(typeName);
+        return TypeSupport.isBooleanType(typeName) || processor.typeSupport().hasPlatformSuggestions(typeName);
     }
 
     String getParameterSuggestionMethodName(CommandModel classModel, MethodModel method, int index) {
@@ -375,12 +364,12 @@ final class SuggestionGenerator {
         return Naming.suggestMethod(classModel.getClassName(), methodOrDefault + " " + resolverName, index);
     }
 
-    protected MethodSpec buildResolverParamSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel rp, String helperName, CommandModel rootModel) {
+    private MethodSpec buildResolverParamSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel rp, String helperName, CommandModel rootModel) {
         return buildSuggestionHelperInternal(classModel, method, rp,
                 processor.getInstanceVarExpression(classModel, rootModel), helperName, rootModel);
     }
 
-    protected MethodSpec buildParameterSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel p, int index, CommandModel rootModel) {
+    private MethodSpec buildParameterSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel p, int index, CommandModel rootModel) {
         String helperName = getParameterSuggestionMethodName(classModel, method, index);
         return buildSuggestionHelperInternal(classModel, method, p,
                 processor.getInstanceVarExpression(classModel, rootModel), helperName, rootModel);
@@ -391,18 +380,18 @@ final class SuggestionGenerator {
      * {@code m()}, {@code m(sender|current)}, {@code m(sender|current, current|context)},
      * {@code m(sender, current, context)}.
      */
-    private List<CodeBlock> providerCallArgs(MethodModel suggestMethod, String senderCastVar) {
+    private List<CodeBlock> providerCallArgs(MethodModel suggestMethod, String senderCastVar, CodeBlock current) {
         int argCount = suggestMethod.getParameters().size();
         List<CodeBlock> args = new ArrayList<>();
         if (argCount == 1 || argCount == 2) {
-            boolean firstIsArray = processor.isStringArray(suggestMethod.getParameters().get(0).getType());
-            args.add(firstIsArray ? CodeBlock.of("new String[]{currentStr}") : CodeBlock.of("$L", senderCastVar));
+            boolean firstIsArray = TypeNames.isStringArray(suggestMethod.getParameters().get(0).getType());
+            args.add(firstIsArray ? CodeBlock.of("new String[]{$L}", current) : CodeBlock.of("$L", senderCastVar));
             if (argCount == 2) {
-                args.add(firstIsArray ? CodeBlock.of("args") : CodeBlock.of("new String[]{currentStr}"));
+                args.add(firstIsArray ? CodeBlock.of("args") : CodeBlock.of("new String[]{$L}", current));
             }
         } else if (argCount >= 3) {
             args.add(CodeBlock.of("$L", senderCastVar));
-            args.add(CodeBlock.of("new String[]{currentStr}"));
+            args.add(CodeBlock.of("new String[]{$L}", current));
             args.add(CodeBlock.of("args"));
         }
         return args;
@@ -425,7 +414,7 @@ final class SuggestionGenerator {
             TypeMirror firstParamType = firstParam.getType();
             TypeName firstParamTypeName = TypeName.get(firstParamType);
 
-            if (!processor.isStringArray(firstParamType) && !firstParamTypeName.toString().equals(processor.getSenderTypeName().toString())) {
+            if (!TypeNames.isStringArray(firstParamType) && !firstParamTypeName.equals(processor.getSenderTypeName())) {
                 String resolveName = firstParam.getResolveName();
                 if (resolveName != null) {
                     if (!resolveName.isEmpty()) {
@@ -451,34 +440,33 @@ final class SuggestionGenerator {
             }
         }
 
-        methodSpec.addStatement("int index = $L.length - 1", "args");
-        methodSpec.addStatement("String currentStr = $L[index]", "args");
-
+        CodeBlock current = CodeBlock.of("args[args.length - 1]");
         if (provider != null) {
             if (suggestMethod != null) {
-                List<CodeBlock> callArgs = providerCallArgs(suggestMethod, senderCastVar);
-                methodSpec.addStatement("return $T.filterSuggestions($L, currentStr)", COMMAND_MANAGER,
-                        BaseCommandGenerator.call(instanceExpr, provider, callArgs.toArray(new CodeBlock[0])));
+                List<CodeBlock> callArgs = providerCallArgs(suggestMethod, senderCastVar, current);
+                methodSpec.addStatement("return $T.filterSuggestions($L, $L)", COMMAND_MANAGER,
+                        BaseCommandGenerator.call(instanceExpr, provider, callArgs.toArray(new CodeBlock[0])), current);
             } else if (p.isSuggestField()) {
-                methodSpec.addStatement("return $T.filterSuggestions($L.$L, currentStr)",
-                        COMMAND_MANAGER, instanceExpr, provider);
+                methodSpec.addStatement("return $T.filterSuggestions($L.$L, $L)",
+                        COMMAND_MANAGER, instanceExpr, provider, current);
             } else {
                 // The parser already reported the unknown provider; keep the generated method valid.
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
             }
         } else {
-            if (pTypeName.toString().equals("boolean") || pTypeName.toString().equals("java.lang.Boolean")) {
-                methodSpec.addStatement("return suggestBoolean(currentStr)");
-            } else if (processor.isPlatformBuiltInType(pTypeName)) {
-                processor.typeSupport().emitPlatformSuggestions(methodSpec, pTypeName, senderCastVar, "args", "currentStr");
+            if (TypeSupport.isBooleanType(pTypeName)) {
+                methodSpec.addStatement("return $T.filterSuggestions($T.asList($S, $S), $L)",
+                        COMMAND_MANAGER, Arrays.class, "true", "false", current);
+            } else if (processor.typeSupport().hasPlatformSuggestions(pTypeName)) {
+                processor.typeSupport().emitPlatformSuggestions(methodSpec, pTypeName, current);
             } else if (processor.typeSupport().isBuiltIn(pTypeName)) {
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
-            } else if (processor.getSenderTypeName().toString().equals("java.lang.Object")) {
-                methodSpec.addStatement("return manager.getResolver($T.class).suggest(sender, new String[]{currentStr}, args)",
-                        pTypeName.isPrimitive() ? pTypeName.box() : pTypeName);
+            } else if (processor.getSenderTypeName().equals(ClassName.OBJECT)) {
+                methodSpec.addStatement("return manager.getResolver($T.class).suggest(sender, new String[]{$L}, args)",
+                        pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, current);
             } else {
-                methodSpec.addStatement("return manager.getResolver($T.class).suggest(($T) sender, new String[]{currentStr}, args)",
-                        pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, processor.getSenderTypeName());
+                methodSpec.addStatement("return manager.getResolver($T.class).suggest(($T) sender, new String[]{$L}, args)",
+                        pTypeName.isPrimitive() ? pTypeName.box() : pTypeName, processor.getSenderTypeName(), current);
             }
         }
 
@@ -491,25 +479,9 @@ final class SuggestionGenerator {
         return methodSpec.build();
     }
 
-    void buildBooleanSuggestionHelper(TypeSpec.Builder typeSpec, CommandModel model) {
-        if (!processor.hasBooleanParameter(model)) return;
-
-        typeSpec.addMethod(MethodSpec.methodBuilder("suggestBoolean")
-                .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(List.class, String.class))
-                .addParameter(String.class, "current")
-                .addStatement("if (current == null || current.isEmpty()) return $T.asList(\"true\", \"false\")", Arrays.class)
-                .addStatement("$T list = new $T<>()", ParameterizedTypeName.get(List.class, String.class), ArrayList.class)
-                .addStatement("String lower = current.toLowerCase()")
-                .addStatement("if (\"true\".startsWith(lower)) list.add(\"true\")")
-                .addStatement("if (\"false\".startsWith(lower)) list.add(\"false\")")
-                .addStatement("return list")
-                .build());
-    }
-
     void buildSenderCastHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
         for (TypeName type : processor.getSenderTypesToCast(model)) {
-            if (type.toString().equals(processor.getSenderTypeName().toString())) continue;
+            if (type.equals(processor.getSenderTypeName())) continue;
             String methodName = "as" + Naming.simpleName(type);
             typeSpec.addMethod(MethodSpec.methodBuilder(methodName)
                     .addModifiers(Modifier.PRIVATE)

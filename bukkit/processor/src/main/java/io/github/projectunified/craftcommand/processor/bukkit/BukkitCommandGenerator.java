@@ -14,7 +14,6 @@ import io.github.projectunified.craftcommand.processor.model.CommandModel;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -56,7 +55,6 @@ public final class BukkitCommandGenerator extends BaseCommandGenerator {
         typeSupport().register(TypeSupport.Entry.builder(locationClass, 3)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null"))
                 .platformMultiResolution((spec, p) -> spec.addStatement("$L = getLocation($L, $L, $L)", p.varName, p.argsVar, p.index, p.senderVar))
-                .platformSuggestions((spec, p) -> spec.addStatement("return $T.emptyList()", Collections.class))
                 .build());
     }
 
@@ -119,7 +117,7 @@ public final class BukkitCommandGenerator extends BaseCommandGenerator {
                 .addParameter(String.class, "alias")
                 .addParameter(String[].class, "args")
                 .addException(IllegalArgumentException.class);
-        buildSuggestionRouting(tabSpec, model, "args", "instance", model);
+        buildSuggestionRouting(tabSpec, model, "args", model);
         typeSpec.addMethod(tabSpec.build());
     }
 

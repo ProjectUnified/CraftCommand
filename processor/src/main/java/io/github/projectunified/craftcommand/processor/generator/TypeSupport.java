@@ -7,6 +7,7 @@ import com.palantir.javapoet.TypeName;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -24,47 +25,27 @@ import java.util.function.Function;
 public final class TypeSupport {
     private final Map<String, Entry> entries = new HashMap<>();
 
+    private static final Set<String> NUMERIC_TYPES = Set.of(
+            "int", "long", "double", "float", "short", "byte",
+            "java.lang.Integer", "java.lang.Long", "java.lang.Double",
+            "java.lang.Float", "java.lang.Short", "java.lang.Byte", "java.lang.Number");
+
+    private static final Set<String> INTEGER_TYPES = Set.of(
+            "int", "long", "short", "byte",
+            "java.lang.Integer", "java.lang.Long", "java.lang.Short", "java.lang.Byte");
+
     /**
      * Returns true if the given type name is a numeric primitive or wrapper type.
      */
     public static boolean isNumericType(String typeName) {
-        switch (typeName) {
-            case "int":
-            case "long":
-            case "double":
-            case "float":
-            case "short":
-            case "byte":
-            case "java.lang.Integer":
-            case "java.lang.Long":
-            case "java.lang.Double":
-            case "java.lang.Float":
-            case "java.lang.Short":
-            case "java.lang.Byte":
-            case "java.lang.Number":
-                return true;
-            default:
-                return false;
-        }
+        return NUMERIC_TYPES.contains(typeName);
     }
 
     /**
-     * Returns true if the given type name is an integer numeric primitive or wrapper type (int, long, short, byte).
+     * Returns true if the given type name is an integer numeric primitive or wrapper type.
      */
     public static boolean isIntegerType(String typeName) {
-        switch (typeName) {
-            case "int":
-            case "long":
-            case "short":
-            case "byte":
-            case "java.lang.Integer":
-            case "java.lang.Long":
-            case "java.lang.Short":
-            case "java.lang.Byte":
-                return true;
-            default:
-                return false;
-        }
+        return INTEGER_TYPES.contains(typeName);
     }
 
     /**
@@ -100,6 +81,21 @@ public final class TypeSupport {
      */
     public Entry get(TypeName type) {
         return entries.get(type.toString());
+    }
+
+    /**
+     * @return true if the platform provides suggestions for the type.
+     */
+    public boolean hasPlatformSuggestions(TypeName type) {
+        Entry e = entries.get(type.toString());
+        return e != null && e.platformSuggestions != null;
+    }
+
+    /**
+     * @return true for {@code boolean} and {@code java.lang.Boolean}.
+     */
+    public static boolean isBooleanType(TypeName type) {
+        return type.equals(TypeName.BOOLEAN) || type.equals(TypeName.BOOLEAN.box());
     }
 
     /**
@@ -238,13 +234,12 @@ public final class TypeSupport {
     /**
      * Emit platform-specific suggestion code for a type.
      */
-    public void emitPlatformSuggestions(MethodSpec.Builder spec, TypeName type,
-                                        String senderVar, String argsVar, String currentVar) {
+    public void emitPlatformSuggestions(MethodSpec.Builder spec, TypeName type, CodeBlock currentVar) {
         Entry e = entries.get(type.toString());
         if (e == null || e.platformSuggestions == null) {
             return;
         }
-        e.platformSuggestions.accept(spec, new Suggestion(senderVar, argsVar, currentVar));
+        e.platformSuggestions.accept(spec, new Suggestion(currentVar));
     }
 
     /**
@@ -273,16 +268,10 @@ public final class TypeSupport {
      * Inputs available to a platform suggestion provider.
      */
     public static final class Suggestion {
-        /** Sender variable. */
-        public final String senderVar;
-        /** Argument array. */
-        public final String argsVar;
         /** Current input being completed. */
-        public final String currentVar;
+        public final CodeBlock currentVar;
 
-        Suggestion(String senderVar, String argsVar, String currentVar) {
-            this.senderVar = senderVar;
-            this.argsVar = argsVar;
+        Suggestion(CodeBlock currentVar) {
             this.currentVar = currentVar;
         }
     }

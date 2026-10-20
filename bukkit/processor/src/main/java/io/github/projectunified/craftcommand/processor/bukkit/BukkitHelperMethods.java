@@ -10,13 +10,7 @@ import javax.lang.model.element.Modifier;
 import java.util.List;
 
 /**
- * Shared generator for Bukkit/Paper-Basic helper methods emitted into generated
- * command wrappers: {@code getPlayer}, {@code getOfflinePlayer}, {@code getWorld},
- * {@code getLocation}, {@code suggestPlayers}, {@code suggestWorlds}.
- *
- * <p>Previously these ~150 lines were copy-pasted identically between
- * {@link BukkitCommandProcessor}. Now both
- * delegate here.
+ * Generates the Bukkit helper methods used by the wrappers: player/world lookup and suggestions.
  */
 public final class BukkitHelperMethods {
 
@@ -26,9 +20,11 @@ public final class BukkitHelperMethods {
     private static final ClassName WORLD = ClassName.get("org.bukkit", "World");
     private static final ClassName LOCATION = ClassName.get("org.bukkit", "Location");
     private static final ClassName ARRAY_LIST = ClassName.get("java.util", "ArrayList");
-    private static final ClassName LIST = ClassName.get(List.class);
     private static final ClassName STRING = ClassName.get(String.class);
+    private static final ParameterizedTypeName STRING_LIST =
+            ParameterizedTypeName.get(ClassName.get(List.class), STRING);
     private static final ClassName NUMBER_FORMAT_EX = ClassName.get(NumberFormatException.class);
+    private static final ClassName COMMAND_MANAGER = ClassName.get("io.github.projectunified.craftcommand", "CommandManager");
 
     private BukkitHelperMethods() {
     }
@@ -37,10 +33,10 @@ public final class BukkitHelperMethods {
      * Generate all needed helpers into the given TypeSpec, based on which types the command uses.
      */
     public static void generate(TypeSpec.Builder typeSpec, CommandModel model) {
-        boolean hasPlayer = hasParameterType(model, "org.bukkit.entity.Player");
-        boolean hasOfflinePlayer = hasParameterType(model, "org.bukkit.OfflinePlayer");
-        boolean hasWorld = hasParameterType(model, "org.bukkit.World");
-        boolean hasLocation = hasParameterType(model, "org.bukkit.Location");
+        boolean hasPlayer = hasParameterType(model, PLAYER);
+        boolean hasOfflinePlayer = hasParameterType(model, OFFLINE_PLAYER);
+        boolean hasWorld = hasParameterType(model, WORLD);
+        boolean hasLocation = hasParameterType(model, LOCATION);
 
         if (hasPlayer || hasOfflinePlayer) {
             typeSpec.addMethod(suggestPlayers());
@@ -65,7 +61,7 @@ public final class BukkitHelperMethods {
     /**
      * Check if any method in the command tree has a parameter of the given type name.
      */
-    public static boolean hasParameterType(CommandModel model, String typeName) {
+    private static boolean hasParameterType(CommandModel model, TypeName typeName) {
         if (model.getDefaultMethod() != null && hasParameterType(model.getDefaultMethod(), typeName)) return true;
         for (MethodModel sub : model.getSubcommands()) {
             if (hasParameterType(sub, typeName)) return true;
@@ -76,10 +72,10 @@ public final class BukkitHelperMethods {
         return false;
     }
 
-    private static boolean hasParameterType(MethodModel method, String typeName) {
+    private static boolean hasParameterType(MethodModel method, TypeName typeName) {
         // Includes resolver sender parameters on purpose: over-generating a helper is safe, missing one is not.
         for (ParameterModel p : method.getParameters()) {
-            if (TypeName.get(p.getType()).toString().equals(typeName)) return true;
+            if (TypeName.get(p.getType()).equals(typeName)) return true;
             MethodModel resolver = p.getResolverMethod();
             if (resolver != null && hasParameterType(resolver, typeName)) return true;
         }
@@ -89,61 +85,31 @@ public final class BukkitHelperMethods {
     private static MethodSpec suggestPlayers() {
         return MethodSpec.methodBuilder("suggestPlayers")
                 .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(LIST, STRING))
+                .returns(STRING_LIST)
                 .addParameter(STRING, "current")
-                .addStatement("$T list = new $T<>($T.getOnlinePlayers().size())", LIST, ARRAY_LIST, BUKKIT)
-                .beginControlFlow("if (current == null || current.isEmpty())")
+                .addStatement("$T list = new $T<>($T.getOnlinePlayers().size())", STRING_LIST, ARRAY_LIST, BUKKIT)
                 .beginControlFlow("for ($T onlinePlayer : $T.getOnlinePlayers())", PLAYER, BUKKIT)
                 .addStatement("list.add(onlinePlayer.getName())")
                 .endControlFlow()
-                .addStatement("return list")
-                .endControlFlow()
-                .addStatement("String lower = current.toLowerCase()")
-                .beginControlFlow("for ($T onlinePlayer : $T.getOnlinePlayers())", PLAYER, BUKKIT)
-                .beginControlFlow("if (onlinePlayer.getName().toLowerCase().startsWith(lower))")
-                .addStatement("list.add(onlinePlayer.getName())")
-                .endControlFlow()
-                .endControlFlow()
-                .addStatement("return list")
+                .addStatement("return $T.filterSuggestions(list, current)", COMMAND_MANAGER)
                 .build();
     }
 
     private static MethodSpec suggestWorlds() {
         return MethodSpec.methodBuilder("suggestWorlds")
                 .addModifiers(Modifier.PRIVATE)
-                .returns(ParameterizedTypeName.get(LIST, STRING))
+                .returns(STRING_LIST)
                 .addParameter(STRING, "current")
-                .addStatement("$T list = new $T<>($T.getWorlds().size())", LIST, ARRAY_LIST, BUKKIT)
-                .beginControlFlow("if (current == null || current.isEmpty())")
+                .addStatement("$T list = new $T<>($T.getWorlds().size())", STRING_LIST, ARRAY_LIST, BUKKIT)
                 .beginControlFlow("for ($T world : $T.getWorlds())", WORLD, BUKKIT)
                 .addStatement("list.add(world.getName())")
                 .endControlFlow()
-                .addStatement("return list")
-                .endControlFlow()
-                .addStatement("String lower = current.toLowerCase()")
-                .beginControlFlow("for ($T world : $T.getWorlds())", WORLD, BUKKIT)
-                .beginControlFlow("if (world.getName().toLowerCase().startsWith(lower))")
-                .addStatement("list.add(world.getName())")
-                .endControlFlow()
-                .endControlFlow()
-                .addStatement("return list")
+                .addStatement("return $T.filterSuggestions(list, current)", COMMAND_MANAGER)
                 .build();
     }
 
     private static MethodSpec getPlayer() {
-        return MethodSpec.methodBuilder("getPlayer")
-                .addModifiers(Modifier.PRIVATE)
-                .returns(PLAYER)
-                .addParameter(STRING, "name")
-                .beginControlFlow("if (name == null)")
-                .addStatement("return null")
-                .endControlFlow()
-                .addStatement("$T tempPlayer = $T.getPlayer(name)", PLAYER, BUKKIT)
-                .beginControlFlow("if (tempPlayer == null)")
-                .addStatement("throw new $T(manager.formatMessage($S, $S, name))", CommandException.class, "player-not-found", "Player not found: %s")
-                .endControlFlow()
-                .addStatement("return tempPlayer")
-                .build();
+        return lookup("getPlayer", PLAYER, "getPlayer", "player-not-found", "Player not found: %s");
     }
 
     private static MethodSpec getOfflinePlayer() {
@@ -163,18 +129,24 @@ public final class BukkitHelperMethods {
     }
 
     private static MethodSpec getWorld() {
-        return MethodSpec.methodBuilder("getWorld")
+        return lookup("getWorld", WORLD, "getWorld", "world-not-found", "World not found: %s");
+    }
+
+    private static MethodSpec lookup(String methodName, ClassName type, String bukkitMethod,
+                                     String errorKey, String errorMessage) {
+        return MethodSpec.methodBuilder(methodName)
                 .addModifiers(Modifier.PRIVATE)
-                .returns(WORLD)
+                .returns(type)
                 .addParameter(STRING, "name")
                 .beginControlFlow("if (name == null)")
                 .addStatement("return null")
                 .endControlFlow()
-                .addStatement("$T tempWorld = $T.getWorld(name)", WORLD, BUKKIT)
-                .beginControlFlow("if (tempWorld == null)")
-                .addStatement("throw new $T(manager.formatMessage($S, $S, name))", CommandException.class, "world-not-found", "World not found: %s")
+                .addStatement("$T result = $T.$L(name)", type, BUKKIT, bukkitMethod)
+                .beginControlFlow("if (result == null)")
+                .addStatement("throw new $T(manager.formatMessage($S, $S, name))",
+                        CommandException.class, errorKey, errorMessage)
                 .endControlFlow()
-                .addStatement("return tempWorld")
+                .addStatement("return result")
                 .build();
     }
 

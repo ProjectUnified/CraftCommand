@@ -33,9 +33,9 @@ public class PaperExecutionSource {
         LocalNames locals = new LocalNames();
         ParameterModel senderParam = method.getSenderParameter();
         TypeName senderParamTypeName = TypeName.get(senderParam.getType());
-        String senderVarName = senderParamTypeName.toString().equals(processor.getSenderTypeName().toString()) ? "sender" : "senderCast";
+        String senderVarName = senderParamTypeName.equals(processor.getSenderTypeName()) ? "sender" : "senderCast";
 
-        resolveSender(methodSpec, rootModel, senderVarName, senderParam, senderParamTypeName);
+        processor.generateSenderResolution(methodSpec, rootModel, senderParam, senderParamTypeName, senderVarName);
         processor.runParameterAnnotationHandlers(senderParam, senderVarName, instanceExpr, "sender", methodSpec);
 
         List<String> paramNames = new ArrayList<>();
@@ -52,46 +52,6 @@ public class PaperExecutionSource {
 
         CodeBlock[] callArgs = paramNames.stream().map(name -> CodeBlock.of("$L", name)).toArray(CodeBlock[]::new);
         methodSpec.addStatement("$L", BaseCommandGenerator.call(instanceExpr, method.getMethodName(), callArgs));
-    }
-
-    private void resolveSender(MethodSpec.Builder methodSpec, CommandModel rootModel, String senderVarName, ParameterModel senderParam, TypeName senderParamTypeName) {
-        String resolveName = senderParam.getResolveName();
-
-        if (resolveName != null && !resolveName.isEmpty()) {
-            MethodModel senderResolver = senderParam.getResolverMethod();
-            String resolverInstanceExpr = senderResolver != null
-                    ? processor.getResolverInstanceExpr(senderResolver, rootModel)
-                    : null;
-            if (resolverInstanceExpr == null) {
-                methodSpec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                        senderParamTypeName, senderVarName, senderParamTypeName, senderParamTypeName);
-                return;
-            }
-
-            String resolverMethodName = senderResolver.getElement().getSimpleName().toString();
-            int resolverParamCount = senderResolver.getParameters().size();
-            List<CodeBlock> resolveArgs = new ArrayList<>();
-            if (resolverParamCount >= 1) resolveArgs.add(CodeBlock.of("sender"));
-            if (resolverParamCount >= 2) resolveArgs.add(CodeBlock.of("new String[0]"));
-            CodeBlock resolveExpr = BaseCommandGenerator.call(resolverInstanceExpr, resolverMethodName,
-                    resolveArgs.toArray(new CodeBlock[0]));
-            TypeName resolverReturnType = TypeName.get(senderResolver.getElement().getReturnType());
-            if (resolverReturnType.equals(senderParamTypeName)) {
-                methodSpec.addStatement("$T $L = $L", senderParamTypeName, senderVarName, resolveExpr);
-            } else {
-                methodSpec.addStatement("$T $L = ($T) $L", senderParamTypeName, senderVarName, senderParamTypeName, resolveExpr);
-            }
-        } else if (resolveName != null) {
-            methodSpec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                    senderParamTypeName, senderVarName, senderParamTypeName, senderParamTypeName);
-        } else if (processor.isSenderBaseType(senderParamTypeName)) {
-            if (!senderVarName.equals("sender")) {
-                methodSpec.addStatement("$T $L = sender", processor.commandSourceStackClass, senderVarName);
-            }
-        } else {
-            String castMethodName = "as" + io.github.projectunified.craftcommand.processor.generator.Naming.simpleName(senderParamTypeName);
-            methodSpec.addStatement("$T $L = $L(sender)", senderParamTypeName, senderVarName, castMethodName);
-        }
     }
 
     private void resolveParameter(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel,
@@ -112,7 +72,7 @@ public class PaperExecutionSource {
         }
 
         if (!parsedSegments.isEmpty()) {
-            if (pm.isGreedy() && !pmTypeName.toString().equals("java.lang.String")) {
+            if (pm.isGreedy() && !pmTypeName.equals(ClassName.get(String.class))) {
                 CodeBlock strExpr = CodeBlock.of("$T.getString(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName, processor.typeSupport().parseExpr(pmTypeName, strExpr));
             } else if (processor.typeSupport().isBuiltIn(pmTypeName)) {
@@ -138,10 +98,10 @@ public class PaperExecutionSource {
         String strVar = varName + "_str";
         methodSpec.addStatement("String $L = $T.getString(ctx, $S)", strVar,
                 ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
-        methodSpec.addStatement("$T $L = ($T) manager.getResolver($T.class).resolve(sender, new String[]{$L}, $L)",
+        methodSpec.addStatement("$T $L = ($T) manager.getResolver($T.class).resolve(sender, new String[]{$L}, $T.arguments(ctx))",
                 pmTypeName, varName, pmTypeName,
                 pmTypeName.isPrimitive() ? pmTypeName.box() : pmTypeName,
-                strVar, strVar);
+                strVar, processor.paperSuggestionsClass);
     }
 
     private void resolveResolverParameters(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel,

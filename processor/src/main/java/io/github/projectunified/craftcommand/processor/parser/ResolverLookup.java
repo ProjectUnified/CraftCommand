@@ -1,10 +1,11 @@
 package io.github.projectunified.craftcommand.processor.parser;
 
+import io.github.projectunified.craftcommand.processor.TypeNames;
+
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
@@ -110,18 +111,18 @@ public final class ResolverLookup {
             VariableElement p1 = params.get(1);
 
             // Case A: m(String[] current, String[] context)
-            if (isStringArray(p0.asType()) && isStringArray(p1.asType())) {
+            if (TypeNames.isStringArray(p0.asType()) && TypeNames.isStringArray(p1.asType())) {
                 return true;
             }
 
             // Case B: m(SenderType, String[] current)
-            return isStringArray(p1.asType());
+            return TypeNames.isStringArray(p1.asType());
         }
 
         // paramCount == 3: m(SenderType, String[] current, String[] context)
         VariableElement p1 = params.get(1);
         VariableElement p2 = params.get(2);
-        return isStringArray(p1.asType()) && isStringArray(p2.asType());
+        return TypeNames.isStringArray(p1.asType()) && TypeNames.isStringArray(p2.asType());
     }
 
     private static boolean isCollectionOfStrings(TypeMirror type) {
@@ -149,16 +150,6 @@ public final class ResolverLookup {
         TypeElement typeArgElement = (TypeElement) ((DeclaredType) typeArg).asElement();
         return typeArgElement.getQualifiedName().toString().equals("java.lang.String");
     }
-
-    private static boolean isStringArray(TypeMirror type) {
-        if (type.getKind() != TypeKind.ARRAY) return false;
-        ArrayType arrayType = (ArrayType) type;
-        TypeMirror componentType = arrayType.getComponentType();
-        if (componentType.getKind() != TypeKind.DECLARED) return false;
-        TypeElement componentElement = (TypeElement) ((DeclaredType) componentType).asElement();
-        return componentElement.getQualifiedName().toString().equals("java.lang.String");
-    }
-
 
     /**
      * Checks if a type element declares a field with the given name.

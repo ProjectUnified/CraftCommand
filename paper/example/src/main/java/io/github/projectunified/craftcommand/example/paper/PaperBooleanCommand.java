@@ -27,6 +27,21 @@ public class PaperBooleanCommand {
         sender.source.getSender().sendMessage("resolved=" + flag);
     }
 
+    @Command("custom")
+    public void custom(CommandSourceStack sender, CustomValue value) {
+        sender.getSender().sendMessage("custom=" + value.raw + ",ctx=" + value.contextLength);
+    }
+
+    public static class CustomValue {
+        public final String raw;
+        public final int contextLength;
+
+        public CustomValue(String raw, int contextLength) {
+            this.raw = raw;
+            this.contextLength = contextLength;
+        }
+    }
+
     public static class CustomSender {
         public final CommandSourceStack source;
 
