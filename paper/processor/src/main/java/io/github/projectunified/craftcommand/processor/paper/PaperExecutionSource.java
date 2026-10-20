@@ -72,7 +72,11 @@ public class PaperExecutionSource {
         }
 
         if (!parsedSegments.isEmpty()) {
-            if (pm.isGreedy() && !pmTypeName.equals(ClassName.get(String.class))) {
+            if (pm.getEnumConstants() != null) {
+                methodSpec.addStatement("$T $L = $T.valueOf($T.getString(ctx, $S))",
+                        pmTypeName, varName, pmTypeName,
+                        ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
+            } else if (pm.isGreedy() && !pmTypeName.equals(ClassName.get(String.class))) {
                 CodeBlock strExpr = CodeBlock.of("$T.getString(ctx, $S)", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName, processor.typeSupport().parseExpr(pmTypeName, strExpr));
             } else if (processor.typeSupport().isBuiltIn(pmTypeName)) {
@@ -81,6 +85,11 @@ public class PaperExecutionSource {
             } else {
                 generateManagerResolution(methodSpec, pm, pmTypeName, varName);
             }
+        } else if (pm.getEnumConstants() != null) {
+            CodeBlock defaultValue = pm.isOptional() && pm.getDefaultValue() != null
+                    ? CodeBlock.of("$T.valueOf($S)", pmTypeName, pm.getDefaultValue())
+                    : CodeBlock.of("null");
+            methodSpec.addStatement("$T $L = $L", pmTypeName, varName, defaultValue);
         } else if (processor.typeSupport().isBuiltIn(pmTypeName)) {
             if (pm.isOptional() && pm.getDefaultValue() != null) {
                 methodSpec.addStatement("$T $L = $L", pmTypeName, varName,

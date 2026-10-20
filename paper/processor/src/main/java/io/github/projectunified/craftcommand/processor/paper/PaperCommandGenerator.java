@@ -331,20 +331,22 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                     MethodModel suggestMethod = rp.getSuggestProvider() != null ? rp.getSuggestMethod() : p.getSuggestMethod();
                     boolean suggestField = rp.getSuggestProvider() != null ? rp.isSuggestField() : p.isSuggestField();
                     nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rp.isOptional(),
-                            suggestProvider, rpTypeName, suggestMethod, suggestField));
+                            suggestProvider, rpTypeName, suggestMethod, suggestField, rp.getEnumConstants() != null));
                 }
             } else {
                 int width = getParameterWidth(p, method);
                 CodeBlock typeBlock = getArgumentTypeExpression(p);
                 if (width <= 1) {
                     nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false,
-                            p.getSuggestProvider(), null, p.getSuggestMethod(), p.isSuggestField()));
+                            p.getSuggestProvider(), null, p.getSuggestMethod(), p.isSuggestField(),
+                            p.getEnumConstants() != null));
                 } else {
                     for (int i = 0; i < width; i++) {
                         nodes.add(new NodeInfo(p.getName() + "_" + i,
                                 CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType")),
                                 p, i, i == width - 1, false,
-                                p.getSuggestProvider(), null, p.getSuggestMethod(), p.isSuggestField()));
+                                p.getSuggestProvider(), null, p.getSuggestMethod(), p.isSuggestField(),
+                                p.getEnumConstants() != null));
                     }
                 }
             }
@@ -387,7 +389,8 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
 
             ParameterModel p = node.parameter;
             TypeName parameterType = TypeName.get(p.getType());
-            boolean needsSuggestions = node.suggestProvider != null || TypeSupport.isBooleanType(parameterType);
+            boolean needsSuggestions = node.suggestProvider != null
+                    || node.enumParam || TypeSupport.isBooleanType(parameterType);
             if (!needsSuggestions && node.resolverParamType != null) {
                 TypeName rpType = node.resolverParamType;
                 if (TypeSupport.isBooleanType(rpType)) {
@@ -527,10 +530,11 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         final TypeName resolverParamType;
         final MethodModel suggestMethod;
         final boolean suggestField;
+        final boolean enumParam;
 
         NodeInfo(String nodeName, CodeBlock typeExpression, ParameterModel parameter, int resolverArgIndex,
                  boolean isLastForParameter, boolean isResolverParamOptional, String suggestProvider,
-                 TypeName resolverParamType, MethodModel suggestMethod, boolean suggestField) {
+                 TypeName resolverParamType, MethodModel suggestMethod, boolean suggestField, boolean enumParam) {
             this.nodeName = nodeName;
             this.typeExpression = typeExpression;
             this.parameter = parameter;
@@ -541,6 +545,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
             this.resolverParamType = resolverParamType;
             this.suggestMethod = suggestMethod;
             this.suggestField = suggestField;
+            this.enumParam = enumParam;
         }
     }
 }

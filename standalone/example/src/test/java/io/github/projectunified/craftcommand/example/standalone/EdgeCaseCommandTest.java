@@ -51,6 +51,20 @@ public class EdgeCaseCommandTest extends AbstractStandaloneCommandTest {
     }
 
     @Test
+    public void testEnumSuggestions() {
+        assertSuggestionsContain(tabComplete("enum", ""), "RED", "GREEN", "BLUE");
+    }
+
+    @Test
+    public void testEnumDefault() {
+        assertTrue(execute("enumdef"));
+        assertEquals(List.of("enumdef=GREEN"), sender.getMessages());
+        sender.getMessages().clear();
+        assertTrue(execute("enumdef", "BLUE"));
+        assertEquals(List.of("enumdef=BLUE"), sender.getMessages());
+    }
+
+    @Test
     public void testDescriptionInCommandInfo() {
         assertEquals("Edge case combinations", cmd.getDescription());
         List<CommandInfo> infoList = manager.getCommandInfo(instance);

@@ -45,6 +45,7 @@ Step 6: buildCommandInfo()              → BaseCommand.getCommandInfo()
   routed to `execute<ClassName>` helpers.
 - Minimum argument check is computed at compile time:
   `if (args.length < required) throw new CommandException(...)`.
+- Enum parameters parse with `Enum.valueOf` and suggest their constants without a registered resolver.
 - Built-in types parse inline (`args[1]`, `args[2]`, ...). Locals are named after the declared parameters
   (`num1`, `num2`), falling back to `param_N` only when a name would shadow a generated local.
 - An argument cursor (`int argIdx` / `int[] argIdxHolder`) is emitted only when a parameter can consume

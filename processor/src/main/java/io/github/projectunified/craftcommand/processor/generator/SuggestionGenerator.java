@@ -243,7 +243,9 @@ final class SuggestionGenerator {
                 String helper = isParamDirectSuggestionAvailable(p)
                         ? getParameterSuggestionMethodName(classModel, method, i)
                         : null;
-                if (processor.typeSupport().isBuiltIn(pTypeName)) {
+                if (p.getEnumConstants() != null) {
+                    slots.add(SuggestionSlot.staticWidth(helper, 1));
+                } else if (processor.typeSupport().isBuiltIn(pTypeName)) {
                     slots.add(SuggestionSlot.staticWidth(helper, processor.getBuiltInWidth(pTypeName)));
                 } else {
                     TypeName boxedType = pTypeName.isPrimitive() ? pTypeName.box() : pTypeName;
@@ -360,7 +362,9 @@ final class SuggestionGenerator {
     private boolean hasTypeSuggestions(ParameterModel p) {
         if (p.getSuggestProvider() != null || p.getResolverMethod() != null) return false;
         TypeName typeName = TypeName.get(p.getType());
-        return TypeSupport.isBooleanType(typeName) || processor.typeSupport().hasPlatformSuggestions(typeName);
+        return p.getEnumConstants() != null
+                || TypeSupport.isBooleanType(typeName)
+                || processor.typeSupport().hasPlatformSuggestions(typeName);
     }
 
     String getParameterSuggestionMethodName(CommandModel classModel, MethodModel method, int index) {
@@ -468,7 +472,10 @@ final class SuggestionGenerator {
                 methodSpec.addStatement("return $T.emptyList()", Collections.class);
             }
         } else {
-            if (TypeSupport.isBooleanType(pTypeName)) {
+            if (p.getEnumConstants() != null) {
+                methodSpec.addStatement("return $T.filterSuggestions($L, $L)",
+                        COMMAND_MANAGER, BaseCommandGenerator.stringList(p.getEnumConstants()), current);
+            } else if (TypeSupport.isBooleanType(pTypeName)) {
                 methodSpec.addStatement("return $T.filterSuggestions($T.asList($S, $S), $L)",
                         COMMAND_MANAGER, Arrays.class, "true", "false", current);
             } else if (processor.typeSupport().hasPlatformSuggestions(pTypeName)) {

@@ -1,44 +1,14 @@
 package io.github.projectunified.craftcommand.example.standalone;
 
-import io.github.projectunified.craftcommand.ArgumentResolver;
 import io.github.projectunified.craftcommand.standalone.StandaloneCommand;
 import io.github.projectunified.craftcommand.standalone.StandaloneCommandManager;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 public class CLIApp {
     public static void main(String[] args) {
         StandaloneCommandManager manager = new StandaloneCommandManager();
-
-        // Register a dynamic provider for Java Enums
-        manager.registerProvider(type -> {
-            if (type.isEnum()) {
-                @SuppressWarnings("unchecked")
-                Class<Enum> enumType = (Class<Enum>) type;
-                return new ArgumentResolver<Object, Object>() {
-                    @Override
-                    public Object resolve(Object sender, String[] current, String[] context) {
-                        if (current.length == 0) return null;
-                        return Enum.valueOf(enumType, current[0]);
-                    }
-
-                    @Override
-                    public List<String> suggest(Object sender, String[] current, String[] context) {
-                        String prefix = current.length > 0 ? current[0].toUpperCase() : "";
-                        List<String> result = new ArrayList<>();
-                        for (Enum e : enumType.getEnumConstants()) {
-                            if (e.name().startsWith(prefix)) {
-                                result.add(e.name());
-                            }
-                        }
-                        return result;
-                    }
-                };
-            }
-            return null;
-        });
 
         manager.register(new CalculatorCommand());
         manager.register(new ValidationCommand());

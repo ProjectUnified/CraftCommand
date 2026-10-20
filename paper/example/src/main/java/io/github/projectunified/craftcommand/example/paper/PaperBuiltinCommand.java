@@ -20,4 +20,13 @@ public class PaperBuiltinCommand {
     public void uuid(CommandSourceStack sender, UUID id) {
         sender.getSender().sendMessage("uuid=" + id);
     }
+
+    @Command("enum")
+    public void enumParam(CommandSourceStack sender, Mode mode) {
+        sender.getSender().sendMessage("enum=" + mode.name());
+    }
+
+    public enum Mode {
+        FAST, SLOW
+    }
 }

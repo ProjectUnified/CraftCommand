@@ -2,6 +2,7 @@ package io.github.projectunified.craftcommand.processor.model;
 
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeMirror;
+import java.util.List;
 
 /**
  * Model representing a command method parameter.
@@ -13,6 +14,7 @@ import javax.lang.model.type.TypeMirror;
 public class ParameterModel {
     private final String name;
     private final TypeMirror type;
+    private final List<String> enumConstants;
     private final boolean greedy;
     private final boolean optional;
     private final String defaultValue;
@@ -28,6 +30,7 @@ public class ParameterModel {
      *
      * @param name            the parameter name (from {@code @Name} or reflection)
      * @param type            the Java type of the parameter
+     * @param enumConstants   the constants when the type is an enum, otherwise {@code null}
      * @param greedy          {@code true} if marked with {@code @Greedy}
      * @param optional        {@code true} if marked with {@code @Default}
      * @param defaultValue    the default value string when optional, or {@code null}
@@ -40,11 +43,12 @@ public class ParameterModel {
      *                        {@code null} when absent, a field, or an invalid signature
      * @param element         the underlying VariableElement
      */
-    public ParameterModel(String name, TypeMirror type, boolean greedy, boolean optional, String defaultValue,
-                          String suggestProvider, boolean suggestField, String resolveName,
+    public ParameterModel(String name, TypeMirror type, List<String> enumConstants, boolean greedy, boolean optional,
+                          String defaultValue, String suggestProvider, boolean suggestField, String resolveName,
                           MethodModel resolverMethod, MethodModel suggestMethod, VariableElement element) {
         this.name = name;
         this.type = type;
+        this.enumConstants = enumConstants;
         this.greedy = greedy;
         this.optional = optional;
         this.defaultValue = defaultValue;
@@ -72,6 +76,15 @@ public class ParameterModel {
      */
     public TypeMirror getType() {
         return type;
+    }
+
+    /**
+     * Gets the constants of an enum parameter.
+     *
+     * @return the constants, or {@code null} when the parameter is not an enum
+     */
+    public List<String> getEnumConstants() {
+        return enumConstants;
     }
 
     /**
@@ -164,7 +177,7 @@ public class ParameterModel {
      * @return a parameter model with the given name
      */
     public ParameterModel withName(String name) {
-        return new ParameterModel(name, type, greedy, optional, defaultValue, suggestProvider, suggestField, resolveName, resolverMethod, suggestMethod, element);
+        return new ParameterModel(name, type, enumConstants, greedy, optional, defaultValue, suggestProvider, suggestField, resolveName, resolverMethod, suggestMethod, element);
     }
 
     /**
@@ -174,6 +187,6 @@ public class ParameterModel {
      * @return a parameter model marked optional with the inherited default
      */
     public ParameterModel asOptional(String inheritedDefault) {
-        return new ParameterModel(name, type, greedy, true, inheritedDefault, suggestProvider, suggestField, resolveName, resolverMethod, suggestMethod, element);
+        return new ParameterModel(name, type, enumConstants, greedy, true, inheritedDefault, suggestProvider, suggestField, resolveName, resolverMethod, suggestMethod, element);
     }
 }

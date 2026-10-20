@@ -33,6 +33,11 @@ public class EdgeCaseCommand {
         ((TestSender) sender).sendMessage("enum=" + color);
     }
 
+    @Command("enumdef")
+    public void enumDefault(Object sender, @Default("GREEN") Color color) {
+        ((TestSender) sender).sendMessage("enumdef=" + color);
+    }
+
     @Command("desc")
     public void descriptionCheck(Object sender) {
         ((TestSender) sender).sendMessage("desc");

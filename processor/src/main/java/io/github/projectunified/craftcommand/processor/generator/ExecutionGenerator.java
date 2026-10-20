@@ -89,7 +89,7 @@ final class ExecutionGenerator {
         for (ParameterModel p : method.getParameters()) {
             TypeName pTypeName = TypeName.get(p.getType());
             MethodModel resolverModel = p.getResolverMethod();
-            if (resolverModel == null && !processor.typeSupport().isBuiltIn(pTypeName)) {
+            if (resolverModel == null && p.getEnumConstants() == null && !processor.typeSupport().isBuiltIn(pTypeName)) {
                 hasDynamic = true;
             }
             if (!p.isOptional()) {
@@ -137,7 +137,29 @@ final class ExecutionGenerator {
             return;
         }
 
-        // 2. Greedy array
+        // 2. Enum
+        if (p.getEnumConstants() != null) {
+            if (cursor.isDeclared() && !p.isOptional()) {
+                slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(1));
+                BaseCommandGenerator.addCommandError(slot.methodSpec(), "missing-argument",
+                        "Missing arguments for parameter: %s", p.getName());
+                slot.methodSpec().endControlFlow();
+            }
+            if (p.isOptional()) {
+                cursor.requireIndex();
+                CodeBlock defaultValue = p.getDefaultValue() == null
+                        ? CodeBlock.of("null")
+                        : CodeBlock.of("$T.valueOf($S)", pTypeName, p.getDefaultValue());
+                slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : $T.valueOf($L)",
+                        pTypeName, varName, cursor.index(), cursor.argsVariable(), defaultValue, pTypeName, cursor.take());
+            } else {
+                slot.methodSpec().addStatement("$T $L = $T.valueOf($L)",
+                        pTypeName, varName, pTypeName, cursor.take());
+            }
+            return;
+        }
+
+        // 3. Greedy array
         if (p.isGreedy() && pTypeName instanceof ArrayTypeName) {
             TypeName componentType = ((ArrayTypeName) pTypeName).componentType();
             TypeName boxedComponent = componentType.isPrimitive() ? componentType.box() : componentType;

@@ -68,6 +68,17 @@ Parameter consumes all remaining arguments. Must be last.
 public void msg(Player sender, @Greedy String message) { ...}
 ```
 
+## Enums
+
+Enum parameters are handled natively: the argument is parsed with `Enum.valueOf` and suggestions are the enum
+constants. No `ArgumentResolver` registration is required.
+
+```java
+public enum Mode { FAST, SLOW }
+
+public void setMode(Player sender, Mode mode) { ...}
+```
+
 ## `@Suggest`
 
 Binds parameter to a suggestion provider for tab-completion.

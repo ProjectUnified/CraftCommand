@@ -13,9 +13,12 @@ import io.github.projectunified.craftcommand.processor.model.ParameterModel;
 
 import javax.annotation.processing.Messager;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -97,6 +100,7 @@ final class CommandParser {
                 ParameterModel senderParamModel = new ParameterModel(
                         senderNameAnn != null ? senderNameAnn.value() : senderParam.getSimpleName().toString(),
                         senderParam.asType(),
+                        null,
                         false,
                         false,
                         null,
@@ -179,6 +183,20 @@ final class CommandParser {
                 commandAnn.description(), defaultMethod, subcommands, nestedSubcommands, typeElement);
     }
 
+    private static List<String> enumConstants(TypeMirror type) {
+        if (!(type instanceof DeclaredType)) return null;
+        Element element = ((DeclaredType) type).asElement();
+        if (element.getKind() != ElementKind.ENUM) return null;
+
+        List<String> constants = new ArrayList<>();
+        for (Element enclosed : element.getEnclosedElements()) {
+            if (enclosed.getKind() == ElementKind.ENUM_CONSTANT) {
+                constants.add(enclosed.getSimpleName().toString());
+            }
+        }
+        return constants;
+    }
+
     private ParameterModel parseParameter(VariableElement param, Resolvers resolvers) {
         Default defaultAnn = param.getAnnotation(Default.class);
         Name nameAnn = param.getAnnotation(Name.class);
@@ -198,6 +216,7 @@ final class CommandParser {
         return new ParameterModel(
                 nameAnn != null ? nameAnn.value() : param.getSimpleName().toString(),
                 param.asType(),
+                enumConstants(param.asType()),
                 param.getAnnotation(Greedy.class) != null,
                 defaultAnn != null,
                 (defaultAnn != null && !defaultAnn.value().isEmpty()) ? defaultAnn.value() : null,
