@@ -55,6 +55,9 @@ Step 6: buildCommandInfo()              → BaseCommand.getCommandInfo()
 ### Brigadier execution (Paper)
 
 - `getCommandNode()` builds a native Brigadier tree of literals and arguments.
+- Paper argument factories are discovered from every no-argument `ArgumentTypes` method at processing time, so
+  new paper-api argument types are supported without changing this generator. Resolver-returning factories are
+  unwrapped through their `ArgumentResolver` generic type.
 - `PaperExecutionSource` retrieves values from the Brigadier context (native arguments or
   `manager.resolveParameter(...)` via a `String` argument).
 - Resolver parameters are resolved from their linked `MethodModel`, the same way as the array platforms.
@@ -145,6 +148,15 @@ Register the processor with the compiler like any annotation processor. `@AutoSe
 
 ## Errors
 
-- Execution and validation errors throw `CommandException`.
-- `CommandManager.formatMessage(key, defaultFormat, args...)` provides pluggable message formatting and
-  localization (`usage`, `unknown-subcommand`, `invalid-argument`, `missing-argument`).
+- Execution and validation errors throw `CommandException`; generated wrappers catch them and call
+  `CommandManager.handleException(sender, exception)`.
+- Generated messages always go through the manager:
+  - `CommandManager.sendMessage(sender, key, defaultFormat, args...)` formats and delivers the message.
+  - `handleException` sends the exception message through the same path.
+  - `formatMessage` supplies the generated default; override it to translate keys.
+- Default keys: `permission`, `unknown-subcommand`, `usage`, `missing-argument`, `invalid-sender`,
+  `validation.min`, `validation.max`, `validation.custom`, `player-not-found`, `world-not-found`,
+  `invalid-coordinate`, `no-resolver`, `error` (exception messages, with the exception message as the `%s`
+  argument).
+- Platform managers implement `sendMessage(sender, message)` to deliver to their sender type (console print,
+  Bukkit chat, Paper component).

@@ -37,10 +37,6 @@ final class ExecutionGenerator {
     protected void buildExecutionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, String instanceVar, CommandModel rootModel, String returnStatement) {
         if (!model.getSubcommands().isEmpty() || !model.getNestedSubcommands().isEmpty()) {
             methodSpec.beginControlFlow("if ($L.length >= 1)", argsVar);
-            if (!model.getNestedSubcommands().isEmpty()) {
-                methodSpec.addStatement("$T[] subArgs = $T.copyOfRange($L, 1, $L.length)",
-                        String.class, Arrays.class, argsVar, argsVar);
-            }
             methodSpec.beginControlFlow("switch ($L[0].toLowerCase())", argsVar);
 
             // 1. Nested subcommand classes
@@ -48,6 +44,8 @@ final class ExecutionGenerator {
                 BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(child));
                 processor.onBeforeExecute(methodSpec, child.getElement(), returnStatement);
                 String helperMethodName = Naming.executeHelper(child.getClassName());
+                methodSpec.addStatement("$T[] subArgs = $T.copyOfRange($L, 1, $L.length)",
+                        String.class, Arrays.class, argsVar, argsVar);
                 methodSpec.addStatement("$L(sender, subArgs)", helperMethodName);
                 methodSpec.addStatement("$L", returnStatement);
                 methodSpec.endControlFlow();
@@ -230,11 +228,10 @@ final class ExecutionGenerator {
         }
 
         // 6. Dynamic Manager Resolver (Fallback)
-        slot.methodSpec().addStatement("$T $L", pTypeName, varName);
-        String defValLiteral = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
-        slot.methodSpec().addStatement("$L = manager.resolveParameter(sender, $T.class, $L, $L, $S, $L, $L)",
-                varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
-                cursor.argsVariable(), cursor.runtimeCursor(), p.getName(), p.isOptional(), defValLiteral);
+        CodeBlock defaultValue = p.getDefaultValue() == null ? CodeBlock.of("null") : CodeBlock.of("$S", p.getDefaultValue());
+        slot.methodSpec().addStatement("$T $L = manager.resolveParameter(sender, $T.class, $L, $L, $S, $L, $L)",
+                pTypeName, varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
+                cursor.argsVariable(), cursor.runtimeCursor(), p.getName(), p.isOptional(), defaultValue);
     }
 
     /**

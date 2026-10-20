@@ -3,15 +3,13 @@ package io.github.projectunified.craftcommand.example.paper;
 import io.github.projectunified.craftcommand.ArgumentResolver;
 import io.github.projectunified.craftcommand.CommandInfo;
 import io.github.projectunified.craftcommand.CommandManager;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+import net.kyori.adventure.text.Component;
 
 import java.util.List;
 
 class TestPaperManager extends CommandManager<Object> {
     TestPaperManager() {
-        super((sender, exception) -> {
-            if (exception instanceof RuntimeException) throw (RuntimeException) exception;
-            throw new RuntimeException(exception);
-        });
         registerProvider(type -> {
             if (type != PaperBooleanCommand.CustomValue.class) return null;
             return new ArgumentResolver<Object, Object>() {
@@ -21,6 +19,19 @@ class TestPaperManager extends CommandManager<Object> {
                 }
             };
         });
+    }
+
+    @Override
+    protected void sendMessage(Object sender, String message) {
+        if (sender instanceof CommandSourceStack) {
+            ((CommandSourceStack) sender).getSender().sendMessage(Component.text(message));
+        }
+    }
+
+    @Override
+    public void handleException(Object sender, Exception exception) {
+        if (exception instanceof RuntimeException) throw (RuntimeException) exception;
+        throw new RuntimeException(exception);
     }
 
     @Override

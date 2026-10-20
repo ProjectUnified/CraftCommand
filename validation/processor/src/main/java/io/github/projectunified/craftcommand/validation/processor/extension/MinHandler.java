@@ -27,8 +27,12 @@ public class MinHandler implements ParameterAnnotationHandler<Min> {
                 ? "%s cannot be less than %s"
                 : annotation.message();
         boolean isInt = TypeSupport.isIntegerType(typeName) && annotation.value() == Math.floor(annotation.value()) && !Double.isInfinite(annotation.value());
-        Object limitValue = isInt ? (long) annotation.value() : annotation.value();
-        methodSpec.addComment("Validate parameter '" + parameter.getName() + "' against min limit: " + limitValue);
+        Object limitValue;
+        if (isInt) {
+            limitValue = (long) annotation.value();
+        } else {
+            limitValue = annotation.value();
+        }
         methodSpec.beginControlFlow("if ($L < $L)", varName, limitValue)
                 .addStatement("throw new $T(manager.formatMessage($S, $S, $S, $L))",
                         CommandException.class, messageKey, defaultTemplate, parameter.getName(), limitValue)

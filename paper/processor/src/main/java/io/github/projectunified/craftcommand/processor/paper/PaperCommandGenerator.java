@@ -21,9 +21,15 @@ import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,15 +46,15 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     final ClassName requiredArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "RequiredArgumentBuilder");
     final ClassName literalArgumentBuilderClass = ClassName.get("com.mojang.brigadier.builder", "LiteralArgumentBuilder");
     final ClassName argumentTypesClass = ClassName.get("io.papermc.paper.command.brigadier.argument", "ArgumentTypes");
-    final ClassName errorColorClass = ClassName.get("net.kyori.adventure.text.format", "NamedTextColor");
-    final ClassName componentClass = ClassName.get("net.kyori.adventure.text", "Component");
     final ClassName paperSuggestionsClass = ClassName.get("io.github.projectunified.craftcommand.paper", "PaperSuggestions");
 
+    private final ProcessingEnvironment processingEnvironment;
     private final Map<String, CodeBlock> brigadierArgTypes = new HashMap<>();
     private final Map<String, Function<String, CodeBlock>> brigadierRetrievals = new HashMap<>();
 
     public PaperCommandGenerator(ProcessingEnvironment processingEnvironment) {
         super(processingEnvironment);
+        this.processingEnvironment = processingEnvironment;
 
         senderTypeRegistry().registerSenderBaseType("io.papermc.paper.command.brigadier.CommandSourceStack");
         senderTypeRegistry().registerSenderType("org.bukkit.entity.Player");
@@ -56,13 +62,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         senderTypeRegistry().registerSenderType("org.bukkit.command.BlockCommandSender");
         senderTypeRegistry().registerSenderType("org.bukkit.command.CommandSender");
 
-        ClassName playerClass = ClassName.get("org.bukkit.entity", "Player");
-        ClassName worldClass = ClassName.get("org.bukkit", "World");
         ClassName locationClass = ClassName.get("org.bukkit", "Location");
-        typeSupport().register(TypeSupport.Entry.builder(playerClass, 1)
-                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
-        typeSupport().register(TypeSupport.Entry.builder(worldClass, 1)
-                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
         typeSupport().register(TypeSupport.Entry.builder(locationClass, 1)
                 .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
 
@@ -72,7 +72,6 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         ClassName dblArgClass = ClassName.get("com.mojang.brigadier.arguments", "DoubleArgumentType");
         ClassName fltArgClass = ClassName.get("com.mojang.brigadier.arguments", "FloatArgumentType");
         ClassName boolArgClass = ClassName.get("com.mojang.brigadier.arguments", "BoolArgumentType");
-        ClassName playerResolverClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers.selector", "PlayerSelectorArgumentResolver");
         ClassName finePositionClass = ClassName.get("io.papermc.paper.command.brigadier.argument.resolvers", "FinePositionResolver");
 
         brigadierArgTypes.put("java.lang.String", CodeBlock.of("$T.string()", strArgClass));
@@ -84,12 +83,91 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         registerBrigadierType("float", "java.lang.Float", fltArgClass, "floatArg", "getFloat");
         registerBrigadierType("boolean", "java.lang.Boolean", boolArgClass, "bool", "getBool");
 
-        brigadierArgTypes.put("org.bukkit.entity.Player", CodeBlock.of("$L.player()", argumentTypesClass));
-        brigadierRetrievals.put("org.bukkit.entity.Player", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()", a, playerResolverClass));
-        brigadierArgTypes.put("org.bukkit.World", CodeBlock.of("$L.world()", argumentTypesClass));
-        brigadierRetrievals.put("org.bukkit.World", a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, worldClass));
-        brigadierArgTypes.put("org.bukkit.Location", CodeBlock.of("$L.finePosition(true)", argumentTypesClass));
+        registerPaperArgumentTypes();
+
+        brigadierArgTypes.put("org.bukkit.Location", CodeBlock.of("$T.finePosition(true)", argumentTypesClass));
         brigadierRetrievals.put("org.bukkit.Location", a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toLocation(ctx.getSource().getLocation().getWorld())", a, finePositionClass));
+        registerPaperType(ClassName.get("org.bukkit.util", "Vector"), CodeBlock.of("$T.finePosition(true)", argumentTypesClass),
+                a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).toVector()", a, finePositionClass));
+    }
+
+    /**
+     * Registers every no-argument factory on Paper's {@code ArgumentTypes}. The resolved value type comes from the
+     * factory's generic return type, so new paper-api arguments are picked up without touching this generator.
+     */
+    private void registerPaperArgumentTypes() {
+        Elements elements = processingEnvironment.getElementUtils();
+        Types types = processingEnvironment.getTypeUtils();
+        TypeElement argumentTypes = elements.getTypeElement("io.papermc.paper.command.brigadier.argument.ArgumentTypes");
+        if (argumentTypes == null) return;
+
+        for (Element enclosed : argumentTypes.getEnclosedElements()) {
+            if (!(enclosed instanceof ExecutableElement)) continue;
+            ExecutableElement method = (ExecutableElement) enclosed;
+            if (!method.getParameters().isEmpty() || !method.getModifiers().contains(Modifier.STATIC)) continue;
+            if (!(method.getReturnType() instanceof DeclaredType)) continue;
+
+            DeclaredType returnType = (DeclaredType) method.getReturnType();
+            TypeElement returnElement = (TypeElement) returnType.asElement();
+            if (!returnElement.getQualifiedName().contentEquals("com.mojang.brigadier.arguments.ArgumentType")
+                    || returnType.getTypeArguments().size() != 1) {
+                continue;
+            }
+
+            TypeMirror valueType = returnType.getTypeArguments().get(0);
+            CodeBlock argumentType = CodeBlock.of("$T.$L()", argumentTypesClass, method.getSimpleName());
+            TypeMirror resolved = resolvedType(valueType, types);
+            if (resolved instanceof DeclaredType && ((DeclaredType) resolved).asElement().getSimpleName().contentEquals("List")
+                    && ((DeclaredType) resolved).getTypeArguments().size() == 1) {
+                TypeMirror elementType = ((DeclaredType) resolved).getTypeArguments().get(0);
+                registerPaperTypeIfAbsent(TypeName.get(resolved), argumentType,
+                        a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource())", a, TypeName.get(valueType)));
+                registerPaperTypeIfAbsent(TypeName.get(elementType), argumentType,
+                        a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource()).iterator().next()", a, TypeName.get(valueType)));
+            } else if (resolved != null) {
+                TypeName target = TypeName.get(resolved);
+                registerPaperTypeIfAbsent(target, argumentType,
+                        a -> CodeBlock.of("ctx.getArgument($S, $T.class).resolve(ctx.getSource())", a, TypeName.get(valueType)));
+            } else {
+                TypeName target = TypeName.get(valueType);
+                registerPaperTypeIfAbsent(target, argumentType,
+                        a -> CodeBlock.of("ctx.getArgument($S, $T.class)", a, target));
+            }
+        }
+    }
+
+    /**
+     * If the argument type is a resolver, returns the type it resolves to.
+     */
+    private TypeMirror resolvedType(TypeMirror valueType, Types types) {
+        if (!(valueType instanceof DeclaredType)) return null;
+        Deque<TypeMirror> queue = new ArrayDeque<>(types.directSupertypes(valueType));
+        while (!queue.isEmpty()) {
+            TypeMirror superType = queue.removeFirst();
+            if (!(superType instanceof DeclaredType)) continue;
+            DeclaredType declared = (DeclaredType) superType;
+            TypeElement element = (TypeElement) declared.asElement();
+            if (element.getQualifiedName().contentEquals("io.papermc.paper.command.brigadier.argument.resolvers.ArgumentResolver")
+                    && declared.getTypeArguments().size() == 1) {
+                return declared.getTypeArguments().get(0);
+            }
+            queue.addAll(types.directSupertypes(superType));
+        }
+        return null;
+    }
+
+    private void registerPaperTypeIfAbsent(TypeName type, CodeBlock argumentType, Function<String, CodeBlock> retrieval) {
+        typeSupport().register(TypeSupport.Entry.builder(type, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
+        brigadierArgTypes.putIfAbsent(type.toString(), argumentType);
+        brigadierRetrievals.putIfAbsent(type.toString(), retrieval);
+    }
+
+    private void registerPaperType(TypeName type, CodeBlock argumentType, Function<String, CodeBlock> retrieval) {
+        typeSupport().register(TypeSupport.Entry.builder(type, 1)
+                .primitiveDefault("null").literal(d -> CodeBlock.of("null")).build());
+        brigadierArgTypes.put(type.toString(), argumentType);
+        brigadierRetrievals.put(type.toString(), retrieval);
     }
 
     private static Permission findPermissionUp(Element element) {
@@ -162,27 +240,48 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     protected void generateHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
         buildSenderCastHelpers(typeSpec, model);
         buildTypeSuggestionHelpers(typeSpec, model);
+        if (hasDefaultPermission(model)) typeSpec.addMethod(permissionCheck());
+    }
+
+    private static boolean hasDefaultPermission(CommandModel model) {
+        return anyMethod(model, element -> {
+            Permission permission = findPermissionUp(element);
+            return permission != null && permission.message().isEmpty();
+        });
+    }
+
+    private MethodSpec permissionCheck() {
+        return MethodSpec.methodBuilder("checkPermission")
+                .addModifiers(Modifier.PRIVATE)
+                .returns(boolean.class)
+                .addParameter(commandSourceStackClass, "sender")
+                .addParameter(String.class, "permission")
+                .addStatement("if (sender.getSender().hasPermission(permission)) return true")
+                .addStatement("manager.sendMessage(sender, $S, $S, permission)",
+                        PERMISSION_KEY, DEFAULT_PERMISSION_MESSAGE)
+                .addStatement("return false")
+                .build();
     }
 
     @Override
     protected void onBeforeExecute(MethodSpec.Builder methodSpec, Element element, String returnStatement) {
         Permission permission = findPermissionUp(element);
-        if (permission != null) {
-            methodSpec.beginControlFlow("if (!sender.getSender().hasPermission($S))", permission.value());
-            String msg = permission.message();
-            if (!msg.isEmpty() && isI18nKey(msg)) {
-                methodSpec.addStatement("sender.getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
-                        componentClass, i18nKey(msg), msg, permission.value(), errorColorClass);
-            } else if (!msg.isEmpty()) {
-                methodSpec.addStatement("sender.getSender().sendMessage($T.text($S, $T.RED))",
-                        componentClass, msg, errorColorClass);
-            } else {
-                methodSpec.addStatement("sender.getSender().sendMessage($T.text(manager.formatMessage($S, $S, $S), $T.RED))",
-                        componentClass, "permission", "You do not have permission to execute this command.", permission.value(), errorColorClass);
-            }
-            methodSpec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
-            methodSpec.endControlFlow();
+        if (permission == null) return;
+        String message = permission.message();
+        if (message.isEmpty()) {
+            methodSpec.addStatement("if (!checkPermission(sender, $S)) return $T.SINGLE_SUCCESS",
+                    permission.value(), commandClass);
+            return;
         }
+        methodSpec.beginControlFlow("if (!sender.getSender().hasPermission($S))", permission.value());
+        if (isI18nKey(message)) {
+            methodSpec.addStatement("manager.sendMessage(sender, $S, $S, $S)",
+                    i18nKey(message), message, permission.value());
+        } else {
+            methodSpec.addStatement("manager.sendMessage(sender, $S, $S)", message, message);
+        }
+        methodSpec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
+        methodSpec.endControlFlow();
     }
 
     // ── Brigadier tree generation ──
@@ -371,7 +470,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         onBeforeExecute(spec, method.getElement(), "return");
         new PaperExecutionSource(this, nodes, parsedNodeCount).generateExecution(spec, classModel, method, instanceExpr, rootModel);
         spec.nextControlFlow("catch ($T e)", Exception.class)
-                .addStatement("manager.getErrorHandler().accept(sender, e)")
+                .addStatement("manager.handleException(sender, e)")
                 .endControlFlow();
         spec.addStatement("return $T.SINGLE_SUCCESS", commandClass);
     }

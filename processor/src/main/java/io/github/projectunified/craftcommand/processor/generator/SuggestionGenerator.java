@@ -74,6 +74,14 @@ final class SuggestionGenerator {
         return !processor.typeSupport().isBuiltIn(typeName);
     }
 
+    /**
+     * Whether this command class or its default action can offer suggestions.
+     */
+    boolean hasSuggestions(CommandModel model) {
+        if (!model.getSubcommands().isEmpty() || !model.getNestedSubcommands().isEmpty()) return true;
+        return model.getDefaultMethod() != null && hasAnySuggestions(model.getDefaultMethod());
+    }
+
     public boolean hasAnySuggestions(MethodModel method) {
         for (ParameterModel p : method.getParameters()) {
             if (p == method.getSenderParameter()) continue;
@@ -107,8 +115,8 @@ final class SuggestionGenerator {
             methodSpec.endControlFlow();
 
             // Routing for args.length > 1
-            boolean hasSubSuggestions = !model.getNestedSubcommands().isEmpty() ||
-                    model.getSubcommands().stream().anyMatch(sub -> hasAnySuggestions(sub));
+            boolean hasSubSuggestions = model.getNestedSubcommands().stream().anyMatch(this::hasSuggestions)
+                    || model.getSubcommands().stream().anyMatch(sub -> hasAnySuggestions(sub));
 
             if (hasSubSuggestions) {
                 methodSpec.beginControlFlow("if ($L.length > 1)", argsVar);
@@ -117,6 +125,7 @@ final class SuggestionGenerator {
 
                 // Route to nested subcommand classes
                 for (CommandModel child : model.getNestedSubcommands()) {
+                    if (!hasSuggestions(child)) continue;
                     BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(child));
                     String childHelperName = Naming.suggestHelper(child.getClassName());
                     methodSpec.addStatement("return $L(sender, subArgs)", childHelperName);
@@ -423,11 +432,16 @@ final class SuggestionGenerator {
                             String resolverInstanceExpr = processor.getInstanceVarExpression(classModel, rootModel);
                             CodeBlock resolveExpr = BaseCommandGenerator.call(resolverInstanceExpr,
                                     resolver.getElement().getSimpleName().toString(), CodeBlock.of("sender"));
-                            methodSpec.addStatement("$T senderCast = ($T) $L", firstParamTypeName, firstParamTypeName, resolveExpr);
+                            TypeName resolverReturnType = TypeName.get(resolver.getElement().getReturnType());
+                            if (resolverReturnType.equals(firstParamTypeName)) {
+                                methodSpec.addStatement("$T senderCast = $L", firstParamTypeName, resolveExpr);
+                            } else {
+                                methodSpec.addStatement("$T senderCast = ($T) $L", firstParamTypeName, firstParamTypeName, resolveExpr);
+                            }
                             senderCastVar = "senderCast";
                         }
                     } else {
-                        methodSpec.addStatement("$T senderCast = ($T) manager.resolveSender($T.class, sender)", firstParamTypeName, firstParamTypeName, firstParamTypeName);
+                        methodSpec.addStatement("$T senderCast = manager.resolveSender($T.class, sender)", firstParamTypeName, firstParamTypeName);
                         senderCastVar = "senderCast";
                     }
                 } else if (processor.isSenderType(firstParamTypeName)) {

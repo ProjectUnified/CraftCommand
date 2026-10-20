@@ -79,6 +79,21 @@ generation step or extra annotation-processing dependency is required.
 
 `onBeforeExecute` and `getSenderExpression` are optional hooks used by the Bukkit/Paper generators.
 
+## Message Flow
+
+Generated wrappers never send text directly. They call `CommandManager.sendMessage`, which formats the key/fallback
+and delegates delivery to the platform's `sendMessage` implementation; `handleException` uses the same path for caught
+exceptions. Override `formatMessage` to translate keys.
+
+| Platform   | Delivery                            |
+|------------|-------------------------------------|
+| Standalone | `System.out.println`                |
+| Bukkit     | `CommandSender#sendMessage`         |
+| Paper      | Adventure `Component`               |
+
+Keys include `permission`, `unknown-subcommand`, `usage`, `missing-argument`, `validation.*`, and the literals passed
+to `@Permission(message = ...)` (or their `i18n:` suffix).
+
 ## Runtime Flow
 
 ```

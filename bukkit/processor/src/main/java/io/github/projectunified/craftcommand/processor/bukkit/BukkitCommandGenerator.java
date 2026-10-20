@@ -21,7 +21,6 @@ import java.util.List;
  */
 public final class BukkitCommandGenerator extends BaseCommandGenerator {
     private final ClassName commandSenderClass = ClassName.get("org.bukkit.command", "CommandSender");
-    private final ClassName chatColorClass = ClassName.get("org.bukkit", "ChatColor");
 
     public BukkitCommandGenerator(ProcessingEnvironment processingEnvironment) {
         super(processingEnvironment);
@@ -115,20 +114,41 @@ public final class BukkitCommandGenerator extends BaseCommandGenerator {
                 .returns(ParameterizedTypeName.get(List.class, String.class))
                 .addParameter(commandSenderClass, "sender")
                 .addParameter(String.class, "alias")
-                .addParameter(String[].class, "args")
-                .addException(IllegalArgumentException.class);
+                .addParameter(String[].class, "args");
         buildSuggestionRouting(tabSpec, model, "args", model);
         typeSpec.addMethod(tabSpec.build());
     }
 
     @Override
     protected void generatePlatformHelpers(TypeSpec.Builder typeSpec, CommandModel model) {
+        if (hasDefaultPermission(model)) typeSpec.addMethod(permissionCheck());
         BukkitHelperMethods.generate(typeSpec, model);
     }
 
-    @Override
-    protected void generateUnknownSubcommandMessage(MethodSpec.Builder methodSpec, CommandModel model) {
-        methodSpec.addStatement("sender.sendMessage($T.RED + $S)", chatColorClass, "Unknown subcommand. Available: " + getSubcommandNames(model));
+    private static boolean hasDefaultPermission(CommandModel model) {
+        if (anyMethod(model, BukkitCommandGenerator::usesDefaultPermission)) return true;
+        for (CommandModel child : model.getNestedSubcommands()) {
+            if (usesDefaultPermission(child.getElement()) || hasDefaultPermission(child)) return true;
+        }
+        return false;
+    }
+
+    private static boolean usesDefaultPermission(Element element) {
+        Permission permission = findPermissionUp(element);
+        return permission != null && permission.message().isEmpty();
+    }
+
+    private MethodSpec permissionCheck() {
+        return MethodSpec.methodBuilder("checkPermission")
+                .addModifiers(Modifier.PRIVATE)
+                .returns(boolean.class)
+                .addParameter(commandSenderClass, "sender")
+                .addParameter(String.class, "permission")
+                .addStatement("if (sender.hasPermission(permission)) return true")
+                .addStatement("manager.sendMessage(sender, $S, $S, permission)",
+                        PERMISSION_KEY, DEFAULT_PERMISSION_MESSAGE)
+                .addStatement("return false")
+                .build();
     }
 
     @Override
@@ -140,16 +160,17 @@ public final class BukkitCommandGenerator extends BaseCommandGenerator {
     }
 
     private void generatePermissionCheck(MethodSpec.Builder methodSpec, Permission permission, String returnStatement) {
+        String message = permission.message();
+        if (message.isEmpty()) {
+            methodSpec.addStatement("if (!checkPermission(sender, $S)) $L", permission.value(), returnStatement);
+            return;
+        }
         methodSpec.beginControlFlow("if (!sender.hasPermission($S))", permission.value());
-        String msg = permission.message();
-        if (isI18nKey(msg)) {
-            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
-                    chatColorClass, i18nKey(msg), msg, permission.value());
-        } else if (!msg.isEmpty()) {
-            methodSpec.addStatement("sender.sendMessage($S)", msg);
+        if (isI18nKey(message)) {
+            methodSpec.addStatement("manager.sendMessage(sender, $S, $S, $S)",
+                    i18nKey(message), message, permission.value());
         } else {
-            methodSpec.addStatement("sender.sendMessage($T.RED + manager.formatMessage($S, $S, $S))",
-                    chatColorClass, "permission", "You do not have permission to execute this command.", permission.value());
+            methodSpec.addStatement("manager.sendMessage(sender, $S, $S)", message, message);
         }
         methodSpec.addStatement(returnStatement).endControlFlow();
     }

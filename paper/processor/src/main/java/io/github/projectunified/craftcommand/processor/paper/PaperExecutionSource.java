@@ -98,8 +98,8 @@ public class PaperExecutionSource {
         String strVar = varName + "_str";
         methodSpec.addStatement("String $L = $T.getString(ctx, $S)", strVar,
                 ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType"), pm.getName());
-        methodSpec.addStatement("$T $L = ($T) manager.getResolver($T.class).resolve(sender, new String[]{$L}, $T.arguments(ctx))",
-                pmTypeName, varName, pmTypeName,
+        methodSpec.addStatement("$T $L = manager.getResolver($T.class).resolve(sender, new String[]{$L}, $T.arguments(ctx))",
+                pmTypeName, varName,
                 pmTypeName.isPrimitive() ? pmTypeName.box() : pmTypeName,
                 strVar, processor.paperSuggestionsClass);
     }

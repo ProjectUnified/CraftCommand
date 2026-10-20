@@ -11,8 +11,7 @@ Defines a command or subcommand.
 |------------------|------------|----------|----------------------------------|
 | `value`          | `String`   | required | Command name                     |
 | `aliases`        | `String[]` | `{}`     | Alternative names                |
-| `description`    | `String`   | `""`     | Static description               |
-| `descriptionKey` | `String`   | `""`     | i18n message key for description |
+| `description`    | `String`   | `""`     | Description; prefix with `i18n:` for a message key |
 
 ```java
 @Command("teleport")
@@ -96,7 +95,7 @@ Sets command permission. Works on classes and methods.
 | Attribute | Type     | Default  | Description                       |
 |-----------|----------|----------|-----------------------------------|
 | `value`   | `String` | required | Permission node                   |
-| `message` | `String` | `""`     | Custom denied message or i18n key |
+| `message` | `String` | `""`     | Denied message; plain text is its own key/fallback, or use `i18n:key` |
 
 ```java
 
@@ -108,7 +107,15 @@ public class AdminCommands { ...
 @Command("secret")
 @Permission(value = "myplugin.secret", message = "Access denied!")
 public void secret(Player sender) { ...}
+
+@Command("admin")
+@Permission(value = "myplugin.admin", message = "i18n:permission.admin")
+public void admin(Player sender) { ...}
 ```
+
+Every denied-permission message is sent through `CommandManager.sendMessage`. The default message uses the
+`permission` key; a custom plain message is passed as both key and fallback. Override
+`CommandManager.formatMessage(key, defaultMessage, args)` to translate keys.
 
 ## `@Min` / `@Max` (Validation)
 

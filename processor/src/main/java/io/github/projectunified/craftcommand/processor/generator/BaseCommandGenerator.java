@@ -28,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.function.Predicate;
 
 /**
  * Base generator shared by every platform.
@@ -41,6 +42,9 @@ import java.util.StringJoiner;
  * {@link CommandGeneratorFactory#create}.
  */
 public abstract class BaseCommandGenerator implements CommandGenerator {
+    protected static final String PERMISSION_KEY = "permission";
+    protected static final String DEFAULT_PERMISSION_MESSAGE = "You do not have permission to execute this command.";
+
     private final ProcessingEnvironment processingEnvironment;
     private final TypeSupport typeSupport = TypeSupport.builtins();
     private final List<ParameterAnnotationHandler<?>> parameterHandlers;
@@ -111,7 +115,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
      * Emits the message shown when a command without arguments has no default action.
      */
     protected void generateUnknownSubcommandMessage(MethodSpec.Builder methodSpec, CommandModel model) {
-        methodSpec.addStatement("System.out.println($S)", "Unknown subcommand. Available: " + getSubcommandNames(model));
+        methodSpec.addStatement("manager.sendMessage(sender, $S, $S, $S)",
+                "unknown-subcommand", "Unknown subcommand. Available: %s", getSubcommandNames(model));
     }
 
     /**
@@ -235,15 +240,15 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     private static void generateManagerSenderResolution(MethodSpec.Builder spec, TypeName senderType, String senderVar) {
-        spec.addStatement("$T $L = ($T) manager.resolveSender($T.class, sender)",
-                senderType, senderVar, senderType, senderType);
+        spec.addStatement("$T $L = manager.resolveSender($T.class, sender)",
+                senderType, senderVar, senderType);
     }
 
     public void generateExecuteMethodBody(MethodSpec.Builder executeSpec, CommandModel model, String returnStatement) {
         executeSpec.beginControlFlow("try");
         execution.buildExecutionRouting(executeSpec, model, "args", "instance", model, returnStatement);
         executeSpec.nextControlFlow("catch ($T e)", Exception.class)
-                .addStatement("manager.getErrorHandler().accept(sender, e)")
+                .addStatement("manager.handleException(sender, e)")
                 .endControlFlow();
         executeSpec.addStatement("$L", returnStatement);
     }
@@ -260,13 +265,15 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
             execution.buildExecutionRouting(methodSpec, child, "args", childInstanceVar, rootModel, "return");
             typeSpec.addMethod(methodSpec.build());
 
-            MethodSpec.Builder suggestMethodSpec = MethodSpec.methodBuilder(Naming.suggestHelper(child.getClassName()))
-                    .addModifiers(Modifier.PRIVATE)
-                    .returns(ParameterizedTypeName.get(List.class, String.class))
-                    .addParameter(getSenderTypeName(), "sender")
-                    .addParameter(String[].class, "args");
-            buildSuggestionRouting(suggestMethodSpec, child, "args", rootModel);
-            typeSpec.addMethod(suggestMethodSpec.build());
+            if (suggestions.hasSuggestions(child)) {
+                MethodSpec.Builder suggestMethodSpec = MethodSpec.methodBuilder(Naming.suggestHelper(child.getClassName()))
+                        .addModifiers(Modifier.PRIVATE)
+                        .returns(ParameterizedTypeName.get(List.class, String.class))
+                        .addParameter(getSenderTypeName(), "sender")
+                        .addParameter(String[].class, "args");
+                buildSuggestionRouting(suggestMethodSpec, child, "args", rootModel);
+                typeSpec.addMethod(suggestMethodSpec.build());
+            }
 
             generateSubcommandClassExecutors(typeSpec, child, rootModel);
         }
@@ -520,6 +527,20 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
             names.add(alias.toLowerCase());
         }
         return names;
+    }
+
+    /**
+     * Traverses the methods of a command tree.
+     */
+    protected static boolean anyMethod(CommandModel model, Predicate<ExecutableElement> predicate) {
+        if (model.getDefaultMethod() != null && predicate.test(model.getDefaultMethod().getElement())) return true;
+        for (MethodModel sub : model.getSubcommands()) {
+            if (predicate.test(sub.getElement())) return true;
+        }
+        for (CommandModel child : model.getNestedSubcommands()) {
+            if (anyMethod(child, predicate)) return true;
+        }
+        return false;
     }
 
     static List<String> collectLoweredNames(MethodModel sub) {

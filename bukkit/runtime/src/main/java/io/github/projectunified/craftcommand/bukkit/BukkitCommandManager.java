@@ -3,7 +3,6 @@ package io.github.projectunified.craftcommand.bukkit;
 import io.github.projectunified.craftcommand.BaseCommand;
 import io.github.projectunified.craftcommand.CommandManager;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Server;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandMap;
@@ -18,7 +17,6 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.BiConsumer;
 import java.util.logging.Level;
 
 /**
@@ -34,19 +32,13 @@ public class BukkitCommandManager extends CommandManager<CommandSender> {
     private final JavaPlugin plugin;
     private final Map<String, Command> registered = new HashMap<>();
 
-    public BukkitCommandManager(JavaPlugin plugin, BiConsumer<CommandSender, Exception> errorHandler) {
-        super(errorHandler);
+    public BukkitCommandManager(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /**
-     * Constructs a BukkitCommandManager with a default error handler that sends red messages.
-     *
-     * @param plugin the JavaPlugin instance
-     */
-    public BukkitCommandManager(JavaPlugin plugin) {
-        super((sender, exception) -> sender.sendMessage(ChatColor.RED + exception.getMessage()));
-        this.plugin = plugin;
+    @Override
+    protected void sendMessage(CommandSender sender, String message) {
+        sender.sendMessage(message);
     }
 
     private static CommandMap getCommandMap() {

@@ -6,7 +6,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.*;
-import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
@@ -19,11 +18,6 @@ public abstract class CommandManager<S> {
     private final List<Function<Class<?>, ArgumentResolver<S, ?>>> providers = new ArrayList<>();
     private final Map<Class<?>, Function<S, ?>> senderResolvers = new HashMap<>();
     private final Map<Object, BaseCommand> wrappers = new HashMap<>();
-    private BiConsumer<S, Exception> errorHandler;
-
-    public CommandManager(BiConsumer<S, Exception> errorHandler) {
-        this.errorHandler = errorHandler;
-    }
 
     /**
      * Filters suggestions by prefix (case-insensitive).
@@ -91,15 +85,52 @@ public abstract class CommandManager<S> {
     }
 
     /**
-     * Formats a message by key. Override for i18n.
-     * Default: {@code String.format(defaultValue, args)}.
+     * Formats a message by key. Override to plug in translations.
+     *
+     * @param key            the message key
+     * @param defaultValue   the fallback template
+     * @param args           format arguments
+     * @return the formatted message
      */
     public String formatMessage(String key, String defaultValue, Object... args) {
+        if (defaultValue == null) return null;
         try {
             return String.format(defaultValue, args);
         } catch (Exception e) {
             return defaultValue;
         }
+    }
+
+    /**
+     * Formats a message and sends it through the platform handler.
+     *
+     * @param sender         the message recipient
+     * @param key            the translation key
+     * @param defaultMessage the fallback message, formatted with {@code args}
+     * @param args           format arguments
+     */
+    public void sendMessage(S sender, String key, String defaultMessage, Object... args) {
+        sendMessage(sender, formatMessage(key, defaultMessage, args));
+    }
+
+    /**
+     * Sends an already formatted message. Implemented by each platform manager.
+     *
+     * @param sender  the message recipient
+     * @param message the formatted message
+     */
+    protected abstract void sendMessage(S sender, String message);
+
+    /**
+     * Handles an exception thrown by a command. Default: send its message.
+     *
+     * @param sender    the command sender
+     * @param exception the exception
+     */
+    public void handleException(S sender, Exception exception) {
+        String message = exception.getMessage();
+        if (message == null) message = "Command failed";
+        sendMessage(sender, "error", message, message);
     }
 
     /**
@@ -186,14 +217,8 @@ public abstract class CommandManager<S> {
             if (dynamicResolver != null) return (ArgumentResolver<S, T>) dynamicResolver;
         }
 
-        throw new IllegalArgumentException("No resolver registered for type: " + type.getName());
+        throw new IllegalArgumentException(
+                formatMessage("no-resolver", "No resolver registered for type: %s", type.getName()));
     }
 
-    public BiConsumer<S, Exception> getErrorHandler() {
-        return errorHandler;
-    }
-
-    public void setErrorHandler(BiConsumer<S, Exception> errorHandler) {
-        this.errorHandler = errorHandler;
-    }
 }

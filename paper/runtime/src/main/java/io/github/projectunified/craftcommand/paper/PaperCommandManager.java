@@ -4,13 +4,11 @@ import io.github.projectunified.craftcommand.CommandManager;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.BiConsumer;
 
 /**
  * CommandManager implementation for Paper plugins using Brigadier.
@@ -20,30 +18,18 @@ public class PaperCommandManager extends CommandManager<CommandSourceStack> {
     private final List<PaperCommand> registered = new ArrayList<>();
 
     /**
-     * Constructs a PaperCommandManager with a custom error handler.
-     *
-     * @param plugin       the JavaPlugin instance
-     * @param errorHandler the custom error handler
-     */
-    public PaperCommandManager(JavaPlugin plugin, BiConsumer<CommandSourceStack, Exception> errorHandler) {
-        super(errorHandler);
-        this.plugin = plugin;
-
-        registerLifecycleListener();
-    }
-
-    /**
-     * Constructs a PaperCommandManager with a default error handler that sends red messages.
+     * Constructs a PaperCommandManager.
      *
      * @param plugin the JavaPlugin instance
      */
     public PaperCommandManager(JavaPlugin plugin) {
-        super((source, exception) -> source.getSender().sendMessage(
-                Component.text(exception.getMessage(), NamedTextColor.RED)
-        ));
         this.plugin = plugin;
-
         registerLifecycleListener();
+    }
+
+    @Override
+    protected void sendMessage(CommandSourceStack sender, String message) {
+        sender.getSender().sendMessage(Component.text(message));
     }
 
     private void registerLifecycleListener() {
