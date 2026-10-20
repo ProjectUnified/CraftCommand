@@ -41,9 +41,8 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(child));
                 processor.onBeforeExecute(methodSpec, child.getElement(), returnStatement);
                 String helperMethodName = Naming.executeHelper(child.getClassName());
-                methodSpec.addStatement("$T[] subArgs = $T.copyOfRange($L, 1, $L.length)",
-                        String.class, Arrays.class, argsVar, argsVar);
-                methodSpec.addStatement("$L(sender, subArgs)", helperMethodName);
+                methodSpec.addStatement("$L(sender, $T.copyOfRange($L, 1, $L.length))",
+                        helperMethodName, Arrays.class, argsVar, argsVar);
                 methodSpec.addStatement("$L", returnStatement);
                 methodSpec.endControlFlow();
             }
@@ -115,7 +114,7 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
             String varName = slot.localFor(p, "param_" + i);
             paramNames.add(varName);
 
-            resolveParameter(slot, args, p, varName, i);
+            resolveParameter(slot, args, p, varName, i, i == method.parameters().size() - 1);
             runParameterAnnotationHandlers(p, varName, instanceVar, senderVarName, methodSpec);
         }
 
@@ -124,13 +123,13 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
         methodSpec.addStatement("$L", BaseCommandGenerator.call(instanceVar, method.methodName(), callArgs));
     }
 
-    void resolveParameter(MethodSlot slot, ArgCursor cursor, ParameterModel p, String varName, int paramIndex) {
+    void resolveParameter(MethodSlot slot, ArgCursor cursor, ParameterModel p, String varName, int paramIndex, boolean lastParameter) {
         TypeName pTypeName = TypeName.get(p.type());
 
         // 1. Resolver model from @Resolve("name")
         MethodModel resolverModel = p.resolverMethod();
         if (resolverModel != null) {
-            resolveResolverParameters(slot, cursor, resolverModel, varName, p);
+            resolveResolverParameters(slot, cursor, resolverModel, varName, p, lastParameter);
             return;
         }
 
@@ -143,12 +142,12 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 slot.methodSpec().endControlFlow();
             }
             if (p.optional()) {
-                cursor.requireIndex();
+                if (!lastParameter) cursor.requireIndex();
                 CodeBlock defaultValue = p.defaultValue() == null
                         ? CodeBlock.of("null")
                         : CodeBlock.of("$T.valueOf($S)", pTypeName, p.defaultValue());
-                slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : $T.valueOf($L)",
-                        pTypeName, varName, cursor.index(), cursor.argsVariable(), defaultValue, pTypeName, cursor.take());
+                slot.methodSpec().addStatement("$T $L = $L ? $L : $T.valueOf($L)",
+                        pTypeName, varName, cursor.atEnd(), defaultValue, pTypeName, cursor.take(lastParameter));
             } else {
                 slot.methodSpec().addStatement("$T $L = $T.valueOf($L)",
                         pTypeName, varName, pTypeName, cursor.take());
@@ -186,8 +185,8 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
             if (pTypeName.equals(ClassName.get(String.class))) {
                 if (p.optional()) {
                     String defVal = p.defaultValue() == null ? "null" : CodeBlock.of("$S", p.defaultValue()).toString();
-                    slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : String.join($S, $L)",
-                            pTypeName, varName, cursor.index(), cursor.argsVariable(), defVal, " ", cursor.sliceFromHere());
+                    slot.methodSpec().addStatement("$T $L = $L ? $L : String.join($S, $L)",
+                            pTypeName, varName, cursor.atEnd(), defVal, " ", cursor.sliceFromHere());
                 } else {
                     slot.methodSpec().addStatement("$T $L = String.join($S, $L)", pTypeName, varName, " ", cursor.sliceFromHere());
                 }
@@ -218,12 +217,12 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
             if (width > 1) {
                 // Multi-arg platform type (e.g. Location), which may be consumed conditionally when optional
                 if (p.optional()) {
-                    cursor.requireIndex();
+                    if (!lastParameter) cursor.requireIndex();
                     slot.methodSpec().addStatement("$T $L = $L", pTypeName, varName,
                             processor.typeSupport().primitiveDefault(pTypeName));
                     slot.methodSpec().beginControlFlow("if (!($L))", cursor.notEnoughArguments(width));
                     emitPlatformMultiResolution(slot.methodSpec(), pTypeName, varName, cursor.argsVariable(), cursor, slot.senderVarName());
-                    cursor.advance(width);
+                    cursor.advance(width, lastParameter);
                     slot.methodSpec().endControlFlow();
                 } else {
                     slot.methodSpec().addStatement("$T $L", pTypeName, varName);
@@ -234,11 +233,11 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 // Single-arg type
                 if (p.optional()) {
                     // An optional parameter consumes its argument only when present, which needs a mutable index.
-                    cursor.requireIndex();
+                    if (!lastParameter) cursor.requireIndex();
                     CodeBlock defLit = processor.typeSupport().literal(pTypeName, p.defaultValue());
                     if (defLit == null) defLit = CodeBlock.of("null");
-                    slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : $L",
-                            pTypeName, varName, cursor.index(), cursor.argsVariable(), defLit, processor.typeSupport().parseExpr(pTypeName, cursor.take()));
+                    slot.methodSpec().addStatement("$T $L = $L ? $L : $L",
+                            pTypeName, varName, cursor.atEnd(), defLit, processor.typeSupport().parseExpr(pTypeName, cursor.take(lastParameter)));
                 } else {
                     slot.methodSpec().addStatement("$T $L = $L", pTypeName, varName, processor.typeSupport().parseExpr(pTypeName, cursor.take()));
                 }
@@ -262,7 +261,8 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 senderVarName);
     }
 
-    void resolveResolverParameters(MethodSlot slot, ArgCursor cursor, MethodModel resolverModel, String varName, ParameterModel parentParam) {
+    void resolveResolverParameters(MethodSlot slot, ArgCursor cursor, MethodModel resolverModel, String varName,
+                                   ParameterModel parentParam, boolean lastParameter) {
         ExecutableElement resolverElement = resolverModel.element();
         TypeName returnType = TypeName.get(resolverElement.getReturnType());
 
@@ -280,7 +280,8 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 rpToResolve = rp.asOptional(parentParam.defaultValue());
             }
 
-            resolveParameter(slot, cursor, rpToResolve, rpVarName, i);
+            resolveParameter(slot, cursor, rpToResolve, rpVarName, i,
+                    lastParameter && i == resolverModel.parameters().size() - 1);
             runParameterAnnotationHandlers(rp, rpVarName, processor.getInstanceVarExpression(slot.classModel(), slot.rootModel()), slot.senderVarName(), slot.methodSpec());
         }
 

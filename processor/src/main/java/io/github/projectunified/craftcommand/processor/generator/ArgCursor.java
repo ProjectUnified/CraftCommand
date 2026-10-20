@@ -60,6 +60,19 @@ final class ArgCursor {
     }
 
     /**
+     * Reads the current argument without advancing when it is the last parameter.
+     *
+     * @param last whether no later parameter reads the cursor
+     * @return the argument expression
+     */
+    CodeBlock take(boolean last) {
+        if (last) {
+            return CodeBlock.of("$L[$L]", argsVar, index());
+        }
+        return take();
+    }
+
+    /**
      * Reads every remaining argument, starting at the current one.
      *
      * @return the slice expression
@@ -82,6 +95,17 @@ final class ArgCursor {
     }
 
     /**
+     * An expression that is true when no argument remains at the current position.
+     *
+     * @return the end-of-arguments expression
+     */
+    CodeBlock atEnd() {
+        return declared
+                ? CodeBlock.of("$L >= $L.length", cursorRef(), argsVar)
+                : CodeBlock.of("$L.length <= $L", argsVar, offset);
+    }
+
+    /**
      * The expression for the current argument index.
      *
      * @return a constant index, or the local cursor expression
@@ -100,6 +124,18 @@ final class ArgCursor {
             methodSpec.addStatement("$L += $L", cursorRef(), width);
         } else {
             offset += width;
+        }
+    }
+
+    /**
+     * Consumes arguments unless this is the last parameter.
+     *
+     * @param width the number of consumed arguments
+     * @param last whether no later parameter reads the cursor
+     */
+    void advance(int width, boolean last) {
+        if (!last) {
+            advance(width);
         }
     }
 
