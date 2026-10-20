@@ -39,6 +39,7 @@ public abstract class BaseCommandProcessor extends AbstractProcessor {
     }
 
     @Override
+    @SuppressWarnings("SameReturnValue") // claiming the command annotations is the processor's contract
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getElementsAnnotatedWith(Command.class)) {
             if (!(element instanceof TypeElement typeElement)) continue;

@@ -25,6 +25,19 @@ public class CommandModel {
     private final TypeElement element;
     private final Map<TypeElement, CommandModel> nestedIndex;
 
+    /**
+     * Creates a command model and indexes its nested subcommands.
+     *
+     * @param className the generated class name
+     * @param packageName the generated package name
+     * @param commandName the primary command name
+     * @param aliases the command aliases
+     * @param description the command description
+     * @param defaultMethod the default action, or {@code null}
+     * @param subcommands the method-level subcommands
+     * @param nestedSubcommands the class-level subcommands
+     * @param element the underlying command class element
+     */
     public CommandModel(ClassName className, String packageName, String commandName, List<String> aliases, String description, MethodModel defaultMethod, List<MethodModel> subcommands, List<CommandModel> nestedSubcommands, TypeElement element) {
         this.className = className;
         this.packageName = packageName;

@@ -24,7 +24,7 @@ public class ValidateWithHandler implements ParameterAnnotationHandler<ValidateW
         String methodName = annotation.value();
 
         // Find the method in the enclosing class to see the parameter count
-        TypeElement typeElement = (TypeElement) parameter.getElement().getEnclosingElement().getEnclosingElement();
+        TypeElement typeElement = (TypeElement) parameter.element().getEnclosingElement().getEnclosingElement();
         ExecutableElement validateMethod = ResolverLookup.findMethod(typeElement, methodName);
 
         if (validateMethod == null) {
@@ -48,7 +48,7 @@ public class ValidateWithHandler implements ParameterAnnotationHandler<ValidateW
         String messageKey = annotation.message().isEmpty() ? "validation.custom" : annotation.message();
         String defaultTemplate = annotation.message().isEmpty() ? "%2$s" : annotation.message();
         methodSpec.addStatement("throw new $T(manager.formatMessage($S, $S, $S, e.getMessage()), e)",
-                CommandException.class, messageKey, defaultTemplate, parameter.getName());
+                CommandException.class, messageKey, defaultTemplate, parameter.name());
         methodSpec.endControlFlow();
     }
 }

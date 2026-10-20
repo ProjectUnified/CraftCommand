@@ -26,7 +26,7 @@ public final class LocalNames {
      * @return the declared identifier, or {@code null} when the parameter has no element
      */
     public static String declaredName(ParameterModel parameter) {
-        return parameter.getElement() == null ? null : parameter.getElement().getSimpleName().toString();
+        return parameter.element() == null ? null : parameter.element().getSimpleName().toString();
     }
 
     /**

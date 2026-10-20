@@ -22,10 +22,8 @@ import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Reads the annotations of one command class into a {@link CommandModel} tree.
@@ -33,13 +31,10 @@ import java.util.Set;
  * <p>This is the only place that reads the core command annotations: generators consume the models and do not
  * re-read them. Resolver methods are linked recursively at parse time, so
  * {@link ParameterModel#getResolverMethod()} is already populated for nested resolver parameters.
+ *
+ * @param messager the annotation processor messager
  */
-final class CommandParser {
-    private final Messager messager;
-
-    CommandParser(Messager messager) {
-        this.messager = messager;
-    }
+record CommandParser(Messager messager) {
 
     /**
      * Parses a class annotated with {@code @Command}.
@@ -60,21 +55,19 @@ final class CommandParser {
         MethodModel defaultMethod = null;
         var subcommands = new ArrayList<MethodModel>();
         var nestedSubcommands = new ArrayList<CommandModel>();
-        var resolvers = new Resolvers(typeElement, messager);
+        var resolvers = new Resolvers(typeElement);
 
         for (Element enclosed : typeElement.getEnclosedElements()) {
             if (enclosed instanceof ExecutableElement executable) {
                 var method = parseMethod(executable, resolvers);
                 if (method == null) continue;
 
-                if (method.isDefault()) {
-                    if (defaultMethod != null) {
-                        messager.printMessage(Diagnostic.Kind.ERROR, "Multiple @Default methods are not allowed", method.getElement());
-                    } else {
-                        defaultMethod = method;
-                    }
-                } else {
+                if (!method.isDefault()) {
                     subcommands.add(method);
+                } else if (defaultMethod != null) {
+                    messager.printMessage(Diagnostic.Kind.ERROR, "Multiple @Default methods are not allowed", method.element());
+                } else {
+                    defaultMethod = method;
                 }
             } else if (enclosed instanceof TypeElement innerClass) {
                 var innerCommand = innerClass.getAnnotation(Command.class);
@@ -123,50 +116,37 @@ final class CommandParser {
     }
 
     private ParameterModel parseSender(VariableElement sender, Resolvers resolvers) {
-        var nameAnn = sender.getAnnotation(Name.class);
-        var resolveAnn = sender.getAnnotation(Resolve.class);
-        var resolveName = resolveAnn != null ? resolveAnn.value() : null;
-        return new ParameterModel(
-                nameAnn != null ? nameAnn.value() : sender.getSimpleName().toString(),
-                sender.asType(),
-                null,
-                false,
-                false,
-                null,
-                null,
-                false,
-                resolveName,
-                resolvers.resolve(resolveName),
-                null,
-                sender
-        );
+        var resolveName = resolveNameOf(sender);
+        return ParameterModel.sender(nameOf(sender), sender.asType(), resolveName, resolvers.resolve(resolveName), sender);
+    }
+
+    private static String nameOf(VariableElement parameter) {
+        var nameAnn = parameter.getAnnotation(Name.class);
+        return nameAnn != null ? nameAnn.value() : parameter.getSimpleName().toString();
+    }
+
+    private static String resolveNameOf(VariableElement parameter) {
+        var resolveAnn = parameter.getAnnotation(Resolve.class);
+        return resolveAnn != null ? resolveAnn.value() : null;
     }
 
     private List<ParameterModel> parseParameters(ExecutableElement method, Resolvers resolvers) {
         var parameters = method.getParameters();
         var models = new ArrayList<ParameterModel>();
         boolean hasOptional = false;
-        boolean hasGreedy = false;
 
         for (int i = 1; i < parameters.size(); i++) {
             var parameter = parseParameter(parameters.get(i), resolvers);
-
-            if (parameter.isGreedy() && hasGreedy) {
-                messager.printMessage(Diagnostic.Kind.ERROR, "A command method can only have at most one @Greedy parameter", method);
-            }
-            if (parameter.isGreedy() && i != parameters.size() - 1) {
+            boolean greedy = parameter.greedy();
+            if (greedy && i != parameters.size() - 1) {
                 messager.printMessage(Diagnostic.Kind.ERROR, "The @Greedy parameter must be the last parameter in the method", parameters.get(i));
                 continue;
             }
-            if (parameter.isOptional()) {
+            if (parameter.optional()) {
                 hasOptional = true;
-            } else if (hasOptional && !parameter.isGreedy()) {
+            } else if (hasOptional && !greedy) {
                 messager.printMessage(Diagnostic.Kind.ERROR, "Required parameters cannot follow optional parameters", parameters.get(i));
             }
-            if (parameter.isGreedy()) {
-                hasGreedy = true;
-            }
-
             models.add(parameter);
         }
         return models;
@@ -174,7 +154,7 @@ final class CommandParser {
 
     private static List<String> enumConstants(TypeMirror type) {
         if (!(type instanceof DeclaredType declaredType)) return null;
-        Element element = declaredType.asElement();
+        var element = declaredType.asElement();
         if (element.getKind() != ElementKind.ENUM) return null;
 
         return element.getEnclosedElements().stream()
@@ -185,12 +165,14 @@ final class CommandParser {
 
     private ParameterModel parseParameter(VariableElement param, Resolvers resolvers) {
         var defaultAnn = param.getAnnotation(Default.class);
-        var nameAnn = param.getAnnotation(Name.class);
         var suggestAnn = param.getAnnotation(Suggest.class);
-        var resolveAnn = param.getAnnotation(Resolve.class);
 
         var suggestProvider = suggestAnn != null ? suggestAnn.value() : null;
-        var suggestMethod = parseSuggestMethod(suggestProvider, resolvers);
+        MethodModel suggestMethod = null;
+        if (suggestProvider != null && !suggestProvider.isEmpty()) {
+            var method = ResolverLookup.findSuggestMethod(resolvers.owner, suggestProvider);
+            if (method != null) suggestMethod = parseResolverMethod(method, resolvers);
+        }
         boolean suggestField = suggestProvider != null && suggestMethod == null
                 && ResolverLookup.isField(resolvers.owner, suggestProvider);
         if (suggestProvider != null && suggestMethod == null && !suggestField) {
@@ -198,9 +180,9 @@ final class CommandParser {
                     "Could not find field or method '" + suggestProvider + "' for suggestions in " + resolvers.owner.getSimpleName(), param);
         }
 
-        var resolveName = resolveAnn != null ? resolveAnn.value() : null;
+        var resolveName = resolveNameOf(param);
         return new ParameterModel(
-                nameAnn != null ? nameAnn.value() : param.getSimpleName().toString(),
+                nameOf(param),
                 param.asType(),
                 enumConstants(param.asType()),
                 param.getAnnotation(Greedy.class) != null,
@@ -215,21 +197,14 @@ final class CommandParser {
         );
     }
 
-    private MethodModel parseSuggestMethod(String suggestProvider, Resolvers resolvers) {
-        if (suggestProvider == null || suggestProvider.isEmpty()) return null;
-        var suggestMethod = ResolverLookup.findSuggestMethod(resolvers.owner, suggestProvider);
-        return suggestMethod != null ? parseResolverMethod(suggestMethod, resolvers) : null;
-    }
-
     /**
      * Parses a resolver or suggestion provider method. Nested {@code @Resolve} parameters are linked through the
      * owning class resolver set.
      */
     private MethodModel parseResolverMethod(ExecutableElement method, Resolvers resolvers) {
-        var parameters = new ArrayList<ParameterModel>();
-        for (var parameter : method.getParameters()) {
-            parameters.add(parseParameter(parameter, resolvers));
-        }
+        var parameters = method.getParameters().stream()
+                .map(parameter -> parseParameter(parameter, resolvers))
+                .toList();
         return new MethodModel(method.getSimpleName().toString(), null, null, null, null, parameters, false, method);
     }
 
@@ -238,13 +213,10 @@ final class CommandParser {
      */
     private final class Resolvers {
         private final TypeElement owner;
-        private final Messager messager;
         private final Map<String, MethodModel> methods = new HashMap<>();
-        private final Set<String> resolving = new HashSet<>();
 
-        private Resolvers(TypeElement owner, Messager messager) {
+        private Resolvers(TypeElement owner) {
             this.owner = owner;
-            this.messager = messager;
         }
 
         /**
@@ -257,22 +229,17 @@ final class CommandParser {
             if (name == null || name.isEmpty()) return null;
             var cached = methods.get(name);
             if (cached != null || methods.containsKey(name)) return cached;
-            if (!resolving.add(name)) return null;
 
-            try {
-                var method = ResolverLookup.findMethod(owner, name);
-                if (method == null) {
-                    methods.put(name, null);
-                    messager.printMessage(Diagnostic.Kind.ERROR,
-                            "Resolver method '" + name + "' not found in " + owner.getSimpleName(), owner);
-                    return null;
-                }
-                var model = parseResolverMethod(method, this);
-                methods.put(name, model);
-                return model;
-            } finally {
-                resolving.remove(name);
+            methods.put(name, null); // also breaks resolver cycles
+            var method = ResolverLookup.findMethod(owner, name);
+            if (method == null) {
+                messager.printMessage(Diagnostic.Kind.ERROR,
+                        "Resolver method '" + name + "' not found in " + owner.getSimpleName(), owner);
+                return null;
             }
+            var model = parseResolverMethod(method, this);
+            methods.put(name, model);
+            return model;
         }
     }
 }

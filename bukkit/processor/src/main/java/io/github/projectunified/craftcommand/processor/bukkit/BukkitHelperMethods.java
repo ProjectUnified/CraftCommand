@@ -74,9 +74,9 @@ public final class BukkitHelperMethods {
 
     private static boolean hasParameterType(MethodModel method, TypeName typeName) {
         // Includes resolver sender parameters on purpose: over-generating a helper is safe, missing one is not.
-        for (ParameterModel p : method.getParameters()) {
-            if (TypeName.get(p.getType()).equals(typeName)) return true;
-            MethodModel resolver = p.getResolverMethod();
+        for (ParameterModel p : method.parameters()) {
+            if (TypeName.get(p.type()).equals(typeName)) return true;
+            MethodModel resolver = p.resolverMethod();
             if (resolver != null && hasParameterType(resolver, typeName)) return true;
         }
         return false;

@@ -295,10 +295,10 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
             spec.addStatement("$L.then($L)", builderVar, childBuilderVar);
         }
         for (MethodModel sub : model.getSubcommands()) {
-            String subBuilderVar = "subBuilder_" + Naming.sanitizeIdentifier(sub.getSubcommandName());
+            String subBuilderVar = "subBuilder_" + Naming.sanitizeIdentifier(sub.subcommandName());
             spec.addStatement("$T $L = $T.literal($S)",
                     ParameterizedTypeName.get(literalArgumentBuilderClass, commandSourceStackClass),
-                    subBuilderVar, commandsClass, sub.getSubcommandName());
+                    subBuilderVar, commandsClass, sub.subcommandName());
             buildMethodParametersTree(spec, subBuilderVar, model, sub, instanceExpr, rootModel);
             spec.addStatement("$L.then($L)", builderVar, subBuilderVar);
         }
@@ -309,42 +309,42 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
 
     private void buildMethodParametersTree(MethodSpec.Builder spec, String parentBuilderVar, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel) {
         List<NodeInfo> nodes = new ArrayList<>();
-        for (ParameterModel p : method.getParameters()) {
-            if (p == method.getSenderParameter()) continue;
-            MethodModel resolverModel = p.getResolverMethod();
+        for (ParameterModel p : method.parameters()) {
+            if (p == method.senderParameter()) continue;
+            MethodModel resolverModel = p.resolverMethod();
             if (resolverModel != null) {
-                ExecutableElement localResolver = resolverModel.getElement();
-                List<ParameterModel> resolverParams = resolverModel.getParameters();
+                ExecutableElement localResolver = resolverModel.element();
+                List<ParameterModel> resolverParams = resolverModel.parameters();
                 int resolverStartIndex = firstParamIsSender(localResolver, method) ? 1 : 0;
                 int resolverWidth = resolverParams.size() - resolverStartIndex;
                 for (int i = 0; i < resolverWidth; i++) {
                     ParameterModel rp = resolverParams.get(resolverStartIndex + i);
-                    TypeName rpTypeName = TypeName.get(rp.getType());
+                    TypeName rpTypeName = TypeName.get(rp.type());
                     if (isSenderParam(rpTypeName, method)) {
                         continue;
                     }
-                    String rpName = rp.getName();
-                    CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp.isGreedy());
-                    String suggestProvider = rp.getSuggestProvider() != null ? rp.getSuggestProvider() : p.getSuggestProvider();
-                    MethodModel suggestMethod = rp.getSuggestProvider() != null ? rp.getSuggestMethod() : p.getSuggestMethod();
-                    boolean suggestField = rp.getSuggestProvider() != null ? rp.isSuggestField() : p.isSuggestField();
-                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rp.isOptional(),
-                            suggestProvider, rpTypeName, suggestMethod, suggestField, rp.getEnumConstants() != null));
+                    String rpName = rp.name();
+                    CodeBlock typeBlock = getArgumentTypeExpressionFromTypeName(rpTypeName, rp.greedy());
+                    String suggestProvider = rp.suggestProvider() != null ? rp.suggestProvider() : p.suggestProvider();
+                    MethodModel suggestMethod = rp.suggestProvider() != null ? rp.suggestMethod() : p.suggestMethod();
+                    boolean suggestField = rp.suggestProvider() != null ? rp.suggestField() : p.suggestField();
+                    nodes.add(new NodeInfo(rpName, typeBlock, p, i, i == resolverWidth - 1, rp.optional(),
+                            suggestProvider, rpTypeName, suggestMethod, suggestField, rp.enumConstants() != null));
                 }
             } else {
                 int width = getParameterWidth(p, method);
                 CodeBlock typeBlock = getArgumentTypeExpression(p);
                 if (width <= 1) {
-                    nodes.add(new NodeInfo(p.getName(), typeBlock, p, 0, true, false,
-                            p.getSuggestProvider(), null, p.getSuggestMethod(), p.isSuggestField(),
-                            p.getEnumConstants() != null));
+                    nodes.add(new NodeInfo(p.name(), typeBlock, p, 0, true, false,
+                            p.suggestProvider(), null, p.suggestMethod(), p.suggestField(),
+                            p.enumConstants() != null));
                 } else {
                     for (int i = 0; i < width; i++) {
-                        nodes.add(new NodeInfo(p.getName() + "_" + i,
+                        nodes.add(new NodeInfo(p.name() + "_" + i,
                                 CodeBlock.of("$T.string()", ClassName.get("com.mojang.brigadier.arguments", "StringArgumentType")),
                                 p, i, i == width - 1, false,
-                                p.getSuggestProvider(), null, p.getSuggestMethod(), p.isSuggestField(),
-                                p.getEnumConstants() != null));
+                                p.suggestProvider(), null, p.suggestMethod(), p.suggestField(),
+                                p.enumConstants() != null));
                     }
                 }
             }
@@ -353,9 +353,9 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     }
 
     private int getParameterWidth(ParameterModel param, MethodModel method) {
-        MethodModel resolverModel = param.getResolverMethod();
+        MethodModel resolverModel = param.resolverMethod();
         if (resolverModel != null) return getLocalResolverMaxWidth(resolverModel, method);
-        return getBuiltInWidth(TypeName.get(param.getType()));
+        return getBuiltInWidth(TypeName.get(param.type()));
     }
 
     private void buildNodeChainRecursive(MethodSpec.Builder spec, String currentBuilderVar, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int index) {
@@ -363,11 +363,11 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
         if (index == nodes.size()) {
             canExecuteHere = true;
         } else if (index == 0) {
-            if (nodes.get(0).parameter().isOptional() || nodes.get(0).isResolverParamOptional()) {
+            if (nodes.get(0).parameter().optional() || nodes.get(0).isResolverParamOptional()) {
                 canExecuteHere = true;
             }
         } else if (nodes.get(index - 1).isLastForParameter()) {
-            if (nodes.get(index).parameter().isOptional()) canExecuteHere = true;
+            if (nodes.get(index).parameter().optional()) canExecuteHere = true;
         } else if (nodes.get(index).isResolverParamOptional()) {
             canExecuteHere = true;
         }
@@ -380,13 +380,13 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
 
         if (index < nodes.size()) {
             NodeInfo node = nodes.get(index);
-            String nextBuilderVar = "argBuilder_" + Naming.sanitizeIdentifier(method.getMethodName()) + "_" + Naming.sanitizeIdentifier(node.nodeName());
+            String nextBuilderVar = "argBuilder_" + Naming.sanitizeIdentifier(method.methodName()) + "_" + Naming.sanitizeIdentifier(node.nodeName());
             spec.addStatement("$T $L = $T.argument($S, $L)",
                     ParameterizedTypeName.get(requiredArgumentBuilderClass, commandSourceStackClass, WildcardTypeName.subtypeOf(TypeName.get(Object.class))),
                     nextBuilderVar, commandsClass, node.nodeName(), node.typeExpression());
 
             ParameterModel p = node.parameter();
-            TypeName parameterType = TypeName.get(p.getType());
+            TypeName parameterType = TypeName.get(p.type());
             boolean needsSuggestions = node.suggestProvider() != null
                     || node.enumParam() || TypeSupport.isBooleanType(parameterType);
             if (!needsSuggestions && node.resolverParamType() != null) {
@@ -407,18 +407,18 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                         CodeBlock suggestSenderExpr = CodeBlock.of("ctx.getSource()");
                         boolean needsCast = false;
                         MethodModel suggestMethod = node.suggestMethod();
-                        if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                            ParameterModel firstParam = suggestMethod.getParameters().get(0);
-                            TypeName firstParamType = TypeName.get(firstParam.getType());
+                        if (suggestMethod != null && !suggestMethod.parameters().isEmpty()) {
+                            ParameterModel firstParam = suggestMethod.parameters().get(0);
+                            TypeName firstParamType = TypeName.get(firstParam.type());
                             if (!firstParamType.equals(getSenderTypeName())) {
-                                String firstParamResolve = firstParam.getResolveName();
+                                String firstParamResolve = firstParam.resolveName();
                                 if (firstParamResolve != null) {
                                     if (!firstParamResolve.isEmpty()) {
-                                        MethodModel resolver = firstParam.getResolverMethod();
+                                        MethodModel resolver = firstParam.resolverMethod();
                                         if (resolver != null) {
                                             String resolverInstanceExpr = getInstanceVarExpression(classModel, rootModel);
                                             suggestSenderExpr = BaseCommandGenerator.call(resolverInstanceExpr,
-                                                    resolver.getElement().getSimpleName().toString(), CodeBlock.of("ctx.getSource()"));
+                                                    resolver.element().getSimpleName().toString(), CodeBlock.of("ctx.getSource()"));
                                         }
                                     } else {
                                         suggestSenderExpr = CodeBlock.of("($T) manager.resolveSender($T.class, ctx.getSource())", firstParamType, firstParamType);
@@ -447,13 +447,13 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                         }
                     }
                 } else {
-                    String resolveName = p.getResolveName();
+                    String resolveName = p.resolveName();
                     if (resolveName != null && !resolveName.isEmpty()) {
                         String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveName, node.resolverArgIndex());
                         spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, paperSuggestionsClass, helperName);
                     } else {
-                        int paramIndex = method.getParameters().indexOf(p);
+                        int paramIndex = method.parameters().indexOf(p);
                         String helperName = getParameterSuggestionMethodName(classModel, method, paramIndex);
                         spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, paperSuggestionsClass, helperName);
@@ -468,7 +468,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     private void generateExecutionBlock(MethodSpec.Builder spec, CommandModel classModel, MethodModel method, String instanceExpr, CommandModel rootModel, List<NodeInfo> nodes, int parsedNodeCount) {
         spec.addStatement("$T sender = ctx.getSource()", commandSourceStackClass);
         spec.beginControlFlow("try");
-        onBeforeExecute(spec, method.getElement(), "return");
+        onBeforeExecute(spec, method.element(), "return");
         new PaperExecutionSource(this, nodes, parsedNodeCount).generateExecution(spec, classModel, method, instanceExpr, rootModel);
         spec.nextControlFlow("catch ($T e)", Exception.class)
                 .addStatement("manager.handleException(sender, e)")
@@ -477,7 +477,7 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     }
 
     private CodeBlock getArgumentTypeExpression(ParameterModel param) {
-        return getArgumentTypeExpressionFromTypeName(TypeName.get(param.getType()), param.isGreedy());
+        return getArgumentTypeExpressionFromTypeName(TypeName.get(param.type()), param.greedy());
     }
 
     private CodeBlock getArgumentTypeExpressionFromTypeName(TypeName typeName, boolean isGreedy) {
@@ -494,19 +494,19 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
     }
 
     private CodeBlock getSuggestCallExpr(MethodModel suggestMethod, MethodModel method, String instanceExpr, String suggestProvider, CodeBlock suggestSenderExpr) {
-        int argCount = suggestMethod.getParameters().size();
+        int argCount = suggestMethod.parameters().size();
         if (argCount == 0) {
             return BaseCommandGenerator.call(instanceExpr, suggestProvider);
         }
         CodeBlock current = CodeBlock.of("new String[]{args[args.length - 1]}");
         if (argCount == 1) {
-            TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
+            TypeMirror firstParamType = suggestMethod.parameters().get(0).type();
             return TypeNames.isStringArray(firstParamType)
                     ? BaseCommandGenerator.call(instanceExpr, suggestProvider, current)
                     : BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr);
         }
         if (argCount == 2) {
-            TypeMirror firstParamType = suggestMethod.getParameters().get(0).getType();
+            TypeMirror firstParamType = suggestMethod.parameters().get(0).type();
             return TypeNames.isStringArray(firstParamType)
                     ? BaseCommandGenerator.call(instanceExpr, suggestProvider, current, CodeBlock.of("args"))
                     : BaseCommandGenerator.call(instanceExpr, suggestProvider, suggestSenderExpr, current);

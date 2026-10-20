@@ -18,9 +18,9 @@ public class MinHandler implements ParameterAnnotationHandler<Min> {
 
     @Override
     public void handle(Min annotation, ParameterModel parameter, String varName, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
-        String typeName = parameter.getType().toString();
+        String typeName = parameter.type().toString();
         if (!TypeSupport.isNumericType(typeName)) {
-            throw new IllegalArgumentException("@Min can only be applied to numeric parameters, but '" + parameter.getName() + "' is of type " + typeName);
+            throw new IllegalArgumentException("@Min can only be applied to numeric parameters, but '" + parameter.name() + "' is of type " + typeName);
         }
         String messageKey = annotation.message().isEmpty() ? "validation.min" : annotation.message();
         String defaultTemplate = annotation.message().isEmpty()
@@ -35,7 +35,7 @@ public class MinHandler implements ParameterAnnotationHandler<Min> {
         }
         methodSpec.beginControlFlow("if ($L < $L)", varName, limitValue)
                 .addStatement("throw new $T(manager.formatMessage($S, $S, $S, $L))",
-                        CommandException.class, messageKey, defaultTemplate, parameter.getName(), limitValue)
+                        CommandException.class, messageKey, defaultTemplate, parameter.name(), limitValue)
                 .endControlFlow();
     }
 }

@@ -11,9 +11,25 @@ import io.github.projectunified.craftcommand.processor.model.ParameterModel;
  *
  * <p>Carrying this state together keeps the code generators to a model in, statements out shape instead of long
  * parameter lists.
+ *
+ * @param methodSpec the method being generated
+ * @param classModel the command class whose method is generated
+ * @param method the command method being generated
+ * @param rootModel the root command model
+ * @param senderVarName the local holding the command sender
+ * @param locals the local-name allocator
  */
 record MethodSlot(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method,
                   CommandModel rootModel, String senderVarName, LocalNames locals) {
+    /**
+     * Creates a slot with a fresh local-name allocator.
+     *
+     * @param methodSpec the method being generated
+     * @param classModel the command class whose method is generated
+     * @param method the command method being generated
+     * @param rootModel the root command model
+     * @param senderVarName the local holding the command sender
+     */
     MethodSlot(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, CommandModel rootModel,
                String senderVarName) {
         this(methodSpec, classModel, method, rootModel, senderVarName, new LocalNames());

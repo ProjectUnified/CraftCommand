@@ -26,15 +26,12 @@ import java.util.List;
  * <p>Argument access goes through {@link ArgCursor}, so the emitted code reads {@code args[1]} wherever the
  * offset is known and only falls back to a cursor variable when a parameter is consumed conditionally or by a
  * runtime resolver.
+ *
+ * @param processor the owning command generator
  */
-final class ExecutionGenerator {
-    private final BaseCommandGenerator processor;
+record ExecutionGenerator(BaseCommandGenerator processor) {
 
-    ExecutionGenerator(BaseCommandGenerator processor) {
-        this.processor = processor;
-    }
-
-    protected void buildExecutionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, String instanceVar, CommandModel rootModel, String returnStatement) {
+    void buildExecutionRouting(MethodSpec.Builder methodSpec, CommandModel model, String argsVar, String instanceVar, CommandModel rootModel, String returnStatement) {
         if (!model.getSubcommands().isEmpty() || !model.getNestedSubcommands().isEmpty()) {
             methodSpec.beginControlFlow("if ($L.length >= 1)", argsVar);
             methodSpec.beginControlFlow("switch ($L[0].toLowerCase())", argsVar);
@@ -54,7 +51,7 @@ final class ExecutionGenerator {
             // 2. Subcommand methods
             for (MethodModel sub : model.getSubcommands()) {
                 BaseCommandGenerator.beginCaseBlock(methodSpec, BaseCommandGenerator.collectLoweredNames(sub));
-                processor.onBeforeExecute(methodSpec, sub.getElement(), returnStatement);
+                processor.onBeforeExecute(methodSpec, sub.element(), returnStatement);
                 buildMethodExecution(methodSpec, model, sub, argsVar, 1, instanceVar, rootModel);
                 methodSpec.addStatement("$L", returnStatement);
                 methodSpec.endControlFlow();
@@ -66,17 +63,17 @@ final class ExecutionGenerator {
 
         // 3. Default method
         if (model.getDefaultMethod() != null) {
-            processor.onBeforeExecute(methodSpec, model.getDefaultMethod().getElement(), returnStatement);
+            processor.onBeforeExecute(methodSpec, model.getDefaultMethod().element(), returnStatement);
             buildMethodExecution(methodSpec, model, model.getDefaultMethod(), argsVar, 0, instanceVar, rootModel);
         } else {
             processor.generateUnknownSubcommandMessage(methodSpec, model);
         }
     }
 
-    protected void buildMethodExecution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar, int initialOffset, String instanceVar, CommandModel rootModel) {
+    void buildMethodExecution(MethodSpec.Builder methodSpec, CommandModel classModel, MethodModel method, String argsVar, int initialOffset, String instanceVar, CommandModel rootModel) {
         // 1. Resolve and Cast Sender Parameter
-        ParameterModel senderParam = method.getSenderParameter();
-        TypeName senderParamTypeName = TypeName.get(senderParam.getType());
+        ParameterModel senderParam = method.senderParameter();
+        TypeName senderParamTypeName = TypeName.get(senderParam.type());
         String senderVarName = senderParamTypeName.equals(processor.getSenderTypeName()) ? "sender" : "senderCast";
         MethodSlot slot = new MethodSlot(methodSpec, classModel, method, rootModel, senderVarName);
 
@@ -86,13 +83,13 @@ final class ExecutionGenerator {
         // 2. Minimum Argument Count Check
         int staticRequiredCount = 0;
         boolean hasDynamic = false;
-        for (ParameterModel p : method.getParameters()) {
-            TypeName pTypeName = TypeName.get(p.getType());
-            MethodModel resolverModel = p.getResolverMethod();
-            if (resolverModel == null && p.getEnumConstants() == null && !processor.typeSupport().isBuiltIn(pTypeName)) {
+        for (ParameterModel p : method.parameters()) {
+            TypeName pTypeName = TypeName.get(p.type());
+            MethodModel resolverModel = p.resolverMethod();
+            if (resolverModel == null && p.enumConstants() == null && !processor.typeSupport().isBuiltIn(pTypeName)) {
                 hasDynamic = true;
             }
-            if (!p.isOptional()) {
+            if (!p.optional()) {
                 if (resolverModel != null) {
                     staticRequiredCount += processor.getLocalResolverMinWidth(resolverModel, method);
                 } else {
@@ -113,8 +110,8 @@ final class ExecutionGenerator {
         List<String> paramNames = new ArrayList<>();
         paramNames.add(senderVarName);
 
-        for (int i = 0; i < method.getParameters().size(); i++) {
-            ParameterModel p = method.getParameters().get(i);
+        for (int i = 0; i < method.parameters().size(); i++) {
+            ParameterModel p = method.parameters().get(i);
             String varName = slot.localFor(p, "param_" + i);
             paramNames.add(varName);
 
@@ -124,32 +121,32 @@ final class ExecutionGenerator {
 
         // 5. Invoke Target Method
         CodeBlock[] callArgs = paramNames.stream().map(name -> CodeBlock.of("$L", name)).toArray(CodeBlock[]::new);
-        methodSpec.addStatement("$L", BaseCommandGenerator.call(instanceVar, method.getMethodName(), callArgs));
+        methodSpec.addStatement("$L", BaseCommandGenerator.call(instanceVar, method.methodName(), callArgs));
     }
 
     void resolveParameter(MethodSlot slot, ArgCursor cursor, ParameterModel p, String varName, int paramIndex) {
-        TypeName pTypeName = TypeName.get(p.getType());
+        TypeName pTypeName = TypeName.get(p.type());
 
         // 1. Resolver model from @Resolve("name")
-        MethodModel resolverModel = p.getResolverMethod();
+        MethodModel resolverModel = p.resolverMethod();
         if (resolverModel != null) {
             resolveResolverParameters(slot, cursor, resolverModel, varName, p);
             return;
         }
 
         // 2. Enum
-        if (p.getEnumConstants() != null) {
-            if (cursor.isDeclared() && !p.isOptional()) {
+        if (p.enumConstants() != null) {
+            if (cursor.isDeclared() && !p.optional()) {
                 slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(1));
                 BaseCommandGenerator.addCommandError(slot.methodSpec(), "missing-argument",
-                        "Missing arguments for parameter: %s", p.getName());
+                        "Missing arguments for parameter: %s", p.name());
                 slot.methodSpec().endControlFlow();
             }
-            if (p.isOptional()) {
+            if (p.optional()) {
                 cursor.requireIndex();
-                CodeBlock defaultValue = p.getDefaultValue() == null
+                CodeBlock defaultValue = p.defaultValue() == null
                         ? CodeBlock.of("null")
-                        : CodeBlock.of("$T.valueOf($S)", pTypeName, p.getDefaultValue());
+                        : CodeBlock.of("$T.valueOf($S)", pTypeName, p.defaultValue());
                 slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : $T.valueOf($L)",
                         pTypeName, varName, cursor.index(), cursor.argsVariable(), defaultValue, pTypeName, cursor.take());
             } else {
@@ -160,14 +157,14 @@ final class ExecutionGenerator {
         }
 
         // 3. Greedy array
-        if (p.isGreedy() && pTypeName instanceof ArrayTypeName array) {
+        if (p.greedy() && pTypeName instanceof ArrayTypeName array) {
             TypeName componentType = array.componentType();
             TypeName boxedComponent = componentType.isPrimitive() ? componentType.box() : componentType;
 
-            if (cursor.isDeclared() && !p.isOptional()) {
+            if (cursor.isDeclared() && !p.optional()) {
                 slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(1));
                 BaseCommandGenerator.addCommandError(slot.methodSpec(), "missing-argument",
-                        "Missing arguments for parameter: %s", p.getName());
+                        "Missing arguments for parameter: %s", p.name());
                 slot.methodSpec().endControlFlow();
             }
 
@@ -185,10 +182,10 @@ final class ExecutionGenerator {
         }
 
         // 4. Greedy String or Object
-        if (p.isGreedy()) {
+        if (p.greedy()) {
             if (pTypeName.equals(ClassName.get(String.class))) {
-                if (p.isOptional()) {
-                    String defVal = p.getDefaultValue() == null ? "null" : CodeBlock.of("$S", p.getDefaultValue()).toString();
+                if (p.optional()) {
+                    String defVal = p.defaultValue() == null ? "null" : CodeBlock.of("$S", p.defaultValue()).toString();
                     slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : String.join($S, $L)",
                             pTypeName, varName, cursor.index(), cursor.argsVariable(), defVal, " ", cursor.sliceFromHere());
                 } else {
@@ -211,16 +208,16 @@ final class ExecutionGenerator {
         // 5. Built-in or Platform Types
         if (processor.typeSupport().isBuiltIn(pTypeName)) {
             int width = processor.typeSupport().getWidth(pTypeName);
-            if (cursor.isDeclared() && !p.isOptional()) {
+            if (cursor.isDeclared() && !p.optional()) {
                 slot.methodSpec().beginControlFlow("if ($L)", cursor.notEnoughArguments(width));
                 BaseCommandGenerator.addCommandError(slot.methodSpec(), "missing-argument",
-                        "Missing arguments for parameter: %s", p.getName());
+                        "Missing arguments for parameter: %s", p.name());
                 slot.methodSpec().endControlFlow();
             }
 
             if (width > 1) {
                 // Multi-arg platform type (e.g. Location), which may be consumed conditionally when optional
-                if (p.isOptional()) {
+                if (p.optional()) {
                     cursor.requireIndex();
                     slot.methodSpec().addStatement("$T $L = $L", pTypeName, varName,
                             processor.typeSupport().primitiveDefault(pTypeName));
@@ -235,10 +232,10 @@ final class ExecutionGenerator {
                 }
             } else {
                 // Single-arg type
-                if (p.isOptional()) {
+                if (p.optional()) {
                     // An optional parameter consumes its argument only when present, which needs a mutable index.
                     cursor.requireIndex();
-                    CodeBlock defLit = processor.typeSupport().literal(pTypeName, p.getDefaultValue());
+                    CodeBlock defLit = processor.typeSupport().literal(pTypeName, p.defaultValue());
                     if (defLit == null) defLit = CodeBlock.of("null");
                     slot.methodSpec().addStatement("$T $L = $L >= $L.length ? $L : $L",
                             pTypeName, varName, cursor.index(), cursor.argsVariable(), defLit, processor.typeSupport().parseExpr(pTypeName, cursor.take()));
@@ -250,10 +247,10 @@ final class ExecutionGenerator {
         }
 
         // 6. Dynamic Manager Resolver (Fallback)
-        CodeBlock defaultValue = p.getDefaultValue() == null ? CodeBlock.of("null") : CodeBlock.of("$S", p.getDefaultValue());
+        CodeBlock defaultValue = p.defaultValue() == null ? CodeBlock.of("null") : CodeBlock.of("$S", p.defaultValue());
         slot.methodSpec().addStatement("$T $L = manager.resolveParameter(sender, $T.class, $L, $L, $S, $L, $L)",
                 pTypeName, varName, pTypeName.isPrimitive() ? pTypeName.box() : pTypeName,
-                cursor.argsVariable(), cursor.runtimeCursor(), p.getName(), p.isOptional(), defaultValue);
+                cursor.argsVariable(), cursor.runtimeCursor(), p.name(), p.optional(), defaultValue);
     }
 
     /**
@@ -266,35 +263,35 @@ final class ExecutionGenerator {
     }
 
     void resolveResolverParameters(MethodSlot slot, ArgCursor cursor, MethodModel resolverModel, String varName, ParameterModel parentParam) {
-        ExecutableElement resolverElement = resolverModel.getElement();
+        ExecutableElement resolverElement = resolverModel.element();
         TypeName returnType = TypeName.get(resolverElement.getReturnType());
 
-        boolean includeSender = !resolverModel.getParameters().isEmpty() && processor.isSenderParam(TypeName.get(resolverModel.getParameters().get(0).getType()), slot.method());
+        boolean includeSender = !resolverModel.parameters().isEmpty() && processor.isSenderParam(TypeName.get(resolverModel.parameters().get(0).type()), slot.method());
         List<String> argNames = new ArrayList<>();
 
-        for (int i = 0; i < resolverModel.getParameters().size(); i++) {
-            ParameterModel rp = resolverModel.getParameters().get(i);
-            if (processor.isSenderParam(TypeName.get(rp.getType()), slot.method())) continue;
+        for (int i = 0; i < resolverModel.parameters().size(); i++) {
+            ParameterModel rp = resolverModel.parameters().get(i);
+            if (processor.isSenderParam(TypeName.get(rp.type()), slot.method())) continue;
             String rpVarName = slot.localFor(rp, varName + "_rp_" + i);
             argNames.add(rpVarName);
 
             ParameterModel rpToResolve = rp;
-            if (!rp.isOptional() && parentParam != null && parentParam.isOptional()) {
-                rpToResolve = rp.asOptional(parentParam.getDefaultValue());
+            if (!rp.optional() && parentParam != null && parentParam.optional()) {
+                rpToResolve = rp.asOptional(parentParam.defaultValue());
             }
 
             resolveParameter(slot, cursor, rpToResolve, rpVarName, i);
             runParameterAnnotationHandlers(rp, rpVarName, processor.getInstanceVarExpression(slot.classModel(), slot.rootModel()), slot.senderVarName(), slot.methodSpec());
         }
 
-        CodeBlock resolverSenderExpr = processor.getResolverSenderExpression(resolverElement, slot.method().getSenderParameter().getName(), slot.senderVarName(), TypeName.get(slot.method().getSenderType()));
+        CodeBlock resolverSenderExpr = processor.getResolverSenderExpression(resolverElement, slot.method().senderParameter().name(), slot.senderVarName(), TypeName.get(slot.method().getSenderType()));
         generateResolverInvocation(slot.methodSpec(), resolverModel, slot.rootModel(), returnType, varName, resolverSenderExpr, argNames, includeSender);
     }
 
     // ── Tab Completion & Suggestions ──
 
     void generateResolverInvocation(MethodSpec.Builder methodSpec, MethodModel resolverModel, CommandModel rootModel, TypeName pTypeName, String varName, CodeBlock senderExpr, List<String> resolverArgVarNames, boolean includeSender) {
-        ExecutableElement localResolver = resolverModel.getElement();
+        ExecutableElement localResolver = resolverModel.element();
         String resolverInstanceExpr = processor.getResolverInstanceExpr(resolverModel, rootModel);
         if (resolverInstanceExpr == null) {
             methodSpec.addStatement("$T $L = $L", pTypeName, varName, pTypeName.isPrimitive() ? "false" : "null");
@@ -317,7 +314,7 @@ final class ExecutionGenerator {
 
     private void runSPIHandlers(MethodSpec.Builder methodSpec, MethodModel method, String instanceVar, String senderVarName, ParameterModel senderParam) {
         for (MethodAnnotationHandler<?> handler : processor.methodHandlers()) {
-            Annotation ann = method.getElement().getAnnotation(handler.annotationType());
+            Annotation ann = method.element().getAnnotation(handler.annotationType());
             if (ann != null) {
                 invokeMethodHandler(handler, ann, method, instanceVar, senderVarName, methodSpec);
             }
@@ -326,7 +323,7 @@ final class ExecutionGenerator {
     }
 
     void runParameterAnnotationHandlers(ParameterModel param, String varName, String instanceExpr, String senderVar, MethodSpec.Builder methodSpec) {
-        VariableElement element = param.getElement();
+        VariableElement element = param.element();
         for (ParameterAnnotationHandler<?> handler : processor.parameterHandlers()) {
             Annotation ann = element.getAnnotation(handler.annotationType());
             if (ann != null) {

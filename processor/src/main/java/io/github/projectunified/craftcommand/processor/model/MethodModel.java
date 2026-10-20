@@ -6,62 +6,21 @@ import java.util.List;
 
 /**
  * Model representing a command or subcommand method.
+ *
+ * @param methodName the Java method name
+ * @param subcommandName the subcommand name, or {@code null}
+ * @param aliases the subcommand aliases
+ * @param description the subcommand description
+ * @param senderParameter the sender parameter
+ * @param parameters the command argument parameters
+ * @param isDefault whether this is the default action
+ * @param element the underlying method element
  */
-public class MethodModel {
-    private final String methodName;
-    private final String subcommandName;
-    private final List<String> aliases;
-    private final String description;
-    private final ParameterModel senderParameter;
-    private final List<ParameterModel> parameters;
-    private final boolean isDefault;
-    private final ExecutableElement element;
-
-    public MethodModel(String methodName, String subcommandName, List<String> aliases, String description, ParameterModel senderParameter, List<ParameterModel> parameters, boolean isDefault, ExecutableElement element) {
-        this.methodName = methodName;
-        this.subcommandName = subcommandName;
-        this.aliases = aliases;
-        this.description = description != null ? description : "";
-        this.senderParameter = senderParameter;
-        this.parameters = parameters;
-        this.isDefault = isDefault;
-        this.element = element;
-    }
-
-    /**
-     * Gets the Java method name.
-     *
-     * @return the method name
-     */
-    public String getMethodName() {
-        return methodName;
-    }
-
-    /**
-     * Gets the subcommand name.
-     *
-     * @return the subcommand name, or {@code null}
-     */
-    public String getSubcommandName() {
-        return subcommandName;
-    }
-
-    /**
-     * Gets the subcommand aliases.
-     *
-     * @return the list of aliases
-     */
-    public List<String> getAliases() {
-        return aliases;
-    }
-
-    /**
-     * Gets the subcommand description.
-     *
-     * @return the description
-     */
-    public String getDescription() {
-        return description;
+public record MethodModel(String methodName, String subcommandName, List<String> aliases, String description,
+                           ParameterModel senderParameter, List<ParameterModel> parameters, boolean isDefault,
+                           ExecutableElement element) {
+    public MethodModel {
+        description = description != null ? description : "";
     }
 
     /**
@@ -70,42 +29,7 @@ public class MethodModel {
      * @return the sender type mirror
      */
     public TypeMirror getSenderType() {
-        return senderParameter.getType();
+        return senderParameter.type();
     }
 
-    /**
-     * Gets the sender parameter model.
-     *
-     * @return the sender parameter model
-     */
-    public ParameterModel getSenderParameter() {
-        return senderParameter;
-    }
-
-    /**
-     * Gets the list of argument parameters.
-     *
-     * @return the list of parameter models
-     */
-    public List<ParameterModel> getParameters() {
-        return parameters;
-    }
-
-    /**
-     * Checks if this method is the default action.
-     *
-     * @return {@code true} if default action
-     */
-    public boolean isDefault() {
-        return isDefault;
-    }
-
-    /**
-     * Gets the underlying Java ExecutableElement.
-     *
-     * @return the executable element
-     */
-    public ExecutableElement getElement() {
-        return element;
-    }
 }

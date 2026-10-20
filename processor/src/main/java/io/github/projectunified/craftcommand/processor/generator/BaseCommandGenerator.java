@@ -195,7 +195,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     public String getResolverInstanceExpr(MethodModel resolver, CommandModel rootModel) {
-        TypeElement resolverClass = (TypeElement) resolver.getElement().getEnclosingElement();
+        TypeElement resolverClass = (TypeElement) resolver.element().getEnclosingElement();
         CommandModel resolverModel = rootModel.findModel(resolverClass);
         if (resolverModel != null) {
             return getInstanceVarExpression(resolverModel, rootModel);
@@ -209,18 +209,18 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
      */
     public void generateSenderResolution(MethodSpec.Builder spec, CommandModel rootModel, ParameterModel senderParam,
                                          TypeName senderType, String senderVar) {
-        String resolveName = senderParam.getResolveName();
-        MethodModel resolver = resolveName != null && !resolveName.isEmpty() ? senderParam.getResolverMethod() : null;
+        String resolveName = senderParam.resolveName();
+        MethodModel resolver = resolveName != null && !resolveName.isEmpty() ? senderParam.resolverMethod() : null;
         String resolverInstance = resolver != null ? getResolverInstanceExpr(resolver, rootModel) : null;
 
         if (resolverInstance != null) {
             List<CodeBlock> args = new ArrayList<>();
-            for (ParameterModel p : resolver.getParameters()) {
-                args.add(TypeNames.isStringArray(p.getType()) ? CodeBlock.of("new String[0]") : CodeBlock.of("sender"));
+            for (ParameterModel p : resolver.parameters()) {
+                args.add(TypeNames.isStringArray(p.type()) ? CodeBlock.of("new String[0]") : CodeBlock.of("sender"));
             }
-            CodeBlock invocation = call(resolverInstance, resolver.getElement().getSimpleName().toString(),
+            CodeBlock invocation = call(resolverInstance, resolver.element().getSimpleName().toString(),
                     args.toArray(new CodeBlock[0]));
-            TypeName returnType = TypeName.get(resolver.getElement().getReturnType());
+            TypeName returnType = TypeName.get(resolver.element().getReturnType());
             if (returnType.equals(senderType)) {
                 spec.addStatement("$T $L = $L", senderType, senderVar, invocation);
             } else {
@@ -348,8 +348,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         }
         for (MethodModel sub : model.getSubcommands()) {
             List<String> subPath = new ArrayList<>(currentPath);
-            subPath.add(sub.getSubcommandName());
-            entries.add(commandInfoEntry(commandInfoClass, subPath, getUsage(sub), sub.getDescription()));
+            subPath.add(sub.subcommandName());
+            entries.add(commandInfoEntry(commandInfoClass, subPath, getUsage(sub), sub.description()));
         }
         for (CommandModel child : model.getNestedSubcommands()) {
             entries.addAll(commandInfoEntries(child, commandInfoClass, currentPath));
@@ -391,7 +391,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     private boolean hasDescriptionKey(CommandModel model) {
         if (isI18nKey(model.getDescription())) return true;
         for (MethodModel sub : model.getSubcommands()) {
-            if (isI18nKey(sub.getDescription())) return true;
+            if (isI18nKey(sub.description())) return true;
         }
         for (CommandModel child : model.getNestedSubcommands()) {
             if (hasDescriptionKey(child)) return true;
@@ -444,10 +444,10 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
 
     public int getLocalResolverMinWidth(MethodModel resolverModel, MethodModel commandMethod) {
         int minWidth = 0;
-        List<ParameterModel> params = resolverModel.getParameters();
-        int startIndex = firstParamIsSender(resolverModel.getElement(), commandMethod) ? 1 : 0;
+        List<ParameterModel> params = resolverModel.parameters();
+        int startIndex = firstParamIsSender(resolverModel.element(), commandMethod) ? 1 : 0;
         for (int i = startIndex; i < params.size(); i++) {
-            if (!params.get(i).isOptional()) {
+            if (!params.get(i).optional()) {
                 minWidth++;
             }
         }
@@ -455,8 +455,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     public int getLocalResolverMaxWidth(MethodModel resolverModel, MethodModel commandMethod) {
-        List<ParameterModel> params = resolverModel.getParameters();
-        int startIndex = firstParamIsSender(resolverModel.getElement(), commandMethod) ? 1 : 0;
+        List<ParameterModel> params = resolverModel.parameters();
+        int startIndex = firstParamIsSender(resolverModel.element(), commandMethod) ? 1 : 0;
         return params.size() - startIndex;
     }
 
@@ -484,25 +484,25 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     private void collectSenderTypesToCast(MethodModel method, Set<TypeName> types) {
-        ParameterModel senderParam = method.getSenderParameter();
-        TypeName typeName = TypeName.get(senderParam.getType());
-        if (!isSenderBaseType(typeName) && senderParam.getResolveName() == null) {
+        ParameterModel senderParam = method.senderParameter();
+        TypeName typeName = TypeName.get(senderParam.type());
+        if (!isSenderBaseType(typeName) && senderParam.resolveName() == null) {
             types.add(typeName);
         }
-        for (ParameterModel p : method.getParameters()) {
-            if (p == method.getSenderParameter()) continue;
+        for (ParameterModel p : method.parameters()) {
+            if (p == method.senderParameter()) continue;
 
-            MethodModel resolverModel = p.getResolverMethod();
-            if (resolverModel != null && !resolverModel.getParameters().isEmpty()) {
-                TypeName firstParamType = TypeName.get(resolverModel.getParameters().get(0).getType());
+            MethodModel resolverModel = p.resolverMethod();
+            if (resolverModel != null && !resolverModel.parameters().isEmpty()) {
+                TypeName firstParamType = TypeName.get(resolverModel.parameters().get(0).type());
                 if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
                     types.add(firstParamType);
                 }
             }
 
-            MethodModel suggestMethod = p.getSuggestMethod();
-            if (suggestMethod != null && !suggestMethod.getParameters().isEmpty()) {
-                TypeName firstParamType = TypeName.get(suggestMethod.getParameters().get(0).getType());
+            MethodModel suggestMethod = p.suggestMethod();
+            if (suggestMethod != null && !suggestMethod.parameters().isEmpty()) {
+                TypeName firstParamType = TypeName.get(suggestMethod.parameters().get(0).type());
                 if (isSenderType(firstParamType) && !isSenderBaseType(firstParamType)) {
                     types.add(firstParamType);
                 }
@@ -533,9 +533,9 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
      * Traverses the methods of a command tree.
      */
     protected static boolean anyMethod(CommandModel model, Predicate<ExecutableElement> predicate) {
-        if (model.getDefaultMethod() != null && predicate.test(model.getDefaultMethod().getElement())) return true;
+        if (model.getDefaultMethod() != null && predicate.test(model.getDefaultMethod().element())) return true;
         for (MethodModel sub : model.getSubcommands()) {
-            if (predicate.test(sub.getElement())) return true;
+            if (predicate.test(sub.element())) return true;
         }
         for (CommandModel child : model.getNestedSubcommands()) {
             if (anyMethod(child, predicate)) return true;
@@ -545,8 +545,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
 
     static List<String> collectLoweredNames(MethodModel sub) {
         List<String> names = new ArrayList<>();
-        names.add(sub.getSubcommandName().toLowerCase());
-        for (String alias : sub.getAliases()) {
+        names.add(sub.subcommandName().toLowerCase());
+        for (String alias : sub.aliases()) {
             names.add(alias.toLowerCase());
         }
         return names;
@@ -559,8 +559,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
             names.addAll(child.getAliases());
         }
         for (MethodModel sub : model.getSubcommands()) {
-            names.add(sub.getSubcommandName());
-            names.addAll(sub.getAliases());
+            names.add(sub.subcommandName());
+            names.addAll(sub.aliases());
         }
         return names;
     }
@@ -592,14 +592,14 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
 
     String getUsage(MethodModel method) {
         StringJoiner usage = new StringJoiner(" ");
-        for (ParameterModel p : method.getParameters()) {
-            MethodModel resolverModel = p.getResolverMethod();
+        for (ParameterModel p : method.parameters()) {
+            MethodModel resolverModel = p.resolverMethod();
             if (resolverModel == null) {
                 usage.add(usageToken(p));
                 continue;
             }
-            for (ParameterModel rp : resolverModel.getParameters()) {
-                if (!isSenderParam(TypeName.get(rp.getType()), method)) {
+            for (ParameterModel rp : resolverModel.parameters()) {
+                if (!isSenderParam(TypeName.get(rp.type()), method)) {
                     usage.add(usageToken(rp));
                 }
             }
@@ -608,7 +608,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     }
 
     private static String usageToken(ParameterModel p) {
-        return p.isOptional() ? "[" + p.getName() + "]" : "<" + p.getName() + ">";
+        return p.optional() ? "[" + p.name() + "]" : "<" + p.name() + ">";
     }
 
     protected static String getSubcommandNames(CommandModel model) {
@@ -617,7 +617,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
             list.add(child.getCommandName());
         }
         for (MethodModel sub : model.getSubcommands()) {
-            list.add(sub.getSubcommandName());
+            list.add(sub.subcommandName());
         }
         return list.toString();
     }

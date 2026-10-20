@@ -36,13 +36,20 @@ public final class TypeSupport {
 
     /**
      * Returns true if the given type name is a numeric primitive or wrapper type.
+     *
+     * @param typeName the qualified type name
+     * @return whether the type is numeric
      */
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted") // public predicate; callers pick the branch that reads best
     public static boolean isNumericType(String typeName) {
         return NUMERIC_TYPES.contains(typeName);
     }
 
     /**
      * Returns true if the given type name is an integer numeric primitive or wrapper type.
+     *
+     * @param typeName the qualified type name
+     * @return whether the type is an integer
      */
     public static boolean isIntegerType(String typeName) {
         return INTEGER_TYPES.contains(typeName);
@@ -60,8 +67,8 @@ public final class TypeSupport {
     /**
      * Convenience to start building an entry keyed by a TypeName.
      */
-    private static Entry.Builder entry(TypeName type, int width) {
-        return Entry.builder(type, width);
+    private static Entry.Builder entry(TypeName type) {
+        return Entry.builder(type, 1);
     }
 
     private static String defaultTo(String d, String fallback) {
@@ -69,92 +76,129 @@ public final class TypeSupport {
     }
 
     /**
-     * Register a platform-specific type entry (e.g. Player, World, Location).
+     * Registers a platform-specific type entry (e.g. Player, World, Location).
      * If the type is already registered, the new entry is ignored (idempotent).
+     *
+     * @param e the type entry to register
      */
     public void register(Entry e) {
-        entries.putIfAbsent(e.type.toString(), e);
+        entries.putIfAbsent(e.type().toString(), e);
     }
 
     /**
-     * @return the entry for the given type, or {@code null} if not registered.
+     * Returns the entry for a type.
+     *
+     * @param type the type name
+     * @return the entry, or {@code null} if not registered
      */
     public Entry get(TypeName type) {
         return entries.get(type.toString());
     }
 
     /**
-     * @return true if the platform provides suggestions for the type.
+     * Returns whether the platform provides suggestions for a type.
+     *
+     * @param type the type name
+     * @return whether platform suggestions are available
      */
     public boolean hasPlatformSuggestions(TypeName type) {
         Entry e = entries.get(type.toString());
-        return e != null && e.platformSuggestions != null;
+        return e != null && e.platformSuggestions() != null;
     }
 
     /**
-     * @return true for {@code boolean} and {@code java.lang.Boolean}.
+     * Returns whether the type is boolean.
+     *
+     * @param type the type name
+     * @return true for {@code boolean} and {@code java.lang.Boolean}
      */
     public static boolean isBooleanType(TypeName type) {
         return type.equals(TypeName.BOOLEAN) || type.equals(TypeName.BOOLEAN.box());
     }
 
     /**
-     * @return true if the type is registered (built-in or platform).
+     * Returns whether the type is registered.
+     *
+     * @param type the type name
+     * @return true if the type is built-in or registered by a platform
      */
     public boolean isBuiltIn(TypeName type) {
         return entries.containsKey(type.toString());
     }
 
     /**
-     * @return the argument width, defaulting to 1 for unregistered types.
+     * Returns the argument width of a type.
+     *
+     * @param type the type name
+     * @return the width, defaulting to 1 for unregistered types
      */
     public int getWidth(TypeName type) {
         Entry e = entries.get(type.toString());
-        return e == null ? 1 : e.width;
+        return e == null ? 1 : e.width();
     }
 
     /**
-     * @return the primitive default literal ("0", "0.0", "false", "'\\0'", or "null").
+     * Returns the primitive default literal.
+     *
+     * @param type the type name
+     * @return "0", "0.0", "false", "'\\0'", or "null"
      */
     public String primitiveDefault(TypeName type) {
         Entry e = entries.get(type.toString());
-        return e == null || e.primitiveDefault == null ? "null" : e.primitiveDefault;
+        return e == null || e.primitiveDefault() == null ? "null" : e.primitiveDefault();
     }
 
     /**
-     * @return the literal CodeBlock for a default value, or {@code null} for unregistered types.
+     * Returns the literal expression for a default value.
+     *
+     * @param type the type name
+     * @param defaultValue the default value text
+     * @return the literal expression, or {@code null} for unregistered types
      */
     public CodeBlock literal(TypeName type, String defaultValue) {
         Entry e = entries.get(type.toString());
-        return e == null ? null : e.literal.apply(defaultValue);
+        return e == null ? null : e.literal().apply(defaultValue);
     }
 
     /**
-     * @return an expression CodeBlock that parses the given argument string expression, or null.
+     * Returns an expression that parses an argument string.
+     *
+     * @param type the type name
+     * @param argExpr the argument expression
+     * @return the parse expression, or {@code null}
      */
     public CodeBlock parseExpr(TypeName type, String argExpr) {
         return parseExpr(type, CodeBlock.of("$L", argExpr));
     }
 
     /**
-     * @return an expression CodeBlock that parses the given argument expression, or null.
+     * Returns an expression that parses an argument.
+     *
+     * @param type the type name
+     * @param argExpr the argument expression
+     * @return the parse expression, or {@code null}
      */
     public CodeBlock parseExpr(TypeName type, CodeBlock argExpr) {
         Entry e = entries.get(type.toString());
-        if (e != null && e.parseExpr != null) {
-            return e.parseExpr.apply(argExpr);
+        if (e != null && e.parseExpr() != null) {
+            return e.parseExpr().apply(argExpr);
         }
         return null;
     }
 
     /**
-     * Emit parse statements (e.g. {@code var = Integer.parseInt(arg)}) into the given builder.
+     * Emits parse statements into the generated method.
+     *
+     * @param spec the generated method
+     * @param type the type name
+     * @param var the target variable
+     * @param arg the argument expression
      */
     public void emitParse(MethodSpec.Builder spec, TypeName type, String var, String arg) {
         Entry e = entries.get(type.toString());
         if (e == null) return;
-        if (e.parseExpr != null) {
-            spec.addStatement("$L = $L", var, e.parseExpr.apply(CodeBlock.of("$L", arg)));
+        if (e.parseExpr() != null) {
+            spec.addStatement("$L = $L", var, e.parseExpr().apply(CodeBlock.of("$L", arg)));
         }
     }
 
@@ -168,7 +212,7 @@ public final class TypeSupport {
         ClassName chr = ClassName.get(Character.class);
         ClassName bool = ClassName.get(Boolean.class);
 
-        register(entry(ClassName.get(String.class), 1)
+        register(entry(ClassName.get(String.class))
                 .primitiveDefault("null")
                 .literal(d -> CodeBlock.of("$S", d == null ? "" : d))
                 .parseExpr(arg -> CodeBlock.of("$L", arg))
@@ -181,7 +225,7 @@ public final class TypeSupport {
         registerPair(TypeName.SHORT, shrt, "0", "parseShort", d -> CodeBlock.of("(short) $L", defaultTo(d, "0")));
         registerPair(TypeName.BYTE, byt, "0", "parseByte", d -> CodeBlock.of("(byte) $L", defaultTo(d, "0")));
 
-        Entry charEntry = entry(chr, 1)
+        Entry charEntry = entry(chr)
                 .primitiveDefault("'\\0'")
                 .literal(d -> {
                     char c = (d == null || d.isEmpty()) ? ' ' : d.charAt(0);
@@ -192,7 +236,7 @@ public final class TypeSupport {
         register(charEntry);
         alias(TypeName.CHAR, charEntry);
 
-        Entry booleanEntry = entry(bool, 1)
+        Entry booleanEntry = entry(bool)
                 .primitiveDefault("false")
                 .literal(d -> CodeBlock.of("$L", defaultTo(d, "false")))
                 .parseExpr(arg -> CodeBlock.of("$T.parseBoolean($L)", Boolean.class, arg))
@@ -206,7 +250,7 @@ public final class TypeSupport {
      */
     private void registerPair(TypeName primitive, ClassName wrapper, String defaultVal, String parseMethod,
                               Function<String, CodeBlock> literal) {
-        Entry entry = entry(wrapper, 1)
+        Entry entry = entry(wrapper)
                 .primitiveDefault(defaultVal)
                 .literal(literal)
                 .parseExpr(arg -> CodeBlock.of("$T.$L($L)", wrapper, parseMethod, arg))
@@ -220,63 +264,82 @@ public final class TypeSupport {
     }
 
     /**
-     * Emit platform-specific multi-arg resolution code, for example {@code location = getLocation(args, argIdx)}.
+     * Emits platform-specific multi-argument resolution code.
+     *
+     * @param spec the generated method
+     * @param type the type name
+     * @param varName the target variable
+     * @param argsVar the argument array name
+     * @param index the current argument index
+     * @param senderVar the sender variable name
      */
     public void emitPlatformMultiResolution(MethodSpec.Builder spec, TypeName type,
                                             String varName, String argsVar, CodeBlock index, String senderVar) {
         Entry e = entries.get(type.toString());
-        if (e == null || e.platformMultiResolution == null) {
+        if (e == null || e.platformMultiResolution() == null) {
             return;
         }
-        e.platformMultiResolution.accept(spec, new Resolution(varName, argsVar, index, senderVar));
+        e.platformMultiResolution().accept(spec, new Resolution(varName, argsVar, index, senderVar));
     }
 
     /**
-     * Emit platform-specific suggestion code for a type.
+     * Emits platform-specific suggestion code.
+     *
+     * @param spec the generated method
+     * @param type the type name
+     * @param currentVar the current input expression
      */
     public void emitPlatformSuggestions(MethodSpec.Builder spec, TypeName type, CodeBlock currentVar) {
         Entry e = entries.get(type.toString());
-        if (e == null || e.platformSuggestions == null) {
+        if (e == null || e.platformSuggestions() == null) {
             return;
         }
-        e.platformSuggestions.accept(spec, new Suggestion(currentVar));
+        e.platformSuggestions().accept(spec, new Suggestion(currentVar));
     }
 
     /**
      * Inputs available to a platform multi-argument resolver. The generated names are provided so the platform only
      * writes the statement body.
+     *
+     * @param varName the local receiving the resolved value
+     * @param argsVar the argument array name
+     * @param index the current argument index expression
+     * @param senderVar the sender variable name
      */
     public record Resolution(String varName, String argsVar, CodeBlock index, String senderVar) {
     }
 
     /**
      * Inputs available to a platform suggestion provider.
+     *
+     * @param currentVar the current input being completed
      */
     public record Suggestion(CodeBlock currentVar) {
     }
 
     /**
      * A registered type's behaviors. Immutable once built.
+     *
+     * @param type the registered type
+     * @param width the number of arguments the type consumes
+     * @param primitiveDefault the default expression for primitive types
+     * @param literal the literal expression factory
+     * @param parseExpr the parse expression factory
+     * @param platformMultiResolution the multi-argument resolver emitter
+     * @param platformSuggestions the suggestion emitter
      */
-    public static final class Entry {
-        public final TypeName type;
-        public final int width;
-        final String primitiveDefault;
-        final Function<String, CodeBlock> literal;
-        final Function<CodeBlock, CodeBlock> parseExpr;
-        final BiConsumer<MethodSpec.Builder, Resolution> platformMultiResolution;
-        final BiConsumer<MethodSpec.Builder, Suggestion> platformSuggestions;
-
-        private Entry(Builder b) {
-            this.type = b.type;
-            this.width = b.width;
-            this.primitiveDefault = b.primitiveDefault;
-            this.literal = b.literal;
-            this.parseExpr = b.parseExpr;
-            this.platformMultiResolution = b.platformMultiResolution;
-            this.platformSuggestions = b.platformSuggestions;
-        }
-
+    public record Entry(TypeName type, int width, String primitiveDefault,
+                        Function<String, CodeBlock> literal,
+                        Function<CodeBlock, CodeBlock> parseExpr,
+                        BiConsumer<MethodSpec.Builder, Resolution> platformMultiResolution,
+                        BiConsumer<MethodSpec.Builder, Suggestion> platformSuggestions) {
+        /**
+         * Starts building an entry.
+         *
+         * @param type the type to register
+         * @param width the number of arguments the type consumes
+         * @return a new entry builder
+         */
         public static Builder builder(TypeName type, int width) {
             return new Builder(type, width);
         }
@@ -298,33 +361,64 @@ public final class TypeSupport {
                 this.width = width;
             }
 
+                    /**
+         * Sets the primitive default expression.
+         *
+         * @param v the default expression
+         * @return this builder
+         */
             public Builder primitiveDefault(String v) {
                 this.primitiveDefault = v;
                 return this;
             }
 
+                    /**
+         * Sets the literal expression factory.
+         *
+         * @param f the literal factory
+         * @return this builder
+         */
             public Builder literal(Function<String, CodeBlock> f) {
                 this.literal = f;
                 return this;
             }
 
+                    /**
+         * Sets the parse expression factory.
+         *
+         * @param f the parse factory
+         * @return this builder
+         */
             public Builder parseExpr(Function<CodeBlock, CodeBlock> f) {
                 this.parseExpr = f;
                 return this;
             }
 
+                    /**
+         * Sets the multi-argument resolution emitter.
+         *
+         * @param f the resolution emitter
+         * @return this builder
+         */
             public Builder platformMultiResolution(BiConsumer<MethodSpec.Builder, Resolution> f) {
                 this.platformMultiResolution = f;
                 return this;
             }
 
+                    /**
+         * Sets the suggestion emitter.
+         *
+         * @param f the suggestion emitter
+         * @return this builder
+         */
             public Builder platformSuggestions(BiConsumer<MethodSpec.Builder, Suggestion> f) {
                 this.platformSuggestions = f;
                 return this;
             }
 
             public Entry build() {
-                return new Entry(this);
+                return new Entry(type, width, primitiveDefault, literal, parseExpr,
+                        platformMultiResolution, platformSuggestions);
             }
         }
     }

@@ -14,6 +14,11 @@ import javax.lang.model.element.TypeElement;
 public final class CommandParserFactory {
     private final CommandParser parser;
 
+    /**
+     * Creates the parser factory for one processing session.
+     *
+     * @param processingEnvironment the annotation processing environment
+     */
     public CommandParserFactory(ProcessingEnvironment processingEnvironment) {
         this.parser = new CommandParser(processingEnvironment.getMessager());
     }
