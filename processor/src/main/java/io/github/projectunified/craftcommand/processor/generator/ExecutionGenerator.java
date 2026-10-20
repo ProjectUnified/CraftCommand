@@ -114,7 +114,8 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
             String varName = slot.localFor(p, "param_" + i);
             paramNames.add(varName);
 
-            resolveParameter(slot, args, p, varName, i, i == method.parameters().size() - 1);
+            resolveParameter(slot, args, p, varName, i, i == method.parameters().size() - 1,
+                    isStaticOptionalTail(method.parameters(), i));
             runParameterAnnotationHandlers(p, varName, instanceVar, senderVarName, methodSpec);
         }
 
@@ -123,7 +124,8 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
         methodSpec.addStatement("$L", BaseCommandGenerator.call(instanceVar, method.methodName(), callArgs));
     }
 
-    void resolveParameter(MethodSlot slot, ArgCursor cursor, ParameterModel p, String varName, int paramIndex, boolean lastParameter) {
+    void resolveParameter(MethodSlot slot, ArgCursor cursor, ParameterModel p, String varName, int paramIndex,
+                          boolean lastParameter, boolean staticOffset) {
         TypeName pTypeName = TypeName.get(p.type());
 
         // 1. Resolver model from @Resolve("name")
@@ -142,7 +144,7 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 slot.methodSpec().endControlFlow();
             }
             if (p.optional()) {
-                if (!lastParameter) cursor.requireIndex();
+                if (!lastParameter && !staticOffset) cursor.requireIndex();
                 CodeBlock defaultValue = p.defaultValue() == null
                         ? CodeBlock.of("null")
                         : CodeBlock.of("$T.valueOf($S)", pTypeName, p.defaultValue());
@@ -217,7 +219,7 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
             if (width > 1) {
                 // Multi-arg platform type (e.g. Location), which may be consumed conditionally when optional
                 if (p.optional()) {
-                    if (!lastParameter) cursor.requireIndex();
+                    if (!lastParameter && !staticOffset) cursor.requireIndex();
                     slot.methodSpec().addStatement("$T $L = $L", pTypeName, varName,
                             processor.typeSupport().primitiveDefault(pTypeName));
                     slot.methodSpec().beginControlFlow("if (!($L))", cursor.notEnoughArguments(width));
@@ -233,7 +235,7 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 // Single-arg type
                 if (p.optional()) {
                     // An optional parameter consumes its argument only when present, which needs a mutable index.
-                    if (!lastParameter) cursor.requireIndex();
+                    if (!lastParameter && !staticOffset) cursor.requireIndex();
                     CodeBlock defLit = processor.typeSupport().literal(pTypeName, p.defaultValue());
                     if (defLit == null) defLit = CodeBlock.of("null");
                     slot.methodSpec().addStatement("$T $L = $L ? $L : $L",
@@ -261,6 +263,18 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
                 senderVarName);
     }
 
+    private boolean isStaticOptionalTail(List<ParameterModel> parameters, int index) {
+        ParameterModel current = parameters.get(index);
+        if (!current.optional() || current.greedy() || current.resolverMethod() != null) return false;
+        for (int i = index + 1; i < parameters.size(); i++) {
+            ParameterModel next = parameters.get(i);
+            if (!next.optional() || next.greedy() || next.resolverMethod() != null) return false;
+            TypeName type = TypeName.get(next.type());
+            if (next.enumConstants() == null && !processor.typeSupport().isBuiltIn(type)) return false;
+        }
+        return true;
+    }
+
     void resolveResolverParameters(MethodSlot slot, ArgCursor cursor, MethodModel resolverModel, String varName,
                                    ParameterModel parentParam, boolean lastParameter) {
         ExecutableElement resolverElement = resolverModel.element();
@@ -281,7 +295,7 @@ record ExecutionGenerator(BaseCommandGenerator processor) {
             }
 
             resolveParameter(slot, cursor, rpToResolve, rpVarName, i,
-                    lastParameter && i == resolverModel.parameters().size() - 1);
+                    lastParameter && i == resolverModel.parameters().size() - 1, false);
             runParameterAnnotationHandlers(rp, rpVarName, processor.getInstanceVarExpression(slot.classModel(), slot.rootModel()), slot.senderVarName(), slot.methodSpec());
         }
 

@@ -449,7 +449,11 @@ public final class PaperCommandGenerator extends BaseCommandGenerator {
                 } else {
                     String resolveName = p.resolveName();
                     if (resolveName != null && !resolveName.isEmpty()) {
-                        String helperName = getResolverParamSuggestionMethodName(classModel, method, resolveName, node.resolverArgIndex());
+                        MethodModel resolverModel = p.resolverMethod();
+                        int resolverStartIndex = resolverModel == null ? 0 : firstParamIsSender(resolverModel.element(), method) ? 1 : 0;
+                        ParameterModel resolverParam = resolverModel == null ? null
+                                : resolverModel.parameters().get(resolverStartIndex + node.resolverArgIndex());
+                        String helperName = getResolverParamSuggestionMethodName(classModel, resolverParam);
                         spec.addStatement("$L.suggests((ctx, sb) -> $T.suggestMatching(ctx, sb, args -> $L(ctx.getSource(), args)))",
                                 nextBuilderVar, paperSuggestionsClass, helperName);
                     } else {

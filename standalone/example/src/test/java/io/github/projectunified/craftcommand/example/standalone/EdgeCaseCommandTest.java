@@ -65,6 +65,18 @@ public class EdgeCaseCommandTest extends AbstractStandaloneCommandTest {
     }
 
     @Test
+    public void testConsecutiveOptionalParameters() {
+        assertTrue(execute("twoopt"));
+        assertEquals(List.of("twoopt=first,second"), sender.getMessages());
+        sender.getMessages().clear();
+        assertTrue(execute("twoopt", "one"));
+        assertEquals(List.of("twoopt=one,second"), sender.getMessages());
+        sender.getMessages().clear();
+        assertTrue(execute("twoopt", "one", "two"));
+        assertEquals(List.of("twoopt=one,two"), sender.getMessages());
+    }
+
+    @Test
     public void testDescriptionInCommandInfo() {
         assertEquals("Edge case combinations", cmd.getDescription());
         List<CommandInfo> infoList = manager.getCommandInfo(instance);

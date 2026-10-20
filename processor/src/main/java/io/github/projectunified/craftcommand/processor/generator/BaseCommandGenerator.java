@@ -129,6 +129,7 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
     // ── Orchestration ──
 
     private void buildWrapperClass(CommandModel model) throws IOException {
+        suggestions.beginWrapper();
         String wrapperClassName = model.getClassName().simpleName() + getWrapperClassSuffix();
 
         TypeSpec.Builder typeSpec = TypeSpec.classBuilder(wrapperClassName)
@@ -305,8 +306,8 @@ public abstract class BaseCommandGenerator implements CommandGenerator {
         return suggestions.getParameterSuggestionMethodName(classModel, method, index);
     }
 
-    protected String getResolverParamSuggestionMethodName(CommandModel classModel, MethodModel method, String resolverName, int index) {
-        return suggestions.getResolverParamSuggestionMethodName(classModel, method, resolverName, index);
+    protected String getResolverParamSuggestionMethodName(CommandModel classModel, ParameterModel parameter) {
+        return suggestions.getResolverParamSuggestionMethodName(classModel, parameter);
     }
 
     // ── Command metadata ──

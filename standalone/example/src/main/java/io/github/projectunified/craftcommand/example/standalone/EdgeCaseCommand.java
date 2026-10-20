@@ -38,6 +38,11 @@ public class EdgeCaseCommand {
         ((TestSender) sender).sendMessage("enumdef=" + color);
     }
 
+    @Command("twoopt")
+    public void twoOptional(Object sender, @Default("first") String first, @Default("second") String second) {
+        ((TestSender) sender).sendMessage("twoopt=" + first + "," + second);
+    }
+
     @Command("desc")
     public void descriptionCheck(Object sender) {
         ((TestSender) sender).sendMessage("desc");

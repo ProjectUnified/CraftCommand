@@ -18,19 +18,39 @@ import javax.lang.model.type.TypeMirror;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Generates the tab-completion surface of a command wrapper: the suggestion routing of each command class and
- * one helper per completable argument.
+ * one shared helper per suggestion source.
  *
  * <p>The routing walks the declared arguments in order and returns the suggestions of the argument the sender is
  * currently typing, so a command with no suggestions costs a single {@code emptyList()} return.
- *
- * @param processor the owning command generator
  */
-record SuggestionGenerator(BaseCommandGenerator processor) {
+final class SuggestionGenerator {
     private static final ClassName COMMAND_MANAGER = ClassName.get("io.github.projectunified.craftcommand", "CommandManager");
+
+    private final BaseCommandGenerator processor;
+    private final Map<SuggestionKey, String> helperNames = new HashMap<>();
+    private final Set<String> usedHelperNames = new HashSet<>();
+    private final Set<String> emittedHelpers = new HashSet<>();
+
+    SuggestionGenerator(BaseCommandGenerator processor) {
+        this.processor = processor;
+    }
+
+    /**
+     * Resets the per-wrapper helper registry.
+     */
+    void beginWrapper() {
+        helperNames.clear();
+        usedHelperNames.clear();
+        emittedHelpers.clear();
+    }
 
     public boolean isParamDirectSuggestionAvailable(ParameterModel p) {
         if (p.suggestProvider() != null) return true;
@@ -228,7 +248,7 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
                 List<ParameterModel> resolverParams = resolverModel.parameters();
                 for (int ri = resolverStartIndex; ri < resolverParams.size(); ri++) {
                     if (isResolverParamSuggestionAvailable(resolverParams.get(ri))) {
-                        String helper = getResolverParamSuggestionMethodName(classModel, method, p.resolveName(), ri - resolverStartIndex);
+                        String helper = getResolverParamSuggestionMethodName(classModel, resolverParams.get(ri));
                         slots.add(SuggestionSlot.staticWidth(helper, 1));
                     } else {
                         slots.add(SuggestionSlot.staticWidth(null, 1));
@@ -276,7 +296,9 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
             for (int i = 0; i < model.getDefaultMethod().parameters().size(); i++) {
                 ParameterModel p = model.getDefaultMethod().parameters().get(i);
                 if (isParamDirectSuggestionAvailable(p)) {
-                    typeSpec.addMethod(buildParameterSuggestionHelper(model, model.getDefaultMethod(), p, i, rootModel));
+                    addSuggestionHelper(typeSpec,
+                            getParameterSuggestionMethodName(model, model.getDefaultMethod(), i),
+                            buildParameterSuggestionHelper(model, model.getDefaultMethod(), p, i, rootModel));
                 }
                 buildResolverParamSuggestions(typeSpec, model, model.getDefaultMethod(), p, rootModel);
             }
@@ -285,7 +307,9 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
             for (int i = 0; i < sub.parameters().size(); i++) {
                 ParameterModel p = sub.parameters().get(i);
                 if (isParamDirectSuggestionAvailable(p)) {
-                    typeSpec.addMethod(buildParameterSuggestionHelper(model, sub, p, i, rootModel));
+                    addSuggestionHelper(typeSpec,
+                            getParameterSuggestionMethodName(model, sub, i),
+                            buildParameterSuggestionHelper(model, sub, p, i, rootModel));
                 }
                 buildResolverParamSuggestions(typeSpec, model, sub, p, rootModel);
             }
@@ -295,7 +319,14 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
         }
     }
 
-    private void buildResolverParamSuggestions(TypeSpec.Builder typeSpec, CommandModel classModel, MethodModel method, ParameterModel p, CommandModel rootModel) {
+    private void addSuggestionHelper(TypeSpec.Builder typeSpec, String name, MethodSpec helper) {
+        if (emittedHelpers.add(name)) {
+            typeSpec.addMethod(helper);
+        }
+    }
+
+    private void buildResolverParamSuggestions(TypeSpec.Builder typeSpec, CommandModel classModel, MethodModel method,
+                                               ParameterModel p, CommandModel rootModel) {
         MethodModel resolverModel = p.resolverMethod();
         if (resolverModel == null) return;
 
@@ -303,8 +334,9 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
         for (int i = startIndex; i < resolverModel.parameters().size(); i++) {
             ParameterModel rp = resolverModel.parameters().get(i);
             if (isResolverParamSuggestionAvailable(rp)) {
-                String helperName = getResolverParamSuggestionMethodName(classModel, method, p.resolveName(), i - startIndex);
-                typeSpec.addMethod(buildResolverParamSuggestionHelper(classModel, method, rp, helperName, rootModel));
+                String helperName = getResolverParamSuggestionMethodName(classModel, rp);
+                addSuggestionHelper(typeSpec, helperName,
+                        buildResolverParamSuggestionHelper(classModel, method, rp, helperName, rootModel));
             }
         }
     }
@@ -325,11 +357,14 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
         }
     }
 
-    private void buildTypeSuggestionHelpers(TypeSpec.Builder typeSpec, CommandModel classModel, MethodModel method, CommandModel rootModel) {
+    private void buildTypeSuggestionHelpers(TypeSpec.Builder typeSpec, CommandModel classModel, MethodModel method,
+                                            CommandModel rootModel) {
         for (int i = 0; i < method.parameters().size(); i++) {
             ParameterModel p = method.parameters().get(i);
             if (hasTypeSuggestions(p)) {
-                typeSpec.addMethod(buildParameterSuggestionHelper(classModel, method, p, i, rootModel));
+                addSuggestionHelper(typeSpec,
+                        getParameterSuggestionMethodName(classModel, method, i),
+                        buildParameterSuggestionHelper(classModel, method, p, i, rootModel));
             }
             MethodModel resolverModel = p.resolverMethod();
             if (resolverModel == null) continue;
@@ -338,8 +373,9 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
             for (int j = startIndex; j < resolverModel.parameters().size(); j++) {
                 ParameterModel rp = resolverModel.parameters().get(j);
                 if (hasTypeSuggestions(rp)) {
-                    typeSpec.addMethod(buildResolverParamSuggestionHelper(classModel, method, rp,
-                            getResolverParamSuggestionMethodName(classModel, method, p.resolveName(), j - startIndex), rootModel));
+                    String helperName = getResolverParamSuggestionMethodName(classModel, rp);
+                    addSuggestionHelper(typeSpec, helperName,
+                            buildResolverParamSuggestionHelper(classModel, method, rp, helperName, rootModel));
                 }
             }
         }
@@ -354,13 +390,32 @@ record SuggestionGenerator(BaseCommandGenerator processor) {
     }
 
     String getParameterSuggestionMethodName(CommandModel classModel, MethodModel method, int index) {
-        String methodOrDefault = method.isDefault() ? "default" : method.subcommandName();
-        return Naming.suggestMethod(classModel.getClassName(), methodOrDefault, index);
+        return getSuggestionHelperName(classModel, method.parameters().get(index));
     }
 
-    String getResolverParamSuggestionMethodName(CommandModel classModel, MethodModel method, String resolverName, int index) {
-        String methodOrDefault = method.isDefault() ? "default" : method.subcommandName();
-        return Naming.suggestMethod(classModel.getClassName(), methodOrDefault + " " + resolverName, index);
+    String getResolverParamSuggestionMethodName(CommandModel classModel, ParameterModel rp) {
+        return getSuggestionHelperName(classModel, rp);
+    }
+
+    private String getSuggestionHelperName(CommandModel classModel, ParameterModel p) {
+        SuggestionKey key = new SuggestionKey(classModel.getClassName(), p.suggestProvider(),
+                p.suggestField(), p.suggestProvider() == null ? TypeName.get(p.type()) : null);
+        String name = helperNames.get(key);
+        if (name != null) return name;
+
+        String base = key.provider != null
+                ? Naming.suggestMethod(key.className, "provider " + key.provider + (key.field ? " field" : ""), 0)
+                : Naming.suggestMethod(key.className, "type " + Naming.simpleName(key.type), 0);
+        name = base;
+        int suffix = 2;
+        while (!usedHelperNames.add(name)) {
+            name = base + "_" + suffix++;
+        }
+        helperNames.put(key, name);
+        return name;
+    }
+
+    private record SuggestionKey(ClassName className, String provider, boolean field, TypeName type) {
     }
 
     private MethodSpec buildResolverParamSuggestionHelper(CommandModel classModel, MethodModel method, ParameterModel rp, String helperName, CommandModel rootModel) {
